@@ -1,0 +1,9 @@
+# ai-assistant edge function
+name: ai-assistant
+
+# verify_jwt is DISABLED because the function verifies the caller JWT itself
+# (supabase.auth.getUser against the Authorization header) so it can return
+# the frozen JSON error contract (401 / FORBIDDEN / 400 / UPSTREAM_ERROR)
+# instead of Supabase's generic gateway error. Do not flip this on without
+# updating the frontend error handling.
+verify_jwt: false

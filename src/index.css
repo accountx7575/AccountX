@@ -1,0 +1,297 @@
+/* Fonts: system-ui stack fallback (T37). Inter/JetBrains Mono are used when
+   locally installed; no external @import so the app renders offline/packaged. */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  html, body {
+    font-family: 'Inter', system-ui, sans-serif;
+    /* Inter optical refinements: cv11 = single-story a, ss01 = alternate digits */
+    font-feature-settings: 'cv11', 'ss01';
+    font-variant-numeric: tabular-nums;
+  }
+
+  body {
+    @apply bg-secondary-50 text-secondary-900 dark:bg-secondary-950 dark:text-zinc-100 font-sans antialiased;
+  }
+
+  * {
+    @apply border-secondary-200/80 dark:border-secondary-800;
+  }
+
+  ::selection {
+    @apply bg-primary-500/20 text-primary-900 dark:text-primary-100;
+  }
+
+  h1, h2, h3 {
+    @apply tracking-tight;
+  }
+}
+
+@layer components {
+  /* Premium layered surface: soft ambient shadow + hairline ring + micro-lift on hover */
+  .card {
+    @apply bg-white dark:bg-secondary-900 rounded-xl border border-secondary-200/70 dark:border-secondary-800 shadow-card transition-all duration-200 hover:shadow-card-hover hover:border-primary-500/30 dark:hover:border-primary-500/30;
+  }
+
+  /* Flat, opaque surface variant (modals/drawers need solidity over blur) */
+  .card-solid {
+    @apply bg-white dark:bg-secondary-900 rounded-xl border border-secondary-200/80 dark:border-secondary-800 shadow-card;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-secondary-300/70 dark:border-secondary-700 bg-white dark:bg-secondary-900/70 px-3 py-2 text-sm text-secondary-900 dark:text-secondary-100 placeholder-secondary-500 dark:placeholder-secondary-400 shadow-[0_1px_2px_rgba(24,24,27,0.04)] hover:border-secondary-400/70 dark:hover:border-secondary-600 focus:border-primary-500 focus:outline-none focus:ring-[3px] focus:ring-primary-500/15 transition-all duration-150;
+  }
+
+  .label {
+    @apply block text-[13px] font-medium text-secondary-700 dark:text-secondary-300 mb-1.5;
+  }
+
+  .table-row-hover {
+    @apply transition-colors duration-100;
+  }
+  .table-row-hover:hover {
+    @apply bg-primary-50/60 dark:bg-secondary-800/50;
+  }
+
+  /* Premium table chrome: sticky-feel header band + hairline dividers */
+  table thead tr {
+    /* T84: opaque band so sticky headers stay legible over scrolled rows */
+    @apply bg-secondary-50 dark:bg-secondary-800;
+  }
+  table th {
+    @apply text-[11px] font-semibold uppercase tracking-[0.05em] text-secondary-500 dark:text-secondary-400;
+  }
+  table tbody tr:last-child {
+    @apply border-b-0;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border border-transparent;
+  }
+
+  /* Legacy buttons kept for compatibility; primary CTA = indigo→violet gradient */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-secondary-950 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap;
+  }
+
+  .btn-primary {
+    @apply btn bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:shadow-lg hover:shadow-indigo-500/30 active:from-indigo-600 active:to-violet-700 px-4 py-2 text-sm shadow-sm;
+  }
+
+  .btn-secondary {
+    @apply btn bg-white/80 text-secondary-700 border border-secondary-300 hover:bg-secondary-50 dark:bg-secondary-800 dark:text-zinc-100 dark:border-secondary-700 dark:hover:bg-secondary-700 px-4 py-2 text-sm backdrop-blur-sm;
+  }
+
+  .btn-ghost {
+    @apply btn text-secondary-600 hover:bg-secondary-100 dark:text-secondary-300 dark:hover:bg-secondary-800 px-3 py-2 text-sm;
+  }
+
+  .btn-danger {
+    @apply btn bg-gradient-to-br from-rose-500 to-red-600 text-white hover:shadow-lg hover:shadow-rose-500/30 active:from-rose-600 active:to-red-700 px-4 py-2 text-sm shadow-sm;
+  }
+
+  .btn-sm {
+    @apply px-2.5 py-1.5 text-xs;
+  }
+
+  /* Financial figures: mono, tabular, semibold — apply to ALL money/tax/percent values */
+  .figure {
+    @apply font-mono tabular-nums font-semibold;
+  }
+
+  /* Lift-and-glow for stat/KPI cards */
+  .stat-glow {
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg;
+  }
+
+  /* ---- Typography scale (Phase A design system) ---- */
+  .text-display {
+    @apply text-2xl sm:text-3xl font-bold tracking-tight text-secondary-900 dark:text-white;
+  }
+  .text-page-title {
+    @apply text-xl font-bold tracking-tight text-secondary-900 dark:text-white;
+  }
+  .text-section-title {
+    @apply text-sm font-semibold tracking-tight text-secondary-900 dark:text-secondary-100;
+  }
+  .text-body {
+    @apply text-sm text-secondary-700 dark:text-secondary-300 leading-relaxed;
+  }
+  .text-caption {
+    @apply text-xs text-secondary-500 dark:text-secondary-400;
+  }
+
+  /* ---- Semantic tone pairs: surface + text + hairline, light/dark parity ----
+     Use for badges, callouts, KPI accents. Families unchanged (rebrand-free). */
+  .tone-success {
+    @apply bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30;
+  }
+  .tone-warning {
+    @apply bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30;
+  }
+  .tone-error {
+    @apply bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/30;
+  }
+  .tone-info {
+    @apply bg-indigo-50 text-indigo-700 border-indigo-200/80 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/30;
+  }
+  .tone-neutral {
+    @apply bg-zinc-100 text-zinc-600 border-zinc-200/80 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700;
+  }
+
+  /* CSS-only tooltip bubble (pair with [data-tip] host) */
+  .tooltip-bubble {
+    @apply pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 whitespace-nowrap rounded-lg bg-secondary-900 text-white dark:bg-zinc-100 dark:text-secondary-900 text-xs font-medium px-2.5 py-1.5 shadow-lg opacity-0 translate-y-1 transition-all duration-150 z-50;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-secondary-300 dark:bg-secondary-700 rounded-full;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Print: on invoice pages only the invoice document prints (shell hidden).
+   Scoped via :has so non-invoice pages (e.g. reports) print their normal view.
+   Force light theme colors for the document regardless of active dark mode.
+   Single-A4 fit: 10mm page margins + compressed sheet rhythm so the whole
+   tax invoice (header -> stamp/sign footer) lands on ONE sheet of paper. */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
+  html, body {
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body:has(#invoice-print-area) * {
+    visibility: hidden !important;
+  }
+
+  body:has(#invoice-print-area) #invoice-print-area,
+  body:has(#invoice-print-area) #invoice-print-area * {
+    visibility: visible !important;
+  }
+
+  #invoice-print-area {
+    position: absolute !important;
+    inset: 0 auto auto 0;
+    width: 100% !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border-color: #d4d4d8 !important;
+    box-shadow: none !important;
+    background-color: #ffffff !important;
+    color: #18181b !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-after: avoid;
+  }
+
+  #invoice-print-area table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 11px !important;
+    page-break-inside: avoid;
+  }
+
+  #invoice-print-area th,
+  #invoice-print-area td {
+    padding: 3px 6px !important;
+  }
+
+  /* Compress the sheet's section rhythm so nothing spills to a second page */
+  #invoice-print-area .px-6 { padding-left: 12px !important; padding-right: 12px !important; }
+  #invoice-print-area .py-5 { padding-top: 8px !important; padding-bottom: 8px !important; }
+  #invoice-print-area .py-4 { padding-top: 7px !important; padding-bottom: 7px !important; }
+  #invoice-print-area h1 { font-size: 15px !important; }
+  #invoice-print-area h2 { font-size: 13px !important; }
+
+  #invoice-print-area .print\:hidden {
+    display: none !important;
+  }
+
+  /* Report layouts: repeat table headers across pages, never split rows. */
+  #report-print-area table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 11px !important;
+  }
+
+  #report-print-area th,
+  #report-print-area td {
+    border-bottom: 1px solid #e4e4e7 !important;
+    padding: 4px 6px !important;
+    color: #18181b !important;
+  }
+
+  #report-print-area thead {
+    display: table-header-group !important;
+  }
+
+  #report-print-area tr {
+    break-inside: avoid !important;
+  }
+
+  /* Phase C extensions: page-break hints between major sections. */
+  #report-print-area .print-section {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  #report-print-area tfoot {
+    break-inside: avoid !important;
+    display: table-row-group !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+}
+
+@layer components {
+  .kbd {
+    @apply inline-block rounded-md border border-secondary-200 dark:border-secondary-700 bg-secondary-50 dark:bg-secondary-800 shadow-[inset_0_-1px_0_rgba(24,24,27,0.08)] px-1.5 py-0.5 font-mono text-[10px] leading-none text-secondary-500 dark:text-secondary-300;
+  }
+}

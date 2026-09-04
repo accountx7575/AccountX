@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AccountX — Indian Business & Accounting</title>
+    <meta name="theme-color" content="#6366f1" />
+    <meta name="description" content="AccountX — Indian business accounting, billing, inventory and financial management platform. GST-ready invoices with CGST/SGST/IGST breakdowns, inventory tracking, double-entry accounting, and printable tax invoices." />
+    <meta property="og:image" content="https://bolt.new/static/og_default.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://bolt.new/static/og_default.png">
+    <script>
+      // Dark-mode FOUC guard: apply the persisted theme class BEFORE first paint.
+      // Mirrors ThemeContext.tsx (key: accountx_theme, default light).
+      try {
+        if (localStorage.getItem('accountx_theme') === 'dark') {
+          document.documentElement.classList.add('dark');
+        }
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

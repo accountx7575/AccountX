@@ -1,0 +1,9 @@
+# report-scheduler edge function
+name: report-scheduler
+
+# verify_jwt is DISABLED because the function authorizes its caller itself:
+# the trigger (pg_cron + pg_net, or an external cron) must POST with
+# Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY> and the handler compares
+# it against Deno.env. See the deployment note in index.ts - do not claim a
+# live schedule until one of those triggers actually exists.
+verify_jwt: false
