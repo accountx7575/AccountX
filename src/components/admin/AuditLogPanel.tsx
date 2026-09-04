@@ -5,6 +5,8 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { ListPagination } from '@/components/ui/ListControls';
 import { Input } from '@/components/ui/Input';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { Drawer } from '@/components/ui/Drawer';
+import { Button } from '@/components/ui/Button';
 import { ScrollText, Search } from 'lucide-react';
 
 const PAGE_SIZES = [10, 25, 50];
@@ -23,6 +25,8 @@ export function AuditLogPanel() {
   const [userInput, setUserInput] = useState('');
   const [actionQuery, setActionQuery] = useState('');
   const [userQuery, setUserQuery] = useState('');
+  const [metaDrawerOpen, setMetaDrawerOpen] = useState(false);
+  const [selectedMeta, setSelectedMeta] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -78,9 +82,15 @@ export function AuditLogPanel() {
       label: 'Details',
       render: (r) => {
         const s = metaSummary(r.meta);
-        if (!s) return <span className="text-xs text-secondary-300 dark:text-secondary-600">—</span>;
         return (
-          <span className="block max-w-[18rem] truncate text-xs font-mono text-secondary-500 dark:text-secondary-400" title={s}>
+          <span
+            className="block max-w-[18rem] truncate text-xs font-mono text-secondary-500 dark:text-secondary-400 cursor-pointer hover:underline"
+            title={s}
+            onClick={() => {
+              setSelectedMeta(r.meta as Record<string, unknown> | null);
+              setMetaDrawerOpen(true);
+            }}
+          >
             {s}
           </span>
         );
@@ -156,6 +166,27 @@ export function AuditLogPanel() {
             }
           />
           <ListPagination page={page} onPageChange={setPage} pageSize={pageSize} from={(page - 1) * pageSize} total={total} isLoading={loading} />
+
+          <Drawer open={metaDrawerOpen} onClose={() => setMetaDrawerOpen(false)} title="Metadata Details">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-secondary-200 dark:border-secondary-800 shrink-0">
+              <h2 className="text-lg font-semibold text-secondary-900 dark:text-secondary-100">Metadata Inspection</h2>
+              <button onClick={() => setMetaDrawerOpen(false)} aria-label="Close drawer" className="rounded-md p-1 text-secondary-400 hover:text-secondary-600 dark:hover:text-secondary-200 hover:bg-secondary-100 dark:hover:bg-secondary-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 transition-colors">
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="10 8 16 12 10 16"/></svg>
+              </button>
+            </div>
+            <div className="px-6 py-4">
+              {selectedMeta ? (
+                <pre className="text-xs font-mono text-secondary-200 dark:text-secondary-700 overflow-auto max-h-[400px] whitespace-pre-wrap">
+                  {JSON.stringify(selectedMeta, null, 2)}
+                </pre>
+              ) : (
+                <p className="text-secondary-400 dark:text-secondary-600">No metadata available</p>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-secondary-200 dark:border-secondary-800 shrink-0">
+              <Button variant="secondary" onClick={() => setMetaDrawerOpen(false)}>Close</Button>
+            </div>
+          </Drawer>
         </>
       )}
     </section>
