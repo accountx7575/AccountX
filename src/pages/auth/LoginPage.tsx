@@ -50,6 +50,11 @@ export function LoginPage() {
       toast('Welcome back to AccountX!', 'success');
       const isSuper = Boolean(error ? false : (await supabase.auth.getUser()).data.user?.app_metadata?.is_super_admin);
       if (isSuper) { navigate('/super-admin', { replace: true }); return; }
+      const userMeta = (await supabase.auth.getUser()).data.user?.app_metadata;
+      if (userMeta?.is_super_admin) {
+        navigate('/super-admin', { replace: true });
+        return;
+      }
       const next = searchParams.get('next');
       navigate(next && next.startsWith('/') && !next.startsWith('//') ? next : '/app');
     } catch (err: unknown) {
@@ -144,16 +149,9 @@ export function LoginPage() {
         </Link>
       </p>
 
-      <div className="mt-6 pt-5 border-t border-slate-200 dark:border-zinc-800 text-center">
-        <Link
-          to="/super-admin"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
-        >
-          <Shield className="w-3.5 h-3.5" />
-          Platform Super Admin Portal &rarr;
-        </Link>
-      </div>
+      
     </AuthLayout>
   );
 }
+
 

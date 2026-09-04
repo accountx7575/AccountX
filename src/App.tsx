@@ -1,4 +1,5 @@
-﻿import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+﻿import { SuperAdminPage } from '@/pages/SuperAdminPage';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -119,7 +120,7 @@ function AppRoutes() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/setup-business" element={<ProtectedRoute><BusinessSetupPage /></ProtectedRoute>} />
-      <Route path="/super-admin" element={<SuperAdminRoute><DashboardPage /></SuperAdminRoute>} />
+      <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminPage /></SuperAdminRoute>} />
       <Route
         path="/app"
         element={
@@ -210,6 +211,7 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
 
 
 
