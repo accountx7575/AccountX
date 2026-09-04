@@ -105,7 +105,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (businesses.length === 0 && location.pathname !== '/setup-business') {
+  if (businesses.length === 0 && location.pathname !== '/setup-business' && !location.pathname.startsWith('/super-admin')) {
     return <Navigate to="/setup-business" replace />;
   }
 
@@ -210,6 +210,7 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
 
 
 
