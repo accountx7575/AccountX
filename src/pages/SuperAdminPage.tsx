@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+﻿import { useCallback, useState, useEffect } from 'react';
 import { useSuperAdmin } from '@/hooks/useSuperAdmin';
 import { useAuth } from '@/context/AuthContext';
 import { PageHeader } from '@/components/PageHeader';
@@ -8,7 +8,7 @@ import { useToast } from '@/context/ToastContext';
 import { StatCard } from '@/components/ui/StatCard';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/Input';
-import { ArrowLeftRight, ShieldCheck, Loader2, X, Building2, Users, FileText } from 'lucide-react';
+import { ArrowLeftRight, ShieldCheck, LogOut, Loader2, X, Building2, Users, FileText } from 'lucide-react';
 import { useMemo } from 'react';
 import { Modal } from '@/components/ui/Modal';
 
@@ -22,7 +22,7 @@ type TenantRow = {
 };
 
 export function SuperAdminPage() {
-  const { activeRole } = useAuth();
+  const { activeRole, logout } = useAuth();
 
   const { fetchMetrics, fetchTenants, toggleTenantStatus } = useSuperAdmin();
 
@@ -41,7 +41,7 @@ export function SuperAdminPage() {
           const mapped: TenantRow[] = (t ?? []).map((b: any) => ({
             business_id: b.id,
             legal_name: b.legal_name,
-            owner_email: b.owner_email || b.owner_id?.slice(0, 8) || '—',
+            owner_email: b.owner_email || b.owner_id?.slice(0, 8) || 'â€”',
             gstin: b.gstin || '',
             created_at: b.created_at,
             is_active: b.is_active,
@@ -62,7 +62,7 @@ export function SuperAdminPage() {
         const mapped: TenantRow[] = t.map((b: any) => ({
           business_id: b.id,
           legal_name: b.legal_name,
-          owner_email: b.owner_email || b.owner_id?.slice(0, 8) || '—',
+          owner_email: b.owner_email || b.owner_id?.slice(0, 8) || 'â€”',
           gstin: b.gstin || '',
           created_at: b.created_at,
           is_active: b.is_active,
@@ -91,7 +91,7 @@ export function SuperAdminPage() {
       render: (row: TenantRow) => {
         return (
           <div className="truncate whitespace-normal max-w-xs">
-            {row.legal_name || '—'}
+            {row.legal_name || 'â€”'}
           </div>
         );
       },
@@ -113,7 +113,7 @@ export function SuperAdminPage() {
           <span className="truncate whitespace-normal max-w-xs"
             title={row.gstin || ''}
           >
-            {row.gstin || '—'}
+            {row.gstin || 'â€”'}
           </span>
         );
       },
@@ -166,14 +166,28 @@ export function SuperAdminPage() {
   ];
 
   const quickSearchPlaceholder = searchQuery
-    ? searchQuery.length > 3 ? 'GSTIN…' : 'business name…'
-    : 'Search by business name or GSTIN…';
+    ? searchQuery.length > 3 ? 'GSTINâ€¦' : 'business nameâ€¦'
+    : 'Search by business name or GSTINâ€¦';
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Super Admin Control Center"
-        subtitle={`Platform overview — ${activeRole || 'no role'}`}
+        action={
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={async () => {
+              if (logout) await logout();
+              window.location.href = '/login';
+            }}
+            className="flex items-center gap-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
+          >
+            <LogOut className="w-4 h-4" />
+            Sign Out
+          </Button>
+        }
+        subtitle={`Platform overview â€” ${activeRole || 'no role'}`}
         meta={
           <Badge variant="primary">Live</Badge>
         }
@@ -242,7 +256,7 @@ export function SuperAdminPage() {
               </p>
             )}
             <p className="text-xs text-secondary-500 dark:text-secondary-400">
-              Business: {editingTenant?.legal_name || '—'} (GSTIN: {editingTenant?.gstin || '—'})
+              Business: {editingTenant?.legal_name || 'â€”'} (GSTIN: {editingTenant?.gstin || 'â€”'})
             </p>
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="secondary" onClick={() => setModalOpen(false)}>
