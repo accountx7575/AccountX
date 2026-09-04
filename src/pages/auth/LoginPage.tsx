@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Input, FormField } from '@/components/ui/Input';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 import { useToast } from '@/context/ToastContext';
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Shield } from 'lucide-react';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -60,7 +60,7 @@ export function LoginPage() {
   return (
     <AuthLayout
       headline={<>Indian business accounting,<br />minus the spreadsheet chaos.</>}
-      description="GST-ready invoicing, real-time inventory, and a double-entry engine that keeps every rupee accounted for — in one workspace."
+      description="GST-ready invoicing, real-time inventory, and a double-entry engine that keeps every rupee accounted for in one workspace."
       features={[
         'Invoices with CGST / SGST / IGST breakdown',
         'Stock movements reconciled against the ledger',
@@ -141,6 +141,16 @@ export function LoginPage() {
           Create one
         </Link>
       </p>
+
+      <div className="mt-6 pt-5 border-t border-slate-200 dark:border-zinc-800 text-center">
+        <Link
+          to="/super-admin"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+        >
+          <Shield className="w-3.5 h-3.5" />
+          Platform Super Admin Portal &rarr;
+        </Link>
+      </div>
     </AuthLayout>
   );
 }
