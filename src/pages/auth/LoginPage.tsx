@@ -48,6 +48,8 @@ export function LoginPage() {
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (error) throw error;
       toast('Welcome back to AccountX!', 'success');
+      const isSuper = Boolean(error ? false : (await supabase.auth.getUser()).data.user?.app_metadata?.is_super_admin);
+      if (isSuper) { navigate('/super-admin', { replace: true }); return; }
       const next = searchParams.get('next');
       navigate(next && next.startsWith('/') && !next.startsWith('//') ? next : '/app');
     } catch (err: unknown) {
@@ -154,3 +156,4 @@ export function LoginPage() {
     </AuthLayout>
   );
 }
+
