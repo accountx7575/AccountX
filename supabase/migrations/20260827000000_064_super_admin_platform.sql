@@ -1,51 +1,16 @@
 /*
-# 064 — Super Admin Platform controls
-
-Add super_admin flag to profiles, platform metrics RPC, all-businesses view,
-and business toggle. These are founder-tier controls for multi-tenant
-governance — strictly gated on `is_super_admin = true`.
-
-DEVIATION FLAG: The "primary account user" determination is application-
-level. This migration sets the column and creates the RPCs; the caller
-(or a separate onboarding migration) should resolve which profile is the
-founder and set `is_super_admin = true` accordingly.
+# 064 — Super Admin Platform controls (Native Auth Version)
+Uses Supabase auth.users raw_app_meta_data for platform-level RBAC
 */
 
 -- ============================================================================
--- A. profiles: is_super_admin flag
+-- A. Mark existing registered user as Super Admin in auth.users
 -- ============================================================================
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS is_super_admin boolean
-  NOT NULL DEFAULT false;
+UPDATE auth.users
+SET raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"is_super_admin": true}'::jsonb;
 
 -- ============================================================================
--- B. Set the primary account user as super_admin
---    (The founding user is identified as the owner of the first business,
---    or the earliest profile by id. This migration marks the profile
---    associated with the first business owner as super_admin.)
--- ============================================================================
-UPDATE profiles
-SET is_super_admin = true
-WHERE id = (
-  SELECT bm.user_id
-  FROM business_members bm
-  WHERE bm.status = 'active'
-    AND bm.is_active = true
-  ORDER BY bm.joined_at ASC NULLS FIRST
-  LIMIT 1
-);
-
--- If no business_members exist yet, fall back to the earliest profile:
-UPDATE profiles
-SET is_super_admin = true
-WHERE id = (
-  SELECT id FROM profiles ORDER BY id ASC LIMIT 1
-)
-AND NOT EXISTS (
-  SELECT 1 FROM business_members WHERE status = 'active'
-);
-
--- ============================================================================
--- C. Platform metrics RPC — super-admin only
+-- B. Platform metrics RPC — super-admin only
 -- ============================================================================
 CREATE OR REPLACE FUNCTION get_platform_metrics()
 RETURNS jsonb
@@ -55,14 +20,19 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_user_id uuid := auth.uid();
   v_is_super boolean;
   v_result jsonb;
 BEGIN
-  -- Strict gate: only super admins may read platform metrics
-  SELECT is_super_admin INTO v_is_super
-  FROM profiles
-  WHERE id = v_user_id;
+  -- Strict gate: read from Supabase JWT / auth metadata
+  SELECT coalesce((auth.jwt() -> 'app_metadata' ->> 'is_super_admin')::boolean, false) INTO v_is_super;
+
+  -- Fallback check directly in auth.users table
+  IF v_is_super IS NOT TRUE THEN
+    SELECT coalesce((raw_app_meta_data ->> 'is_super_admin')::boolean, false)
+    INTO v_is_super
+    FROM auth.users
+    WHERE id = auth.uid();
+  END IF;
 
   IF v_is_super IS NOT TRUE THEN
     RAISE EXCEPTION 'Super admin access required';
@@ -84,7 +54,7 @@ END
 $$;
 
 -- ============================================================================
--- D. Get all businesses for admin view — super-admin only
+-- C. Get all businesses for admin view — super-admin only
 -- ============================================================================
 CREATE OR REPLACE FUNCTION get_all_businesses_admin()
 RETURNS TABLE (
@@ -101,13 +71,16 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_user_id uuid := auth.uid();
   v_is_super boolean;
 BEGIN
-  -- Strict gate: only super admins may list all businesses
-  SELECT is_super_admin INTO v_is_super
-  FROM profiles
-  WHERE id = v_user_id;
+  SELECT coalesce((auth.jwt() -> 'app_metadata' ->> 'is_super_admin')::boolean, false) INTO v_is_super;
+
+  IF v_is_super IS NOT TRUE THEN
+    SELECT coalesce((raw_app_meta_data ->> 'is_super_admin')::boolean, false)
+    INTO v_is_super
+    FROM auth.users
+    WHERE id = auth.uid();
+  END IF;
 
   IF v_is_super IS NOT TRUE THEN
     RAISE EXCEPTION 'Super admin access required';
@@ -118,21 +91,18 @@ BEGIN
     b.id,
     b.name,
     b.gstin,
-    u.email AS owner_email,
+    u.email::text AS owner_email,
     b.created_at,
-    bm.is_active
+    COALESCE(b.is_active, true) AS is_active
   FROM businesses b
-  JOIN business_members bm ON bm.business_id = b.id
-    AND bm.status = 'active'
-    AND bm.is_active = true
-    AND bm.role = 'owner'
-  JOIN auth.users u ON u.id = bm.user_id
+  LEFT JOIN business_members bm ON bm.business_id = b.id AND bm.role = 'owner'
+  LEFT JOIN auth.users u ON u.id = bm.user_id
   ORDER BY b.created_at DESC;
 END
 $$;
 
 -- ============================================================================
--- E. Toggle business active status — super-admin only
+-- D. Toggle business active status — super-admin only
 -- ============================================================================
 CREATE OR REPLACE FUNCTION toggle_business_active(
   p_business_id uuid,
@@ -140,26 +110,29 @@ CREATE OR REPLACE FUNCTION toggle_business_active(
 )
 RETURNS boolean
 LANGUAGE plpgsql
-STABLE
+VOLATILE
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_user_id uuid := auth.uid();
   v_is_super boolean;
 BEGIN
-  -- Strict gate: only super admins may toggle business status
-  SELECT is_super_admin INTO v_is_super
-  FROM profiles
-  WHERE id = v_user_id;
+  SELECT coalesce((auth.jwt() -> 'app_metadata' ->> 'is_super_admin')::boolean, false) INTO v_is_super;
+
+  IF v_is_super IS NOT TRUE THEN
+    SELECT coalesce((raw_app_meta_data ->> 'is_super_admin')::boolean, false)
+    INTO v_is_super
+    FROM auth.users
+    WHERE id = auth.uid();
+  END IF;
 
   IF v_is_super IS NOT TRUE THEN
     RAISE EXCEPTION 'Super admin access required';
   END IF;
 
   UPDATE businesses
-   SET is_active = p_status,
-       updated_at = now()
+  SET is_active = p_status,
+      updated_at = now()
   WHERE id = p_business_id;
 
   RETURN true;
@@ -167,7 +140,7 @@ END
 $$;
 
 -- ============================================================================
--- F. Revoke public/anon access, grant to authenticated only
+-- E. Permissions
 -- ============================================================================
 REVOKE EXECUTE ON FUNCTION get_platform_metrics() FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION get_platform_metrics() FROM anon;
