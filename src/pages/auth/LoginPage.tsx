@@ -1,4 +1,5 @@
-﻿import { useEffect, useState } from 'react';
+﻿import { VaultPasswordMeter } from '@/components/ui/VaultPasswordMeter';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
@@ -133,7 +134,9 @@ useEffect(() => {
           </Link>
         </div>
 
-        <Button type="submit" loading={loading} className="w-full" size="lg">
+        <VaultPasswordMeter entropyScore={!password ? 0 : password.length < 6 ? 1 : password.length < 10 ? 2 : /(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9])/.test(password) && password.length >= 12 ? 4 : 3} />
+
+                  <Button type="submit" loading={loading} className="w-full" size="lg">
           Sign In
         </Button>
       </form>
@@ -149,5 +152,6 @@ useEffect(() => {
     </AuthLayout>
   );
 }
+
 
 
