@@ -73,7 +73,12 @@ import type { ReactNode } from 'react';
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { refetchOnWindowFocus: false, refetchOnReconnect: false, staleTime: 5 * 60 * 1000, retry: 1 },
+    queries: {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: 5 * 60 * 1000,
+      retry: 1,
+    },
   },
 });
 
@@ -89,13 +94,13 @@ function RouteFallback() {
 }
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { session, loading, businessesReady, businesses, user } = useAuth();
+  const { session, loading, businessesReady, businesses, user, activeBusiness } = useAuth();
   const location = useLocation();
 
-  // Wait until business membership is resolved: businesses === [] is
-  // ambiguous (still loading vs genuinely none) and deciding too early is
-  // what trapped existing users in the /setup-business onboarding loop.
-  if (loading || (session && !businessesReady)) {
+  // Agar user already logged in hai aur active business set hai, toh tab switch background check par screen reload/unmount nahi hogi
+  const hasExistingAuth = Boolean(session && (activeBusiness || businesses.length > 0));
+
+  if ((loading || (session && !businessesReady)) && !hasExistingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-secondary-50 dark:bg-secondary-950">
         <div className="animate-pulse flex flex-col items-center gap-4">
@@ -110,9 +115,6 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Super-admin support mode: allow an authenticated super-admin with the
-  // impersonation flag to view /app as a tenant. Regular users never pass
-  // the isSuperAdmin check, so this cannot be used to bypass guards.
   const isSuperAdmin =
     Boolean(user?.app_metadata?.is_super_admin) ||
     Boolean(user?.user_metadata?.is_super_admin);
@@ -121,14 +123,11 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
     localStorage.getItem('super_admin_impersonating') === 'true';
   const supportMode = isSuperAdmin && isImpersonating;
 
-  // Owner email routing guard: send owner to super-admin (unless in support mode)
   const ownerEmail = 'acc.x7575@gmail.com';
   if (user?.email === ownerEmail && !supportMode) {
     return <Navigate to="/super-admin" state={{ from: location }} replace />;
   }
 
-  // Already-configured users must never sit on the onboarding page: bounce
-  // them straight to the dashboard (unless in super-admin support mode).
   if (location.pathname === '/setup-business' && businesses.length > 0 && !supportMode) {
     return <Navigate to="/app" replace />;
   }
@@ -143,9 +142,9 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 function AppRoutes() {
   return (
     <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/setup-business" element={<ProtectedRoute><BusinessSetupPage /></ProtectedRoute>} />
       <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminPage /></SuperAdminRoute>} />
       <Route
@@ -190,8 +189,8 @@ function AppRoutes() {
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/:reportId" element={<ReportDetailPage />} />
         <Route path="settings" element={<SettingsPage />} />
-            <Route path="admin" element={<AdminHubPage />} />
-            <Route path="communications" element={<CommunicationsPage />} />
+        <Route path="admin" element={<AdminHubPage />} />
+        <Route path="communications" element={<CommunicationsPage />} />
         <Route path="ai" element={<AiAssistantPage />} />
         <Route path="gst" element={<GstHubPage />} />
         <Route path="gst/gstr-1" element={<Gstr1Page />} />
@@ -207,12 +206,12 @@ function AppRoutes() {
         <Route path="sales-orders/new" element={<SalesOrderCreatePage />} />
         <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
         <Route path="purchase-orders/new" element={<PurchaseOrderCreatePage />} />
-<Route path="warehouses" element={<WarehousesPage />} />
-            <Route path="stock-transfer" element={<StockTransferPage />} />
-            <Route path="stock-transfer/new" element={<StockTransferCreatePage />} />
-            <Route path="receivables" element={<ReceivablesPage />} />
-            <Route path="payables" element={<PayablesPage />} />
-            <Route path="cash-bank" element={<CashBankPage />} />
+        <Route path="warehouses" element={<WarehousesPage />} />
+        <Route path="stock-transfer" element={<StockTransferPage />} />
+        <Route path="stock-transfer/new" element={<StockTransferCreatePage />} />
+        <Route path="receivables" element={<ReceivablesPage />} />
+        <Route path="payables" element={<PayablesPage />} />
+        <Route path="cash-bank" element={<CashBankPage />} />
         <Route path="*" element={<SleuthNotFoundPage />} />
       </Route>
       <Route path="*" element={<SleuthNotFoundPage />} />
@@ -239,14 +238,3 @@ export default function App() {
     </ErrorBoundary>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
