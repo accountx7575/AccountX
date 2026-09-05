@@ -119,7 +119,6 @@ export function QuotationCreatePage() {
       const validLines = lines.filter((l) => l.product_name.trim() && l.quantity > 0);
       if (!validLines.length) throw new Error('Add at least one item');
 
-      // UUID Resolution
       const chosenCustomer = customers?.find(
         (c) => c.id === customerId || c.name.toLowerCase() === customerId.trim().toLowerCase()
       );
@@ -130,7 +129,6 @@ export function QuotationCreatePage() {
 
       const { data: userData } = await supabase.auth.getUser();
 
-      // Reliable Sequential Quote Number
       let docNumber = `QT-${Date.now().toString().slice(-6)}`;
       try {
         const { data: generated } = await supabase.rpc('next_document_number', {
@@ -140,10 +138,9 @@ export function QuotationCreatePage() {
         });
         if (generated) docNumber = String(generated);
       } catch (rpcErr) {
-        console.warn('RPC sequence fallback to timestamp', rpcErr);
+        console.warn('RPC fallback', rpcErr);
       }
 
-      // Exact columns corresponding to QuotationsPage print & table query
       const quotationRecord = {
         business_id: activeBusiness.id,
         quotation_number: docNumber,
@@ -172,10 +169,10 @@ export function QuotationCreatePage() {
         .single();
 
       if (quoteError) {
-        console.error('Quotations Table Insert Error:', quoteError);
-        throw new Error(quoteError.message || 'Error inserting into quotations table');
+        throw new Error(quoteError.message || 'Error saving quotation');
       }
 
+      // Exact columns matching quotation_items table schema
       const itemsRecord = validLines.map((l) => {
         const quantity = Number(l.quantity) || 1;
         const rate = Number(l.rate) || 0;
@@ -191,7 +188,6 @@ export function QuotationCreatePage() {
           unit: l.unit || 'PCS',
           rate,
           tax_rate: taxRate,
-          tax_amount: Number(l.tax_amount) || gst.total_tax,
           taxable_amount: taxable,
           total_amount: roundTo2(taxable + gst.total_tax),
         };
@@ -202,10 +198,8 @@ export function QuotationCreatePage() {
         .insert(itemsRecord);
 
       if (itemsError) {
-        console.error('Quotation Items Insert Error:', itemsError);
-        // Rollback orphan quotation row
         await supabase.from('quotations').delete().eq('id', quote.id);
-        throw new Error(itemsError.message || 'Error inserting quotation line items');
+        throw new Error(itemsError.message || 'Error saving items');
       }
 
       return quote.id;
@@ -218,7 +212,6 @@ export function QuotationCreatePage() {
       navigate('/app/quotations');
     },
     onError: (err: any) => {
-      console.error('Save failed:', err);
       toast(err?.message || 'Failed to save quotation', 'error');
     },
   });
