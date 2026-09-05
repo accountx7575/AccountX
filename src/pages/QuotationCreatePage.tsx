@@ -58,7 +58,6 @@ export function QuotationCreatePage() {
         .from('customers')
         .select('*')
         .eq('business_id', activeBusiness.id)
-        .eq('status', 'active')
         .order('name');
       return (data || []) as Customer[];
     },
@@ -120,32 +119,37 @@ export function QuotationCreatePage() {
       const validLines = lines.filter((l) => l.product_name.trim() && l.quantity > 0);
       if (!validLines.length) throw new Error('Add at least one item');
 
+      // UUID Resolution
       const chosenCustomer = customers?.find(
         (c) => c.id === customerId || c.name.toLowerCase() === customerId.trim().toLowerCase()
       );
 
       if (!chosenCustomer?.id) {
-        throw new Error('Please select a valid customer from the dropdown');
+        throw new Error('Please select a customer from the dropdown list');
       }
 
       const { data: userData } = await supabase.auth.getUser();
 
-      let finalDocNumber = `QT-${Date.now().toString().slice(-6)}`;
+      // Reliable Sequential Quote Number
+      let docNumber = `QT-${Date.now().toString().slice(-6)}`;
       try {
-        const { data: numberData } = await supabase.rpc('next_document_number', {
+        const { data: generated } = await supabase.rpc('next_document_number', {
           p_business_id: activeBusiness.id,
           p_doc_type: 'quotation',
           p_date: quoteDate,
         });
-        if (numberData) finalDocNumber = String(numberData);
-      } catch (e) {
-        console.warn('Fallback document number used');
+        if (generated) docNumber = String(generated);
+      } catch (rpcErr) {
+        console.warn('RPC sequence fallback to timestamp', rpcErr);
       }
 
-      const payloadBase = {
+      // Exact columns corresponding to QuotationsPage print & table query
+      const quotationRecord = {
         business_id: activeBusiness.id,
+        quotation_number: docNumber,
         customer_id: chosenCustomer.id,
         quote_date: quoteDate,
+        expiry_date: expiryDate ? expiryDate : null,
         subtotal: totals.subtotal,
         discount_amount: 0,
         taxable_amount: totals.taxableAmount,
@@ -156,47 +160,23 @@ export function QuotationCreatePage() {
         round_off: 0,
         grand_total: totals.grandTotal,
         status: 'draft',
+        terms: terms.trim() || null,
+        notes: terms.trim() || null,
         created_by: userData?.user?.id || null,
       };
 
-      // Try saving to 'quotations' first; fallback to 'quotes' if table name differs
-      let quoteId: string | null = null;
-      let targetTable = 'quotations';
-      let itemsTable = 'quotation_items';
-
-      let { data: quote, error } = await supabase
+      const { data: quote, error: quoteError } = await supabase
         .from('quotations')
-        .insert({
-          ...payloadBase,
-          quotation_number: finalDocNumber,
-          expiry_date: expiryDate || null,
-          terms: terms.trim() || null,
-        })
+        .insert(quotationRecord)
         .select('id')
-        .maybeSingle();
+        .single();
 
-      if (error && (error.code === '42P01' || error.message?.includes('404') || error.message?.includes('not found') || error.message?.includes('column'))) {
-        targetTable = 'quotes';
-        itemsTable = 'quote_items';
-        const res = await supabase
-          .from('quotes')
-          .insert({
-            ...payloadBase,
-            quote_number: finalDocNumber,
-            valid_until: expiryDate || null,
-            notes: terms.trim() || null,
-          })
-          .select('id')
-          .single();
-        quote = res.data;
-        error = res.error;
+      if (quoteError) {
+        console.error('Quotations Table Insert Error:', quoteError);
+        throw new Error(quoteError.message || 'Error inserting into quotations table');
       }
 
-      if (error) throw error;
-      if (!quote?.id) throw new Error('Could not create quotation record');
-      quoteId = quote.id;
-
-      const itemsPayload = validLines.map((l) => {
+      const itemsRecord = validLines.map((l) => {
         const quantity = Number(l.quantity) || 1;
         const rate = Number(l.rate) || 0;
         const taxRate = Number(l.tax_rate) || 0;
@@ -204,10 +184,9 @@ export function QuotationCreatePage() {
         const gst = calculateGstAmounts(taxable, taxRate, isInterState);
         return {
           business_id: activeBusiness.id,
-          quotation_id: quoteId,
+          quotation_id: quote.id,
           product_id: l.product_id || null,
           product_name: l.product_name,
-          description: l.product_name,
           quantity,
           unit: l.unit || 'PCS',
           rate,
@@ -218,23 +197,21 @@ export function QuotationCreatePage() {
         };
       });
 
-      let { error: itemsError } = await supabase.from(itemsTable).insert(itemsPayload);
-      if (itemsError && targetTable === 'quotations') {
-        const alt = await supabase.from('quote_items').insert(
-          itemsPayload.map((it) => ({ ...it, quote_id: quoteId }))
-        );
-        itemsError = alt.error;
-      }
+      const { error: itemsError } = await supabase
+        .from('quotation_items')
+        .insert(itemsRecord);
 
       if (itemsError) {
-        await supabase.from(targetTable).delete().eq('id', quoteId);
-        throw itemsError;
+        console.error('Quotation Items Insert Error:', itemsError);
+        // Rollback orphan quotation row
+        await supabase.from('quotations').delete().eq('id', quote.id);
+        throw new Error(itemsError.message || 'Error inserting quotation line items');
       }
 
-      return quoteId;
+      return quote.id;
     },
     onSuccess: () => {
-      ['quotations', 'quotes', 'dashboard-stats'].forEach((k) =>
+      ['quotations', 'dashboard-stats'].forEach((k) =>
         queryClient.invalidateQueries({ queryKey: [k, activeBusiness?.id] })
       );
       toast('Quotation draft saved successfully!', 'success');
@@ -292,7 +269,7 @@ export function QuotationCreatePage() {
 
         <FormSection
           title="Lines"
-          description="Select a product from the list or pick custom to enter manually."
+          description="Select a product from the list to autofill rate and tax."
           actions={
             <button
               type="button"
