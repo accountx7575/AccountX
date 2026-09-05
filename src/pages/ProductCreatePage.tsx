@@ -1,22 +1,21 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Save } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { FormField, Input, Textarea } from '@/components/ui/Input';
+import { FormSection } from '@/components/ui/FormSection';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Input, FormField, Textarea } from '@/components/ui/Input';
-import { FormSection } from '@/components/ui/FormSection';
-import { ErrorState } from '@/components/ui/ErrorState';
-import { ArrowLeft, Save } from 'lucide-react';
-import { todayDateString } from '@/lib/utils';
 import type { Product } from '@/types/db';
 
 const emptyForm = {
   name: '', sku: '', barcode: '', type: 'product', hsn_sac: '', unit: 'PCS',
   purchase_price: '0', selling_price: '0', tax_rate: '0', tax_inclusive: false,
-  opening_stock: '0', current_stock: '0', minimum_stock: '0', description: '', category_id: '',
+  opening_stock: '0', minimum_stock: '0', description: '', category_id: '',
 };
 
 export function ProductCreatePage() {
@@ -53,7 +52,6 @@ export function ProductCreatePage() {
       hsn_sac: p.hsn_sac || '', unit: p.unit, purchase_price: String(p.purchase_price),
       selling_price: String(p.selling_price), tax_rate: String(p.tax_rate),
       tax_inclusive: p.tax_inclusive, opening_stock: String(p.opening_stock),
-      current_stock: String(p.current_stock ?? p.opening_stock ?? 0),
       minimum_stock: String(p.minimum_stock), description: p.description || '',
       category_id: p.category_id || '',
     });
@@ -82,33 +80,29 @@ export function ProductCreatePage() {
         is_active: true,
       };
       if (isEdit) {
-        // Update path: opening_stock is historical — never rewritten here.
-        // A changed Current Stock posts an atomic adjustment movement so the
-        // ledger, the product row, and the Products table stay in sync.
-        const existing = existingQuery.data;
-        if (!existing) throw new Error('Product data is still loading. Please try again.');
+        // Update path: only metadata is editable. Historical opening_stock
+        // and live current_stock are never touched here — stock changes
+        // go through the Stock Adjustment module.
+        const payload = {
+          name: form.name.trim(),
+          type: form.type,
+          unit: form.unit,
+          sku: form.sku.trim() || null,
+          barcode: form.barcode.trim() || null,
+          hsn_sac: form.hsn_sac.trim() || null,
+          tax_rate: Number(form.tax_rate) || 0,
+          purchase_price: Number(form.purchase_price) || 0,
+          selling_price: Number(form.selling_price) || 0,
+          min_stock: Number(form.minimum_stock) || 0,
+          description: form.description.trim() || null,
+          category_id: form.category_id || null,
+        };
         const { error } = await supabase
           .from('products')
-          .update({ ...base, opening_stock: existing.opening_stock })
+          .update(payload)
           .eq('business_id', activeBusiness.id)
           .eq('id', editId!);
         if (error) throw error;
-        if (form.type === 'product') {
-          const oldStock = Number(existing.current_stock ?? 0);
-          const newStock = parseFloat(form.current_stock) || 0;
-          const delta = newStock - oldStock;
-          if (delta !== 0) {
-            const { error: adjError } = await supabase.rpc('post_stock_adjustment_atomic', {
-              p_business_id: activeBusiness.id,
-              p_product_id: editId!,
-              p_type: delta > 0 ? 'adjustment_in' : 'adjustment_out',
-              p_quantity: Math.abs(delta),
-              p_notes: 'Manual correction from Edit Product',
-              p_date: todayDateString(),
-            });
-            if (adjError) throw adjError;
-          }
-        }
         return;
       }
       const payload = { ...base, current_stock: parseFloat(form.opening_stock) || 0 };
@@ -212,21 +206,27 @@ export function ProductCreatePage() {
             title="Stock"
             description={
               isEdit
-                ? 'Changing Current Stock posts an adjustment movement — the Products table updates on save'
+                ? 'Stock levels are governed by the Stock Adjustment module — fields below are read-only.'
                 : 'Opening quantity is posted as an opening stock movement on save'
             }
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {isEdit ? (
                 <>
-                  <FormField label="Current Stock" required>
-                    <Input type="number" value={form.current_stock} onChange={(e) => setForm({ ...form, current_stock: e.target.value })} placeholder="0" />
-                  </FormField>
-                  <div>
-                    <FormField label="Opening Stock">
-                      <Input type="number" value={form.opening_stock} disabled aria-readonly="true" />
-                    </FormField>
-                    <p className="mt-1 text-xs text-secondary-400">Historical — locked to protect accounting.</p>
+                  <div className="rounded-xl border border-secondary-200 bg-secondary-50 px-4 py-3 dark:border-secondary-800 dark:bg-secondary-900/60">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary-400">Current Stock</p>
+                    <p className="mt-1 text-xl font-bold text-secondary-900 dark:text-white tabular-nums">{existingQuery.data?.current_stock ?? '—'}</p>
+                    <p className="text-[11px] text-secondary-400">{existingQuery.data?.unit ?? 'PCS'} · live quantity</p>
+                  </div>
+                  <div className="rounded-xl border border-secondary-200 bg-secondary-50 px-4 py-3 dark:border-secondary-800 dark:bg-secondary-900/60">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary-400">Opening Stock</p>
+                    <p className="mt-1 text-xl font-bold text-secondary-900 dark:text-white tabular-nums">{form.opening_stock}</p>
+                    <p className="text-[11px] text-secondary-400">historical — locked</p>
+                  </div>
+                  <div className="col-span-1 sm:col-span-2">
+                    <button type="button" onClick={() => navigate('/app/stock-adjustment')} className="text-sm font-medium text-primary-600 underline underline-offset-2 hover:text-primary-700 cursor-pointer">
+                      Need to adjust quantity? Go to Stock Adjustment →
+                    </button>
                   </div>
                 </>
               ) : (
