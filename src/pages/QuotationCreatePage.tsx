@@ -27,7 +27,15 @@ type LineItem = {
 };
 
 const emptyLine: LineItem = {
-  product_id: null, product_name: '', hsn_sac: '', quantity: 1, unit: 'PCS', rate: 0, tax_rate: 18, tax_amount: 0, total: 0,
+  product_id: null,
+  product_name: '',
+  hsn_sac: '',
+  quantity: 1,
+  unit: 'PCS',
+  rate: 0,
+  tax_rate: 18,
+  tax_amount: 0,
+  total: 0,
 };
 
 export function QuotationCreatePage() {
@@ -46,8 +54,13 @@ export function QuotationCreatePage() {
     queryKey: ['customers', activeBusiness?.id],
     queryFn: async () => {
       if (!activeBusiness) return [];
-      const { data } = await supabase.from('customers').select('*').eq('business_id', activeBusiness.id).eq('status', 'active').order('name');
-      return data as Customer[];
+      const { data } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('business_id', activeBusiness.id)
+        .eq('status', 'active')
+        .order('name');
+      return (data || []) as Customer[];
     },
     enabled: !!activeBusiness,
   });
@@ -56,8 +69,13 @@ export function QuotationCreatePage() {
     queryKey: ['products', activeBusiness?.id, 'active'],
     queryFn: async () => {
       if (!activeBusiness) return [];
-      const { data } = await supabase.from('products').select('*').eq('business_id', activeBusiness.id).eq('is_active', true).order('name');
-      return data as Product[];
+      const { data } = await supabase
+        .from('products')
+        .select('*')
+        .eq('business_id', activeBusiness.id)
+        .eq('is_active', true)
+        .order('name');
+      return (data || []) as Product[];
     },
     enabled: !!activeBusiness,
   });
@@ -84,59 +102,79 @@ export function QuotationCreatePage() {
       igst += gst.igst_amount;
     }
     const grandTotal = roundTo2(roundTo2(taxableAmount) + roundTo2(cgst + sgst + igst));
-    return { subtotal: roundTo2(taxableAmount), taxableAmount: roundTo2(taxableAmount), cgst: roundTo2(cgst), sgst: roundTo2(sgst), igst: roundTo2(igst), grandTotal };
+    return {
+      subtotal: roundTo2(taxableAmount),
+      taxableAmount: roundTo2(taxableAmount),
+      cgst: roundTo2(cgst),
+      sgst: roundTo2(sgst),
+      igst: roundTo2(igst),
+      grandTotal,
+    };
   }, [lines, isInterState]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!activeBusiness) throw new Error('No active business');
       if (!customerId) throw new Error('Please select a customer');
+
       const validLines = lines.filter((l) => l.product_name.trim() && l.quantity > 0);
-      if (!validLines.length) throw new Error('Add at least one line with a description and quantity');
+      if (!validLines.length) throw new Error('Add at least one valid line item');
 
-      const cid = customerId.trim();
-      if (!cid || cid.length < 5) throw new Error('Please select a valid customer');
+      // UUID Validation Check
+      let finalCustomerId = customerId.trim();
+      const matchedCustomer = customers?.find(
+        (c) => c.id === finalCustomerId || c.name.toLowerCase() === finalCustomerId.toLowerCase()
+      );
 
-      // Resolve customer_id strictly to UUID: handle the case where the
-      // picker stored customer.name instead of customer.id.
-      const { data: customerRecord } = await supabase
-        .from('customers')
-        .select('id')
-        .or(`id.eq.${cid},name.eq.${cid}`)
-        .limit(1)
-        .maybeSingle();
-      const validCustomerId = customerRecord?.id || cid;
+      if (matchedCustomer) {
+        finalCustomerId = matchedCustomer.id;
+      } else {
+        throw new Error('Please select a valid customer from the dropdown list');
+      }
 
       const { data: userData } = await supabase.auth.getUser();
-      const { data: number, error: numberError } = await supabase.rpc('next_document_number', {
-        p_business_id: activeBusiness.id,
-        p_doc_type: 'quotation',
-        p_date: quoteDate,
-      });
-      if (numberError) throw numberError;
 
-      const quoteNumber = `QT-${Date.now().toString().slice(-6)}`;
-      const { data: quote, error } = await supabase.from('quotations').insert({
-        business_id: activeBusiness.id,
-        quotation_number: String(number),
-        customer_id: validCustomerId,
-        quote_date: quoteDate,
-        expiry_date: expiryDate || null,
-        subtotal: totals.subtotal,
-        discount_amount: 0,
-        taxable_amount: totals.taxableAmount,
-        cgst_amount: totals.cgst,
-        sgst_amount: totals.sgst,
-        igst_amount: totals.igst,
-        cess_amount: 0,
-        round_off: 0,
-        grand_total: totals.grandTotal,
-        status: 'draft',
-        terms: terms || null,
-        created_by: userData.user?.id,
-      }).select('id').single();
+      // Quotation Number Generation
+      let finalDocNumber = `QT-${Date.now().toString().slice(-6)}`;
+      try {
+        const { data: generatedNumber } = await supabase.rpc('next_document_number', {
+          p_business_id: activeBusiness.id,
+          p_doc_type: 'quotation',
+          p_date: quoteDate,
+        });
+        if (generatedNumber) finalDocNumber = String(generatedNumber);
+      } catch (e) {
+        console.warn('Fallback to generated quote number', e);
+      }
+
+      // Safe Quotation Insert
+      const { data: quote, error } = await supabase
+        .from('quotations')
+        .insert({
+          business_id: activeBusiness.id,
+          quotation_number: finalDocNumber,
+          customer_id: finalCustomerId,
+          quote_date: quoteDate,
+          expiry_date: expiryDate ? expiryDate : null,
+          subtotal: totals.subtotal,
+          discount_amount: 0,
+          taxable_amount: totals.taxableAmount,
+          cgst_amount: totals.cgst,
+          sgst_amount: totals.sgst,
+          igst_amount: totals.igst,
+          cess_amount: 0,
+          round_off: 0,
+          grand_total: totals.grandTotal,
+          status: 'draft',
+          terms: terms.trim() || null,
+          created_by: userData?.user?.id || null,
+        })
+        .select('id')
+        .single();
+
       if (error) throw error;
 
+      // Safe Items Insert
       const { error: itemsError } = await supabase.from('quotation_items').insert(
         validLines.map((l) => {
           const quantity = Number(l.quantity) || 1;
@@ -148,17 +186,18 @@ export function QuotationCreatePage() {
             business_id: activeBusiness.id,
             quotation_id: quote.id,
             product_id: l.product_id || null,
-            product_name: l.product_name || '',
+            product_name: l.product_name || 'Item',
             quantity,
-            unit: l.unit,
+            unit: l.unit || 'PCS',
             rate,
             tax_rate: taxRate,
-            tax_amount: Number(l.tax_amount) || 0,
+            tax_amount: Number(l.tax_amount) || gst.total_tax,
             taxable_amount: taxable,
             total_amount: roundTo2(taxable + gst.total_tax),
           };
         })
       );
+
       if (itemsError) {
         await supabase.from('quotations').delete().eq('id', quote.id);
         throw itemsError;
@@ -169,10 +208,13 @@ export function QuotationCreatePage() {
       ['quotations', 'dashboard-stats'].forEach((k) =>
         queryClient.invalidateQueries({ queryKey: [k, activeBusiness?.id] })
       );
-      toast('Quotation draft saved', 'success');
+      toast('Quotation draft saved successfully!', 'success');
       navigate('/app/quotations');
     },
-    onError: (err: any) => toast(err?.message || 'Failed to save quotation', 'error'),
+    onError: (err: any) => {
+      console.error('Full Save Error:', err);
+      toast(err?.message || 'Failed to save quotation', 'error');
+    },
   });
 
   const sym = activeBusiness?.currency_symbol || '₹';
@@ -181,20 +223,36 @@ export function QuotationCreatePage() {
     <div>
       <PageHeader
         title="New Quotation"
-        actions={<Button variant="secondary" onClick={() => navigate('/app/quotations')}><ArrowLeft className="h-4 w-4" /> Back</Button>}
+        actions={
+          <Button variant="secondary" onClick={() => navigate('/app/quotations')}>
+            <ArrowLeft className="h-4 w-4" /> Back
+          </Button>
+        }
       />
 
       <div className="card p-6">
         <FormSection title="Party & Dates">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <FormField label="Customer" required>
-              <select className="input" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+              <select
+                className="input"
+                value={customerId}
+                onChange={(e) => setCustomerId(e.target.value)}
+              >
                 <option value="">Select customer...</option>
-                {customers?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {customers?.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
               </select>
             </FormField>
-            <FormField label="Quote Date" required><DatePicker value={quoteDate} onChange={setQuoteDate} /></FormField>
-            <FormField label="Valid Until"><DatePicker value={expiryDate} onChange={setExpiryDate} /></FormField>
+            <FormField label="Quote Date" required>
+              <DatePicker value={quoteDate} onChange={setQuoteDate} />
+            </FormField>
+            <FormField label="Valid Until">
+              <DatePicker value={expiryDate} onChange={setExpiryDate} />
+            </FormField>
           </div>
           {isInterState && (
             <div className="mt-3 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 text-warning-700 dark:text-warning-300 text-sm">
@@ -205,53 +263,99 @@ export function QuotationCreatePage() {
 
         <FormSection
           title="Lines"
-          description="Pick a product to autofill, or type a free-text description. Numbered via the document service on save."
+          description="Select a product from the list or pick custom to enter manually."
           actions={
-            <button onClick={() => setLines((prev) => [...prev, { ...emptyLine }])}
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline">+ Add line</button>
+            <button
+              type="button"
+              onClick={() => setLines((prev) => [...prev, { ...emptyLine }])}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline"
+            >
+              + Add line
+            </button>
           }
         >
           <div className="border border-secondary-200 dark:border-secondary-800 rounded-lg divide-y divide-secondary-100 dark:divide-secondary-800/50">
             {lines.map((l, idx) => {
               const lineTotal = roundTo2(l.quantity * l.rate);
-              const isCustom = !l.product_id;
               return (
                 <div key={idx} className="p-3 flex gap-2 items-start flex-wrap">
-                  <div className="flex-1 min-w-[160px]">
+                  <div className="flex-1 min-w-[200px]">
                     <FormField label="Product / Description">
                       <select
                         className="input"
-                        value={l.product_id || '__custom__'}
+                        value={l.product_id || ''}
                         onChange={(e) => {
                           const val = e.target.value;
-                          if (val === '__custom__') {
-                            updateLine(idx, { product_id: null, product_name: '', hsn_sac: '', unit: 'PCS', rate: 0, tax_rate: 18 });
+                          const p = products?.find((pr) => pr.id === val);
+                          if (p) {
+                            updateLine(idx, {
+                              product_id: p.id,
+                              product_name: p.name,
+                              hsn_sac: p.hsn_sac || '',
+                              unit: p.unit || 'PCS',
+                              rate: p.selling_price || 0,
+                              tax_rate: p.tax_rate || 0,
+                            });
                           } else {
-                            const p = products?.find((pr) => pr.id === val);
-                            if (p) updateLine(idx, { product_id: p.id, product_name: p.name, hsn_sac: p.hsn_sac || '', unit: p.unit, rate: p.selling_price, tax_rate: p.tax_rate });
+                            updateLine(idx, {
+                              product_id: null,
+                              product_name: '',
+                              hsn_sac: '',
+                              unit: 'PCS',
+                              rate: 0,
+                              tax_rate: 18,
+                            });
                           }
                         }}
                       >
-                        <option value="">— select product —</option>
-                        {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        <option value="__custom__">Custom line…</option>
+                        <option value="">— Select Product —</option>
+                        {products?.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
                       </select>
                     </FormField>
                   </div>
                   <FormField label="Qty" className="w-20">
-                    <Input type="number" min={0} value={String(l.quantity)} onChange={(e) => updateLine(idx, { quantity: Number(e.target.value) || 0 })} className="text-right figure" />
+                    <Input
+                      type="number"
+                      min={1}
+                      value={String(l.quantity)}
+                      onChange={(e) => updateLine(idx, { quantity: Number(e.target.value) || 0 })}
+                      className="text-right figure"
+                    />
                   </FormField>
-                  <FormField label="Rate" className="w-24">
-                    <Input type="number" min={0} value={String(l.rate)} onChange={(e) => updateLine(idx, { rate: Number(e.target.value) || 0 })} className="text-right figure" />
+                  <FormField label="Rate" className="w-28">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={String(l.rate)}
+                      onChange={(e) => updateLine(idx, { rate: Number(e.target.value) || 0 })}
+                      className="text-right figure"
+                    />
                   </FormField>
                   <FormField label="Tax %" className="w-20">
-                    <Input type="number" min={0} max={28} value={String(l.tax_rate)} onChange={(e) => updateLine(idx, { tax_rate: Number(e.target.value) || 0 })} className="text-right figure" />
+                    <Input
+                      type="number"
+                      min={0}
+                      max={28}
+                      value={String(l.tax_rate)}
+                      onChange={(e) => updateLine(idx, { tax_rate: Number(e.target.value) || 0 })}
+                      className="text-right figure"
+                    />
                   </FormField>
-                  <FormField label="Amount" className="w-28">
-                    <div className="input text-right figure bg-secondary-50 dark:bg-secondary-900/60">{formatCurrency(lineTotal, sym)}</div>
+                  <FormField label="Amount" className="w-32">
+                    <div className="input text-right figure bg-secondary-50 dark:bg-secondary-900/60 font-medium">
+                      {formatCurrency(lineTotal, sym)}
+                    </div>
                   </FormField>
-                  <button type="button" onClick={() => setLines((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)))}
-                    className="mt-6 p-2 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors" title="Remove line">
+                  <button
+                    type="button"
+                    onClick={() => setLines((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)))}
+                    className="mt-6 p-2 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                    title="Remove line"
+                  >
                     <X className="h-4 w-4" />
                   </button>
                 </div>
@@ -263,15 +367,41 @@ export function QuotationCreatePage() {
         <FormSection title="Terms & Totals">
           <div className="flex flex-col sm:flex-row gap-6">
             <div className="flex-1">
-              <FormField label="Terms"><Textarea rows={2} value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="Payment terms, validity notes..." /></FormField>
+              <FormField label="Terms">
+                <Textarea
+                  rows={2}
+                  value={terms}
+                  onChange={(e) => setTerms(e.target.value)}
+                  placeholder="Payment terms, validity notes..."
+                />
+              </FormField>
             </div>
             {totals.grandTotal > 0 && (
               <div className="w-full sm:w-72 space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-secondary-500">Taxable</span><span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span></div>
-                <div className="flex justify-between"><span className="text-secondary-500">CGST</span><span className="figure">{formatCurrency(totals.cgst, sym)}</span></div>
-                <div className="flex justify-between"><span className="text-secondary-500">SGST</span><span className="figure">{formatCurrency(totals.sgst, sym)}</span></div>
-                {totals.igst > 0 && <div className="flex justify-between"><span className="text-secondary-500">IGST</span><span className="figure">{formatCurrency(totals.igst, sym)}</span></div>}
-                <div className="flex justify-between font-semibold border-t border-secondary-200 dark:border-secondary-700 pt-1 mt-1"><span>Total</span><span className="figure text-primary-600 dark:text-primary-400">{formatCurrency(totals.grandTotal, sym)}</span></div>
+                <div className="flex justify-between">
+                  <span className="text-secondary-500">Taxable</span>
+                  <span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-secondary-500">CGST</span>
+                  <span className="figure">{formatCurrency(totals.cgst, sym)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-secondary-500">SGST</span>
+                  <span className="figure">{formatCurrency(totals.sgst, sym)}</span>
+                </div>
+                {totals.igst > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-secondary-500">IGST</span>
+                    <span className="figure">{formatCurrency(totals.igst, sym)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-semibold border-t border-secondary-200 dark:border-secondary-700 pt-1 mt-1">
+                  <span>Total</span>
+                  <span className="figure text-primary-600 dark:text-primary-400">
+                    {formatCurrency(totals.grandTotal, sym)}
+                  </span>
+                </div>
               </div>
             )}
           </div>
@@ -280,7 +410,9 @@ export function QuotationCreatePage() {
 
       <div className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 mt-5 border-t border-secondary-200/80 dark:border-zinc-800 bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md">
         <div className="flex items-center justify-between gap-3">
-          <Button variant="secondary" onClick={() => navigate('/app/quotations')}>Cancel</Button>
+          <Button variant="secondary" onClick={() => navigate('/app/quotations')}>
+            Cancel
+          </Button>
           <Button onClick={() => createMutation.mutate()} loading={createMutation.isPending}>
             <Save className="h-4 w-4" /> Save Draft
           </Button>
