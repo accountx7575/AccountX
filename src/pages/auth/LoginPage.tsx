@@ -21,7 +21,7 @@ export function LoginPage() {
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
-  useEffect(() => {
+useEffect(() => {
     if (remember) return;
     const onUnload = () => {
       void supabase.auth.signOut();
@@ -48,13 +48,9 @@ export function LoginPage() {
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (error) throw error;
       toast('Welcome back to AccountX!', 'success');
-      const isSuper = Boolean(error ? false : (await supabase.auth.getUser()).data.user?.app_metadata?.is_super_admin);
+      const user = (await supabase.auth.getUser()).data.user;
+      const isSuper = user?.app_metadata?.is_super_admin;
       if (isSuper) { navigate('/super-admin', { replace: true }); return; }
-      const userMeta = (await supabase.auth.getUser()).data.user?.app_metadata;
-      if (userMeta?.is_super_admin) {
-        navigate('/super-admin', { replace: true });
-        return;
-      }
       const next = searchParams.get('next');
       navigate(next && next.startsWith('/') && !next.startsWith('//') ? next : '/app');
     } catch (err: unknown) {

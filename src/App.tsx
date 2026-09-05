@@ -88,7 +88,7 @@ function RouteFallback() {
 }
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { session, loading, businesses } = useAuth();
+  const { session, loading, businesses, user } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -106,7 +106,24 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (businesses.length === 0 && location.pathname !== '/setup-business' && !location.pathname.startsWith('/super-admin')) {
+  // Super-admin support mode: allow an authenticated super-admin with the
+  // impersonation flag to view /app as a tenant. Regular users never pass
+  // the isSuperAdmin check, so this cannot be used to bypass guards.
+  const isSuperAdmin =
+    Boolean(user?.app_metadata?.is_super_admin) ||
+    Boolean(user?.user_metadata?.is_super_admin);
+  const isImpersonating =
+    typeof localStorage !== 'undefined' &&
+    localStorage.getItem('super_admin_impersonating') === 'true';
+  const supportMode = isSuperAdmin && isImpersonating;
+
+  // Owner email routing guard: send owner to super-admin (unless in support mode)
+  const ownerEmail = 'acc.x7575@gmail.com';
+  if (user?.email === ownerEmail && !supportMode) {
+    return <Navigate to="/super-admin" state={{ from: location }} replace />;
+  }
+
+  if (businesses.length === 0 && !supportMode && location.pathname !== '/setup-business' && !location.pathname.startsWith('/super-admin')) {
     return <Navigate to="/setup-business" replace />;
   }
 

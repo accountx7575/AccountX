@@ -10,6 +10,8 @@ type AuthContextValue = {
   businesses: Business[];
   activeBusiness: Business | null;
   activeRole: string | null;
+  impersonatingBusinessId: string | null;
+  setImpersonatingBusinessId: (id: string | null) => void;
   setActiveBusiness: (business: Business | null) => void;
   refreshBusinesses: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -18,6 +20,8 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const STORAGE_KEY = 'accountx_active_business_id';
+const IMPERSONATION_STORAGE_KEY = 'accountx_impersonating_business_id';
+const SUPER_ADMIN_IMPERSONATING_KEY = 'super_admin_impersonating';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -26,10 +30,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [activeBusiness, setActiveBusinessState] = useState<Business | null>(null);
   const [activeRole, setActiveRole] = useState<string | null>(null);
+  const [impersonatingBusinessId, setImpersonatingBusinessIdState] = useState<string | null>(null);
 
   const [members, setMembers] = useState<BusinessMember[]>([]);
 
   const loadBusinesses = async (userId: string) => {
+    // Check for impersonation first
+    const storedImpersonationId = localStorage.getItem(IMPERSONATION_STORAGE_KEY);
+    if (storedImpersonationId) {
+      const { data: bizData } = await supabase
+        .from('businesses')
+        .select('*')
+        .eq('id', storedImpersonationId)
+        .single();
+      if (bizData) {
+        const target = bizData as Business;
+        setActiveBusinessState(target);
+        setActiveRole('super-admin'); // impersonation mode has super-admin role
+        return;
+      }
+      // Impersonation ID no longer exists, clear it
+      localStorage.removeItem(IMPERSONATION_STORAGE_KEY);
+      setImpersonatingBusinessId(null);
+    }
+
+    // Super-admin support mode: flag + active business id set from SuperAdminPage.
+    // Only super-admins may use it; regular users get the flag cleared.
+    if (localStorage.getItem(SUPER_ADMIN_IMPERSONATING_KEY) === 'true') {
+      const { data: authData } = await supabase.auth.getUser();
+      const authUser = authData?.user;
+      const isSuperAdmin =
+        Boolean(authUser?.app_metadata?.is_super_admin) ||
+        Boolean(authUser?.user_metadata?.is_super_admin);
+      const storedActiveId = localStorage.getItem(STORAGE_KEY);
+      if (!isSuperAdmin || !storedActiveId) {
+        localStorage.removeItem(SUPER_ADMIN_IMPERSONATING_KEY);
+      } else {
+        const { data: impersonatedBiz } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('id', storedActiveId)
+          .single();
+        if (impersonatedBiz) {
+          const target = impersonatedBiz as Business;
+          setActiveBusinessState(target);
+          setActiveRole('super-admin');
+          setImpersonatingBusinessIdState(storedActiveId);
+          return;
+        }
+        localStorage.removeItem(SUPER_ADMIN_IMPERSONATING_KEY);
+      }
+    }
+
     const { data: memberRows } = await supabase
       .from('business_members')
       .select('*')
@@ -85,12 +137,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) await loadBusinesses(user.id);
   };
 
+  const setImpersonatingBusinessId = (id: string | null) => {
+    if (id) {
+      localStorage.setItem(IMPERSONATION_STORAGE_KEY, id);
+    } else {
+      localStorage.removeItem(IMPERSONATION_STORAGE_KEY);
+    }
+    setImpersonatingBusinessIdState(id);
+    refreshBusinesses();
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(IMPERSONATION_STORAGE_KEY);
+    localStorage.removeItem(SUPER_ADMIN_IMPERSONATING_KEY);
     setBusinesses([]);
     setActiveBusinessState(null);
     setActiveRole(null);
+    setImpersonatingBusinessId(null);
   };
 
   useEffect(() => {
@@ -112,6 +177,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setActiveBusinessState(null);
         setActiveRole(null);
         localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(SUPER_ADMIN_IMPERSONATING_KEY);
+        localStorage.removeItem(IMPERSONATION_STORAGE_KEY);
       } else {
         (async () => {
           await loadBusinesses(newSession.user.id);
@@ -133,6 +200,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         businesses,
         activeBusiness,
         activeRole,
+        impersonatingBusinessId,
+        setImpersonatingBusinessId,
         setActiveBusiness,
         refreshBusinesses,
         signOut,
