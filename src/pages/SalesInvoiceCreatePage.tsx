@@ -43,7 +43,7 @@ const emptyItem: LineItem = {
 const GST_SLABS = [0, 0.25, 3, 5, 12, 18, 28];
 
 export function SalesInvoiceCreatePage() {
-  const { activeBusiness } = useAuth();
+  const { activeBusiness, user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -59,9 +59,25 @@ export function SalesInvoiceCreatePage() {
   const [searchIdx, setSearchIdx] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [quotaModalOpen, setQuotaModalOpen] = useState(false);
+  const [maintenanceModalOpen, setMaintenanceModalOpen] = useState(false);
   const quota = useSubscriptionQuota(activeBusiness?.id);
+  const isSuperAdmin =
+    Boolean(user?.app_metadata?.is_super_admin) ||
+    Boolean(user?.user_metadata?.is_super_admin);
 
   const handleGuardedSave = (status: 'issued' | 'draft') => {
+    // Maintenance sentinel: read-only mode for regular tenants. Super-admin
+    // access (including impersonation support) stays active.
+    let maintenanceOn = false;
+    try {
+      maintenanceOn = localStorage.getItem('accountx_maintenance_mode') === 'true';
+    } catch {
+      maintenanceOn = false;
+    }
+    if (maintenanceOn && !isSuperAdmin) {
+      setMaintenanceModalOpen(true);
+      return;
+    }
     // Free-tier quota sentinel: show the upgrade modal instead of letting the
     // save fail with an unhandled database error.
     if (quota.exceeded) {
@@ -648,6 +664,22 @@ export function SalesInvoiceCreatePage() {
           </Button>
           <Button onClick={() => { setQuotaModalOpen(false); navigate('/app/settings'); }}>
             Upgrade plan
+          </Button>
+        </div>
+      </Modal>
+      <Modal
+        open={maintenanceModalOpen}
+        onClose={() => setMaintenanceModalOpen(false)}
+        title="Maintenance mode"
+        size="sm"
+      >
+        <p className="text-sm text-secondary-600 dark:text-secondary-300">
+          The platform is in read-only maintenance mode. Invoice creation is
+          temporarily paused for tenants. Please try again once maintenance ends.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setMaintenanceModalOpen(false)}>
+            Close
           </Button>
         </div>
       </Modal>

@@ -152,6 +152,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(IMPERSONATION_STORAGE_KEY);
     localStorage.removeItem(SUPER_ADMIN_IMPERSONATING_KEY);
+    // Oscar-spec impersonation keys + maintenance dismissal residue.
+    localStorage.removeItem('accountx_impersonating');
+    localStorage.removeItem('impersonated_tenant_id');
     setBusinesses([]);
     setActiveBusinessState(null);
     setActiveRole(null);
@@ -179,6 +182,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(SUPER_ADMIN_IMPERSONATING_KEY);
         localStorage.removeItem(IMPERSONATION_STORAGE_KEY);
+        localStorage.removeItem('accountx_impersonating');
+        localStorage.removeItem('impersonated_tenant_id');
       } else {
         (async () => {
           await loadBusinesses(newSession.user.id);

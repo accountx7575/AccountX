@@ -14,6 +14,7 @@ import { CommunicationCenterPanel } from '@/components/settings/CommunicationCen
 import { MessageTemplatesPanel } from '@/components/settings/MessageTemplatesPanel';
 import { ScheduledReportsPanel } from '@/components/settings/ScheduledReportsPanel';
 import { can, capabilityTooltip, roleLabel, type Role } from '@/lib/rbac';
+import { useAdminTelemetry } from '@/hooks/useAdminTelemetry';
 import { buildFullLedgerJson } from '@/lib/exportLedger';
 import { TallyExportPanel } from '@/components/settings/TallyExportPanel';
 import { BulkImportPanel } from '@/components/settings/BulkImportPanel';
@@ -140,6 +141,7 @@ type BusinessMemberRow = {
 export function SettingsPage() {
   const { activeBusiness, activeRole, user, refreshBusinesses } = useAuth();
   const { toast } = useToast();
+  const { logAdminEvent } = useAdminTelemetry();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
     name: '', legal_name: '', phone: '', email: '', address: '', city: '', state: 'Maharashtra',
@@ -269,6 +271,25 @@ export function SettingsPage() {
   }
 
   function confirmRemove(m: BusinessMemberRow) {
+    // Impersonation guard: a super-admin viewing a tenant dashboard must not
+    // accidentally mutate mission-critical tenant settings (member removal,
+    // business deletion). Block with an audit event instead.
+    let impersonating = false;
+    try {
+      impersonating =
+        localStorage.getItem('super_admin_impersonating') === 'true' ||
+        localStorage.getItem('accountx_impersonating') === 'true';
+    } catch {
+      impersonating = false;
+    }
+    if (impersonating) {
+      toast('Disabled in Super Admin support mode — exit to Admin Control Center to manage members.', 'error');
+      void logAdminEvent('DESTRUCTIVE_BLOCKED', activeBusiness?.id ?? null, {
+        attempted: 'remove_business_member',
+        target_user_id: m.user_id,
+      });
+      return;
+    }
     const reason = removalBlockReason(m);
     if (reason) return;
     if (window.confirm('Remove this member from the business? Their access ends immediately.')) {

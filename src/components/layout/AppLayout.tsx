@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { QuickActions } from '@/components/QuickActions';
 import { useAuth } from '@/context/AuthContext';
+import { useAdminTelemetry } from '@/hooks/useAdminTelemetry';
 import { usePlatformAnnouncement } from '@/hooks/usePlatformAnnouncement';
 import { supabase } from '@/lib/supabase';
 
@@ -37,8 +38,10 @@ export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, activeBusiness } = useAuth();
+  const { logAdminEvent } = useAdminTelemetry();
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [impersonatedName, setImpersonatedName] = useState<string | null>(null);
+  const wasImpersonating = useRef(false);
   const { announcement, dismiss: dismissAnnouncement } = usePlatformAnnouncement();
 
   const isSuperAdmin =
@@ -96,10 +99,41 @@ export function AppLayout() {
     };
   }, [isSuperAdmin, activeBusiness]);
 
+  // Audit trail: record entering impersonation mode once per session entry.
+  useEffect(() => {
+    if (isImpersonating && isSuperAdmin && !wasImpersonating.current) {
+      wasImpersonating.current = true;
+      const tenantId =
+        localStorage.getItem(OSCAR_TENANT_KEY) ||
+        localStorage.getItem(ACTIVE_BUSINESS_KEY) ||
+        localStorage.getItem(LEGACY_TENANT_KEY);
+      void logAdminEvent('IMPERSONATION_START', tenantId, {
+        business_name: impersonatedName,
+      });
+    }
+    if (!isImpersonating) {
+      wasImpersonating.current = false;
+    }
+  }, [isImpersonating, isSuperAdmin, impersonatedName, logAdminEvent]);
+
   const handleExitToControlCenter = () => {
+    const tenantId =
+      localStorage.getItem(OSCAR_TENANT_KEY) ||
+      localStorage.getItem(ACTIVE_BUSINESS_KEY) ||
+      localStorage.getItem(LEGACY_TENANT_KEY);
+    // Zero residual contamination: clear every impersonation key before routing.
     clearImpersonationFlags();
+    try {
+      sessionStorage.removeItem('accountx_impersonation_notice_seen');
+    } catch {
+      /* ignore */
+    }
     setIsImpersonating(false);
     setImpersonatedName(null);
+    wasImpersonating.current = false;
+    void logAdminEvent('IMPERSONATION_END', tenantId, {
+      business_name: impersonatedName,
+    });
     navigate('/super-admin');
   };
 
