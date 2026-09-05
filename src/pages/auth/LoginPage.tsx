@@ -1,7 +1,32 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+
+/**
+ * LoginPage — "Huddle" style animated auth screen.
+ *
+ * Four characters (purple / black / yellow / orange) react live to what you
+ * do in the form:
+ *  - idle    -> nobody's paying attention
+ *  - nosy    -> email/name focused: eyes track the caret as you type
+ *  - shy     -> password focused: everyone shuts their eyes
+ *  - exposed -> password revealed (eye icon) while it has a value: startled
+ *
+ * Mood priority mirrors the original interaction model:
+ *   shown && password.length > 0   -> 'exposed'
+ *   focusedField === 'password'    -> 'shy'
+ *   focusedField === email|name    -> 'nosy'
+ *   otherwise                      -> 'idle'
+ */
+
+type FocusField = 'email' | 'password' | 'name' | null;
+type Mood = 'idle' | 'nosy' | 'shy' | 'exposed';
+
+const INK = 'rgba(20, 12, 46, 0.82)'; // dark marks on purple
+const INK_ON_ORANGE = 'rgba(70, 24, 6, 0.82)';
+const INK_ON_YELLOW = 'rgba(70, 46, 4, 0.82)';
+const LIGHT = 'rgba(244, 244, 245, 0.95)'; // light marks on the black body
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -10,17 +35,40 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [focusedField, setFocusedField] = useState<'email' | 'password' | 'name' | null>(null);
+  const [focusedField, setFocusedField] = useState<FocusField>(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Calculate eye movement based on typing length (simulates caret tracking)
-  const typingOffset = focusedField === 'email' || focusedField === 'name' 
-    ? Math.min(email.length * 0.4, 12) 
-    : 0;
-  
-  const isPw = focusedField === 'password';
+  // ---- Mood + gaze state machine -------------------------------------
+  const mood: Mood = useMemo(() => {
+    if (showPassword && password.length > 0) return 'exposed';
+    if (focusedField === 'password') return 'shy';
+    if (focusedField === 'email' || focusedField === 'name') return 'nosy';
+    return 'idle';
+  }, [showPassword, password, focusedField]);
 
+  // 0 -> 1, simulates how far the caret has travelled across the field
+  const gaze = useMemo(() => {
+    const text = focusedField === 'name' ? fullName : focusedField === 'email' ? email : '';
+    if (!text) return 0;
+    return Math.min(text.length / 18, 1);
+  }, [focusedField, fullName, email]);
+
+  // Only the tall purple "leader" physically leans; everyone else just
+  // changes expression, same as the reference component.
+  const leanDeg = mood === 'nosy' ? gaze * 7 : mood === 'shy' ? 10 : mood === 'exposed' ? 8 : 0;
+  const eyeShift = mood === 'nosy' ? gaze : 0;
+
+  const caption =
+    mood === 'exposed'
+      ? "Whoa — no peeking!"
+      : mood === 'shy'
+      ? "Shh... they're looking away!"
+      : mood === 'nosy'
+      ? "They're keeping an eye on you..."
+      : 'Type your password. Watch them look away.';
+
+  // ---- Auth handlers ---------------------------------------------------
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -52,9 +100,10 @@ export function LoginPage() {
   };
 
   const handleGoogleLogin = async () => {
+    setErrorMsg(null);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/app` }
+      options: { redirectTo: `${window.location.origin}/app` },
     });
     if (error) setErrorMsg(error.message);
   };
@@ -62,97 +111,138 @@ export function LoginPage() {
   return (
     <div className="min-h-screen w-full bg-[#f6eee3] flex items-center justify-center p-4 sm:p-8 font-sans">
       <style>{`
-        .spring-transition {
-          transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease;
+        .huddle-mate {
+          transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+          transform-origin: 130px 186px;
         }
-        .eye-transition {
-          transition: transform 0.15s ease-out;
+        .huddle-face path,
+        .huddle-face ellipse,
+        .huddle-face circle,
+        .huddle-face line {
+          transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease, d 0.3s ease;
         }
-        .paw-transition {
-          transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1.2), opacity 0.3s;
+        @keyframes huddle-breathe {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-2.5px); }
+        }
+        .huddle-breathe {
+          animation: huddle-breathe 3.6s ease-in-out infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .huddle-breathe { animation: none; }
+          .huddle-mate, .huddle-face * { transition: none !important; }
         }
       `}</style>
 
       <div className="w-full max-w-[920px] bg-white rounded-[24px] shadow-2xl overflow-hidden flex flex-col md:flex-row">
-        
-        {/* Left Side: Exact Huddle Cartoons Stage */}
+        {/* Left Side: Huddle character stage */}
         <div className="w-full md:w-[45%] bg-[#eddcc8] relative p-8 flex flex-col items-center justify-end min-h-[380px] md:min-h-[580px] overflow-hidden">
-          
-          {/* Decorative Background Elements */}
-          <div className="absolute top-12 left-12 w-8 h-8 rounded-full bg-[#ff5733] opacity-20" />
-          <div className="absolute top-24 right-16 w-4 h-4 rounded-full bg-[#5b32e8] opacity-20" />
-          <div className="absolute bottom-40 left-8 w-6 h-6 rounded-full bg-[#f59e0b] opacity-20" />
+          {/* Decorative confetti dots */}
+          <div className="absolute top-12 left-12 w-8 h-8 rounded-full bg-[#ff5733] opacity-15" />
+          <div className="absolute top-24 right-16 w-4 h-4 rounded-full bg-[#5b32e8] opacity-15" />
+          <div className="absolute bottom-40 left-8 w-6 h-6 rounded-full bg-[#f59e0b] opacity-15" />
 
-          {/* Character Container with bottom clip for sinking effect */}
-          <div className="relative w-full max-w-[320px] h-[260px] flex items-end justify-center overflow-hidden z-10 border-b-2 border-[#d9c7b3]">
-            
-            {/* 1. ORANGE ARCH */}
-            <div className={`absolute left-[15px] bottom-0 w-[78px] h-[135px] bg-[#ff5733] rounded-t-full flex flex-col items-center pt-8 spring-transition z-20 ${isPw ? 'translate-y-1' : ''}`}>
-              <div className="flex gap-2">
-                <div className="w-4 h-4 bg-white rounded-full relative overflow-hidden">
-                  <div className="w-2 h-2 bg-[#1c2024] rounded-full absolute top-1 left-1 eye-transition" style={{ transform: `translateX(${typingOffset}px)` }} />
-                </div>
-                <div className="w-4 h-4 bg-white rounded-full relative overflow-hidden">
-                  <div className="w-2 h-2 bg-[#1c2024] rounded-full absolute top-1 left-1 eye-transition" style={{ transform: `translateX(${typingOffset}px)` }} />
-                </div>
-              </div>
-              <div className="w-2.5 h-1 bg-[#b32b0e] rounded-full mt-3" />
-              {/* Paws covering eyes */}
-              <div className={`absolute top-6 left-2 w-7 h-7 bg-[#ff5733] border-[3px] border-[#e64a2b] rounded-full paw-transition ${isPw ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-8 opacity-0 scale-50'}`} />
-              <div className={`absolute top-6 right-2 w-7 h-7 bg-[#ff5733] border-[3px] border-[#e64a2b] rounded-full paw-transition ${isPw ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-8 opacity-0 scale-50'}`} />
-            </div>
+          <div className="relative w-full max-w-[320px] huddle-breathe">
+            <svg viewBox="0 0 320 200" className="w-full h-auto select-none" aria-hidden="true">
+              {/* ---------------- PURPLE (tallest, leans) ---------------- */}
+              <g className="huddle-mate" style={{ transform: `rotate(${leanDeg}deg)` }}>
+                <rect x={95} y={15} width={70} height={171} rx={14} fill="#5b32e8" />
+                <rect x={95} y={15} width={70} height={9} rx={4.5} fill="#ffffff" opacity={0.18} />
+                <g className="huddle-face">
+                  {(mood === 'idle' || mood === 'nosy') && (
+                    <>
+                      <ellipse cx={120 + eyeShift * 7} cy={58} rx={4} ry={5} fill={INK} />
+                      <ellipse cx={147 + eyeShift * 7} cy={58} rx={4} ry={5} fill={INK} />
+                      <ellipse cx={133 + eyeShift * 7} cy={79} rx={2.5} ry={4} fill={INK} />
+                    </>
+                  )}
+                  {mood === 'shy' && (
+                    <>
+                      <path d="M112,57 q8,8 16,0" stroke={INK} strokeWidth={3} fill="none" strokeLinecap="round" />
+                      <path d="M140,57 q8,8 16,0" stroke={INK} strokeWidth={3} fill="none" strokeLinecap="round" />
+                    </>
+                  )}
+                  {mood === 'exposed' && (
+                    <>
+                      <path d="M110,51 L124,58" stroke={INK} strokeWidth={3} strokeLinecap="round" />
+                      <path d="M144,58 L158,51" stroke={INK} strokeWidth={3} strokeLinecap="round" />
+                      <path d="M120,80 q5,-7 10,0 q5,7 10,0" stroke={INK} strokeWidth={3} fill="none" strokeLinecap="round" />
+                    </>
+                  )}
+                </g>
+              </g>
 
-            {/* 2. PURPLE PILLAR */}
-            <div className={`absolute left-[90px] bottom-0 w-[88px] h-[210px] bg-[#5b32e8] rounded-t-full flex flex-col items-center pt-10 spring-transition z-10`} style={{ transform: isPw ? 'rotateY(180deg)' : 'rotateY(0deg)' }}>
-              {!isPw ? (
-                <>
-                  <div className="flex gap-2.5">
-                    <div className="w-[22px] h-[22px] bg-white rounded-full relative overflow-hidden shadow-inner">
-                      <div className="w-2.5 h-2.5 bg-[#0f1115] rounded-full absolute top-1.5 left-1.5 eye-transition" style={{ transform: `translateX(${typingOffset}px)` }} />
-                    </div>
-                    <div className="w-[22px] h-[22px] bg-white rounded-full relative overflow-hidden shadow-inner">
-                      <div className="w-2.5 h-2.5 bg-[#0f1115] rounded-full absolute top-1.5 left-1.5 eye-transition" style={{ transform: `translateX(${typingOffset}px)` }} />
-                    </div>
-                  </div>
-                  <div className="w-2 h-1 bg-[#3a1d9e] rounded-full mt-4" />
-                </>
-              ) : (
-                <div className="flex flex-col items-center mt-2 opacity-80">
-                  <div className="w-8 h-1.5 bg-[#4722c2] rounded-full" />
-                  <div className="w-10 h-1.5 bg-[#4722c2] rounded-full mt-2" />
-                  <div className="w-6 h-1.5 bg-[#4722c2] rounded-full mt-2" />
-                </div>
-              )}
-            </div>
+              {/* ---------------- BLACK (doesn't lean) ---------------- */}
+              <g className="huddle-face">
+                <rect x={178} y={62} width={56} height={124} rx={28} fill="#161922" />
+                {(mood === 'idle' || mood === 'nosy') && (
+                  <>
+                    <circle cx={194} cy={100} r={9} fill="#ffffff" />
+                    <circle cx={194 + eyeShift * 4} cy={100} r={4} fill="#0b0d12" />
+                    <circle cx={218} cy={100} r={9} fill="#ffffff" />
+                    <circle cx={218 + eyeShift * 4} cy={100} r={4} fill="#0b0d12" />
+                  </>
+                )}
+                {mood === 'shy' && (
+                  <>
+                    <path d="M186,99 q8,8 16,0" stroke={LIGHT} strokeWidth={3} fill="none" strokeLinecap="round" />
+                    <path d="M210,99 q8,8 16,0" stroke={LIGHT} strokeWidth={3} fill="none" strokeLinecap="round" />
+                    <path d="M196,122 q11,8 22,0" stroke={LIGHT} strokeWidth={3} fill="none" strokeLinecap="round" />
+                  </>
+                )}
+                {/* exposed: black turns fully away, no face shown */}
+              </g>
 
-            {/* 3. BLACK PEEK MONSTER */}
-            <div className={`absolute right-[75px] bottom-0 w-[64px] h-[110px] bg-[#161922] rounded-t-full flex flex-col items-center pt-6 spring-transition z-20 ${isPw ? 'translate-y-[110px]' : 'translate-y-0'}`}>
-              <div className="flex gap-2">
-                <div className="w-3.5 h-3.5 bg-[#facc15] rounded-full relative overflow-hidden">
-                  <div className="w-2 h-2 bg-black rounded-full absolute top-[3px] left-[3px] eye-transition" style={{ transform: `translateX(${typingOffset * 0.7}px)` }} />
-                </div>
-                <div className="w-3.5 h-3.5 bg-[#facc15] rounded-full relative overflow-hidden">
-                  <div className="w-2 h-2 bg-black rounded-full absolute top-[3px] left-[3px] eye-transition" style={{ transform: `translateX(${typingOffset * 0.7}px)` }} />
-                </div>
-              </div>
-            </div>
+              {/* ---------------- ORANGE (front-center, doesn't lean) ---------------- */}
+              <g className="huddle-face">
+                <path d="M60,185 A80,80 0 0 1 220,185 Z" fill="#ff5733" />
+                {(mood === 'idle' || mood === 'nosy') && (
+                  <>
+                    <circle cx={122 + eyeShift * 6} cy={150} r={5} fill={INK_ON_ORANGE} />
+                    <circle cx={162 + eyeShift * 6} cy={150} r={5} fill={INK_ON_ORANGE} />
+                    <path d="M108,166 q37,26 74,0" stroke={INK_ON_ORANGE} strokeWidth={4} fill="none" strokeLinecap="round" />
+                  </>
+                )}
+                {mood === 'shy' && (
+                  <>
+                    <path d="M112,149 q10,10 20,0" stroke={INK_ON_ORANGE} strokeWidth={3.5} fill="none" strokeLinecap="round" />
+                    <path d="M152,149 q10,10 20,0" stroke={INK_ON_ORANGE} strokeWidth={3.5} fill="none" strokeLinecap="round" />
+                    <path d="M120,172 q25,14 50,0" stroke={INK_ON_ORANGE} strokeWidth={3.5} fill="none" strokeLinecap="round" />
+                  </>
+                )}
+                {mood === 'exposed' && (
+                  <>
+                    <path d="M110,142 L126,150" stroke={INK_ON_ORANGE} strokeWidth={3.5} strokeLinecap="round" />
+                    <path d="M158,150 L174,142" stroke={INK_ON_ORANGE} strokeWidth={3.5} strokeLinecap="round" />
+                    <path d="M124,172 q9,-9 18,0 q9,9 18,0" stroke={INK_ON_ORANGE} strokeWidth={3.5} fill="none" strokeLinecap="round" />
+                  </>
+                )}
+              </g>
 
-            {/* 4. YELLOW BLOB */}
-            <div className={`absolute right-[10px] bottom-0 w-[70px] h-[85px] bg-[#f59e0b] rounded-t-full flex flex-col items-center pt-5 spring-transition z-10 ${isPw ? 'rotate-[15deg] translate-y-3 translate-x-1' : ''}`}>
-              <div className="flex gap-2">
-                <div className="w-2.5 h-2.5 bg-[#1e232a] rounded-full relative overflow-hidden">
-                  <div className="w-1 h-1 bg-white rounded-full absolute top-0.5 right-0.5" />
-                </div>
-                <div className="w-2.5 h-2.5 bg-[#1e232a] rounded-full relative overflow-hidden">
-                  <div className="w-1 h-1 bg-white rounded-full absolute top-0.5 right-0.5" />
-                </div>
-              </div>
-              <div className="w-3 h-1.5 border-b-2 border-[#92400e] rounded-full mt-2" />
-            </div>
+              {/* ---------------- YELLOW (front-right, doesn't lean) ---------------- */}
+              <g className="huddle-face">
+                <rect x={228} y={96} width={58} height={90} rx={29} fill="#f59e0b" />
+                {(mood === 'idle' || mood === 'nosy') && (
+                  <>
+                    <circle cx={253 + eyeShift * 4} cy={129} r={4} fill={INK_ON_YELLOW} />
+                    <line x1={246} y1={151} x2={275} y2={151} stroke={INK_ON_YELLOW} strokeWidth={3} strokeLinecap="round" />
+                  </>
+                )}
+                {mood === 'shy' && (
+                  <path d="M247,128 q6,-7 12,0" stroke={INK_ON_YELLOW} strokeWidth={3} fill="none" strokeLinecap="round" />
+                )}
+                {mood === 'exposed' && (
+                  <>
+                    <path d="M246,122 q7,-6 14,0" stroke={INK_ON_YELLOW} strokeWidth={3} fill="none" strokeLinecap="round" />
+                    <path d="M243,151 q4,-5 8,0 q4,5 8,0" stroke={INK_ON_YELLOW} strokeWidth={3} fill="none" strokeLinecap="round" />
+                  </>
+                )}
+              </g>
+            </svg>
           </div>
 
-          <p className="text-[13px] text-stone-600 mt-8 font-medium text-center max-w-[200px] leading-snug">
-            {isPw ? "Shh... they're looking away!" : 'Type your password. Watch them look away.'}
+          <p className="text-[13px] text-stone-600 mt-6 font-medium text-center max-w-[220px] leading-snug">
+            {caption}
           </p>
         </div>
 
@@ -184,7 +274,7 @@ export function LoginPage() {
                   value={fullName}
                   onFocus={() => setFocusedField('name')}
                   onBlur={() => setFocusedField(null)}
-                  onChange={e => setFullName(e.target.value)}
+                  onChange={(e) => setFullName(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-stone-50 text-stone-900 text-[14px] focus:outline-none focus:ring-2 focus:ring-stone-900 focus:bg-white transition-all font-medium placeholder:text-stone-400"
                 />
               </div>
@@ -199,7 +289,7 @@ export function LoginPage() {
                 value={email}
                 onFocus={() => setFocusedField('email')}
                 onBlur={() => setFocusedField(null)}
-                onChange={e => setEmail(e.target.value)}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-stone-50 text-stone-900 text-[14px] focus:outline-none focus:ring-2 focus:ring-stone-900 focus:bg-white transition-all font-medium placeholder:text-stone-400"
               />
             </div>
@@ -221,25 +311,32 @@ export function LoginPage() {
                   value={password}
                   onFocus={() => setFocusedField('password')}
                   onBlur={() => setFocusedField(null)}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-4 py-3 pr-11 rounded-xl border border-stone-200 bg-stone-50 text-stone-900 text-[14px] focus:outline-none focus:ring-2 focus:ring-stone-900 focus:bg-white transition-all font-medium placeholder:text-stone-400"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 transition-colors"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-1 pb-2">
-              <label className="flex items-center gap-2.5 cursor-pointer">
-                <input type="checkbox" defaultChecked className="w-4 h-4 rounded-[4px] border-stone-300 text-stone-900 focus:ring-stone-900" />
-                <span className="text-[13px] font-medium text-stone-600">Remember for 30 days</span>
-              </label>
-            </div>
+            {!isSignUp && (
+              <div className="flex items-center justify-between pt-1 pb-2">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    defaultChecked
+                    className="w-4 h-4 rounded-[4px] border-stone-300 text-stone-900 focus:ring-stone-900"
+                  />
+                  <span className="text-[13px] font-medium text-stone-600">Remember for 30 days</span>
+                </label>
+              </div>
+            )}
 
             <button
               type="submit"
@@ -252,9 +349,11 @@ export function LoginPage() {
           </form>
 
           <div className="relative flex items-center py-6">
-            <div className="flex-grow border-t border-stone-200"></div>
-            <span className="flex-shrink-0 mx-4 text-stone-400 text-[12px] font-medium uppercase tracking-wider">or</span>
-            <div className="flex-grow border-t border-stone-200"></div>
+            <div className="flex-grow border-t border-stone-200" />
+            <span className="flex-shrink-0 mx-4 text-stone-400 text-[12px] font-medium uppercase tracking-wider">
+              or
+            </span>
+            <div className="flex-grow border-t border-stone-200" />
           </div>
 
           <button
@@ -275,14 +374,16 @@ export function LoginPage() {
             {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
             <button
               type="button"
-              onClick={() => { setIsSignUp(!isSignUp); setErrorMsg(null); }}
+              onClick={() => {
+                setIsSignUp((v) => !v);
+                setErrorMsg(null);
+              }}
               className="font-bold text-stone-900 hover:underline ml-1"
             >
               {isSignUp ? 'Log in' : 'Sign up'}
             </button>
           </p>
         </div>
-
       </div>
     </div>
   );
