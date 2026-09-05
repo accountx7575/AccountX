@@ -110,7 +110,6 @@ export function QuotationCreatePage() {
       const { data: quote, error } = await supabase.from('quotations').insert({
         business_id: activeBusiness.id,
         quotation_number: String(number),
-        quote_number: quoteNumber,
         customer_id: cid,
         quote_date: quoteDate,
         expiry_date: expiryDate || null,
@@ -206,30 +205,36 @@ export function QuotationCreatePage() {
           <div className="border border-secondary-200 dark:border-secondary-800 rounded-lg divide-y divide-secondary-100 dark:divide-secondary-800/50">
             {lines.map((l, idx) => {
               const lineTotal = roundTo2(l.quantity * l.rate);
+              const isCustom = !l.product_id;
               return (
                 <div key={idx} className="p-3 flex gap-2 items-start flex-wrap">
                   <div className="flex-1 min-w-[160px]">
                     <FormField label="Product / Description">
-                      <input
-                        list="quot-product-list"
+                      <select
                         className="input"
-                        placeholder="Type or pick a product…"
-                        value={l.product_name}
+                        value={l.product_id || '__custom__'}
                         onChange={(e) => {
                           const val = e.target.value;
-                          updateLine(idx, { product_name: val });
-                          const match = products?.find((p) => p.name === val);
-                          if (match) {
-                            updateLine(idx, { product_id: match.id, hsn_sac: match.hsn_sac || '', unit: match.unit, rate: match.selling_price, tax_rate: match.tax_rate });
-                          } else if (val) {
-                            const pick = products?.find((p) => p.name.toLowerCase() === val.toLowerCase());
-                            if (pick) updateLine(idx, { product_id: pick.id, hsn_sac: pick.hsn_sac || '', unit: pick.unit, rate: pick.selling_price, tax_rate: pick.tax_rate });
+                          if (val === '__custom__') {
+                            updateLine(idx, { product_id: null, product_name: '', hsn_sac: '', unit: 'PCS', rate: 0, tax_rate: 18 });
+                          } else {
+                            const p = products?.find((pr) => pr.id === val);
+                            if (p) updateLine(idx, { product_id: p.id, product_name: p.name, hsn_sac: p.hsn_sac || '', unit: p.unit, rate: p.selling_price, tax_rate: p.tax_rate });
                           }
                         }}
-                      />
-                      <datalist id="quot-product-list">
-                        {products?.map((p) => <option key={p.id} value={p.name} />)}
-                      </datalist>
+                      >
+                        <option value="">— select product —</option>
+                        {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        <option value="__custom__">Custom line…</option>
+                      </select>
+                      {isCustom && (
+                        <input
+                          className="input mt-1.5"
+                          placeholder="Type description…"
+                          value={l.product_name}
+                          onChange={(e) => updateLine(idx, { product_name: e.target.value })}
+                        />
+                      )}
                     </FormField>
                   </div>
                   <FormField label="Qty" className="w-20">
