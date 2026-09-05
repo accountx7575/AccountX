@@ -93,10 +93,6 @@ export function QuotationsPage() {
   const [convertDue, setConvertDue] = useState('');
   const [convertMode, setConvertMode] = useState<ConvertMode>('invoice');
 
-  // Print Preview Modal state
-  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
-  const [previewDocNumber, setPreviewDocNumber] = useState<string>('');
-
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
       setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
@@ -129,8 +125,8 @@ export function QuotationsPage() {
     if (!opened) toast('Could not open WhatsApp — allow popups and try again', 'error');
   };
 
-  // Open PDF in Print Preview Modal
-  const handlePrintPreview = async (q: QuoteRow) => {
+  // Native Print Preview Trigger
+  const handleDirectPrint = async (q: QuoteRow) => {
     if (!activeBusiness) return;
     setPrintingId(q.id);
     try {
@@ -163,20 +159,39 @@ export function QuotationsPage() {
         terms: q.terms,
       });
 
-      const url = URL.createObjectURL(blob);
-      setPreviewDocNumber(q.quotation_number);
-      setPreviewPdfUrl(url);
+      const blobUrl = URL.createObjectURL(blob);
+
+      // Hidden iframe for instant browser native print preview
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.src = blobUrl;
+
+      document.body.appendChild(iframe);
+
+      iframe.onload = () => {
+        setTimeout(() => {
+          iframe.focus();
+          try {
+            iframe.contentWindow?.print();
+          } catch {
+            window.open(blobUrl, '_blank');
+          }
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+            URL.revokeObjectURL(blobUrl);
+          }, 3000);
+        }, 300);
+      };
     } catch (err: any) {
       toast(err?.message || 'Print preview failed', 'error');
     } finally {
       setPrintingId(null);
     }
-  };
-
-  const closePreview = () => {
-    if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
-    setPreviewPdfUrl(null);
-    setPreviewDocNumber('');
   };
 
   const { data: rawData, isLoading, isError, refetch } = useQuery({
@@ -538,15 +553,15 @@ export function QuotationsPage() {
                           </button>
                         )}
 
-                        {/* PDF / Print Preview Button */}
+                        {/* Direct Native Print Preview */}
                         <Button
                           size="sm"
                           variant="ghost"
                           loading={printingId === q.id}
-                          onClick={() => handlePrintPreview(q)}
-                          title="Print Preview & PDF"
+                          onClick={() => handleDirectPrint(q)}
+                          title="Print / Save PDF Preview"
                         >
-                          <Printer className="h-3 w-3" /> Preview
+                          <Printer className="h-3 w-3" /> Print
                         </Button>
 
                         {LOCKED[q.status] && (
@@ -633,47 +648,6 @@ export function QuotationsPage() {
         />
       </div>
 
-      {/* Print Preview Modal */}
-      {previewPdfUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-secondary-200 dark:border-secondary-800 w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-3.5 border-b border-secondary-200 dark:border-secondary-800 bg-secondary-50/50 dark:bg-secondary-900/50">
-              <div className="flex items-center gap-2">
-                <Printer className="h-5 w-5 text-primary-600 dark:text-primary-400" />
-                <h3 className="font-semibold text-secondary-900 dark:text-secondary-100">
-                  Print Preview — {previewDocNumber}
-                </h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <a
-                  href={previewPdfUrl}
-                  download={`${previewDocNumber}.pdf`}
-                  className="btn btn-secondary btn-sm"
-                >
-                  Download PDF
-                </a>
-                <button
-                  onClick={closePreview}
-                  className="p-1.5 rounded-lg text-secondary-400 hover:text-secondary-700 hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"
-                  title="Close"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 bg-secondary-100/70 dark:bg-zinc-950 p-2 sm:p-4">
-              <iframe
-                src={`${previewPdfUrl}#toolbar=1`}
-                className="w-full h-full rounded-lg border border-secondary-200 dark:border-secondary-800 bg-white shadow-inner"
-                title={`Preview ${previewDocNumber}`}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Quotation Dialog */}
       <ConfirmDialog
         open={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
@@ -684,7 +658,6 @@ export function QuotationsPage() {
         loading={deleteMutation.isPending}
       />
 
-      {/* Cancel Quotation Dialog */}
       <ConfirmDialog
         open={!!confirmCancel}
         onClose={() => setConfirmCancel(null)}
