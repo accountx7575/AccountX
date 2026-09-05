@@ -213,6 +213,9 @@ function AppRoutes() {
         <Route path="payables" element={<PayablesPage />} />
         <Route path="cash-bank" element={<CashBankPage />} />
         <Route path="*" element={<SleuthNotFoundPage />} />
+	<Route path="quotations" element={<QuotationsPage />} />
+	<Route path="quotations/new" element={<QuotationCreatePage />} />
+	<Route path="quotations/:id/edit" element={<QuotationCreatePage />} />
       </Route>
       <Route path="*" element={<SleuthNotFoundPage />} />
     </Routes>

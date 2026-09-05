@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -12,7 +12,7 @@ import { FormSection } from '@/components/ui/FormSection';
 import { ArrowLeft, Save, X } from 'lucide-react';
 import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
-import type { Customer, Product } from '@/types/db';
+import type { Customer, Product, Quotation, QuotationItem } from '@/types/db';
 
 type LineItem = {
   product_id: string | null;
@@ -43,6 +43,8 @@ export function QuotationCreatePage() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { id: editId } = useParams<{ id: string }>();
+  const isEdit = Boolean(editId);
 
   const [customerId, setCustomerId] = useState('');
   const [quoteDate, setQuoteDate] = useState(todayDateString());
@@ -79,6 +81,55 @@ export function QuotationCreatePage() {
     enabled: !!activeBusiness,
   });
 
+  // Edit Mode: Load existing quotation and items
+  const { data: existingQuote } = useQuery({
+    queryKey: ['quotation', activeBusiness?.id, editId],
+    queryFn: async () => {
+      if (!activeBusiness || !editId) return null;
+      const { data: quote, error: qErr } = await supabase
+        .from('quotations')
+        .select('*')
+        .eq('business_id', activeBusiness.id)
+        .eq('id', editId)
+        .single();
+      if (qErr) throw qErr;
+
+      const { data: items, error: iErr } = await supabase
+        .from('quotation_items')
+        .select('*')
+        .eq('quotation_id', editId);
+      if (iErr) throw iErr;
+
+      return { quote: quote as Quotation, items: (items || []) as QuotationItem[] };
+    },
+    enabled: isEdit && !!activeBusiness && !!editId,
+  });
+
+  useEffect(() => {
+    if (!existingQuote) return;
+    const { quote, items } = existingQuote;
+    setCustomerId(quote.customer_id);
+    setQuoteDate(quote.quote_date);
+    setExpiryDate(quote.expiry_date || '');
+    setTerms(quote.terms || quote.notes || '');
+
+    if (items.length > 0) {
+      setLines(
+        items.map((it) => ({
+          product_id: it.product_id || null,
+          product_name: it.product_name,
+          hsn_sac: it.hsn_sac || '',
+          quantity: Number(it.quantity) || 1,
+          unit: it.unit || 'PCS',
+          rate: Number(it.rate) || 0,
+          tax_rate: Number(it.tax_rate) || 18,
+          tax_amount: 0,
+          total: Number(it.total_amount) || 0,
+        }))
+      );
+    }
+  }, [existingQuote]);
+
   const isInterState = useMemo(() => {
     if (!activeBusiness || !customerId) return false;
     const c = customers?.find((x) => x.id === customerId);
@@ -111,7 +162,7 @@ export function QuotationCreatePage() {
     };
   }, [lines, isInterState]);
 
-  const createMutation = useMutation({
+  const saveMutation = useMutation({
     mutationFn: async () => {
       if (!activeBusiness) throw new Error('No active business');
       if (!customerId) throw new Error('Please select a customer');
@@ -122,57 +173,80 @@ export function QuotationCreatePage() {
       const chosenCustomer = customers?.find(
         (c) => c.id === customerId || c.name.toLowerCase() === customerId.trim().toLowerCase()
       );
-
-      if (!chosenCustomer?.id) {
-        throw new Error('Please select a customer from the dropdown list');
-      }
+      if (!chosenCustomer?.id) throw new Error('Please select a valid customer');
 
       const { data: userData } = await supabase.auth.getUser();
 
-      let docNumber = `QT-${Date.now().toString().slice(-6)}`;
-      try {
-        const { data: generated } = await supabase.rpc('next_document_number', {
-          p_business_id: activeBusiness.id,
-          p_doc_type: 'quotation',
-          p_date: quoteDate,
-        });
-        if (generated) docNumber = String(generated);
-      } catch (rpcErr) {
-        console.warn('RPC fallback', rpcErr);
+      let targetQuoteId = editId;
+
+      if (isEdit && targetQuoteId) {
+        // Update existing quotation header
+        const { error: updateErr } = await supabase
+          .from('quotations')
+          .update({
+            customer_id: chosenCustomer.id,
+            quote_date: quoteDate,
+            expiry_date: expiryDate || null,
+            subtotal: totals.subtotal,
+            taxable_amount: totals.taxableAmount,
+            cgst_amount: totals.cgst,
+            sgst_amount: totals.sgst,
+            igst_amount: totals.igst,
+            grand_total: totals.grandTotal,
+            terms: terms.trim() || null,
+            notes: terms.trim() || null,
+          })
+          .eq('id', targetQuoteId)
+          .eq('business_id', activeBusiness.id);
+
+        if (updateErr) throw updateErr;
+
+        // Refresh line items
+        await supabase.from('quotation_items').delete().eq('quotation_id', targetQuoteId);
+      } else {
+        // Insert new quotation
+        let docNumber = `QT-${Date.now().toString().slice(-6)}`;
+        try {
+          const { data: generated } = await supabase.rpc('next_document_number', {
+            p_business_id: activeBusiness.id,
+            p_doc_type: 'quotation',
+            p_date: quoteDate,
+          });
+          if (generated) docNumber = String(generated);
+        } catch (rpcErr) {
+          console.warn('RPC fallback', rpcErr);
+        }
+
+        const { data: newQuote, error: insertErr } = await supabase
+          .from('quotations')
+          .insert({
+            business_id: activeBusiness.id,
+            quotation_number: docNumber,
+            customer_id: chosenCustomer.id,
+            quote_date: quoteDate,
+            expiry_date: expiryDate || null,
+            subtotal: totals.subtotal,
+            discount_amount: 0,
+            taxable_amount: totals.taxableAmount,
+            cgst_amount: totals.cgst,
+            sgst_amount: totals.sgst,
+            igst_amount: totals.igst,
+            cess_amount: 0,
+            round_off: 0,
+            grand_total: totals.grandTotal,
+            status: 'draft',
+            terms: terms.trim() || null,
+            notes: terms.trim() || null,
+            created_by: userData?.user?.id || null,
+          })
+          .select('id')
+          .single();
+
+        if (insertErr) throw insertErr;
+        targetQuoteId = newQuote.id;
       }
 
-      const quotationRecord = {
-        business_id: activeBusiness.id,
-        quotation_number: docNumber,
-        customer_id: chosenCustomer.id,
-        quote_date: quoteDate,
-        expiry_date: expiryDate ? expiryDate : null,
-        subtotal: totals.subtotal,
-        discount_amount: 0,
-        taxable_amount: totals.taxableAmount,
-        cgst_amount: totals.cgst,
-        sgst_amount: totals.sgst,
-        igst_amount: totals.igst,
-        cess_amount: 0,
-        round_off: 0,
-        grand_total: totals.grandTotal,
-        status: 'draft',
-        terms: terms.trim() || null,
-        notes: terms.trim() || null,
-        created_by: userData?.user?.id || null,
-      };
-
-      const { data: quote, error: quoteError } = await supabase
-        .from('quotations')
-        .insert(quotationRecord)
-        .select('id')
-        .single();
-
-      if (quoteError) {
-        throw new Error(quoteError.message || 'Error saving quotation');
-      }
-
-      // Exact columns matching quotation_items table schema
+      // Insert line items
       const itemsRecord = validLines.map((l) => {
         const quantity = Number(l.quantity) || 1;
         const rate = Number(l.rate) || 0;
@@ -181,7 +255,7 @@ export function QuotationCreatePage() {
         const gst = calculateGstAmounts(taxable, taxRate, isInterState);
         return {
           business_id: activeBusiness.id,
-          quotation_id: quote.id,
+          quotation_id: targetQuoteId,
           product_id: l.product_id || null,
           product_name: l.product_name,
           quantity,
@@ -193,22 +267,16 @@ export function QuotationCreatePage() {
         };
       });
 
-      const { error: itemsError } = await supabase
-        .from('quotation_items')
-        .insert(itemsRecord);
+      const { error: itemsError } = await supabase.from('quotation_items').insert(itemsRecord);
+      if (itemsError) throw itemsError;
 
-      if (itemsError) {
-        await supabase.from('quotations').delete().eq('id', quote.id);
-        throw new Error(itemsError.message || 'Error saving items');
-      }
-
-      return quote.id;
+      return targetQuoteId;
     },
     onSuccess: () => {
       ['quotations', 'dashboard-stats'].forEach((k) =>
         queryClient.invalidateQueries({ queryKey: [k, activeBusiness?.id] })
       );
-      toast('Quotation draft saved successfully!', 'success');
+      toast(isEdit ? 'Quotation updated successfully!' : 'Quotation draft saved successfully!', 'success');
       navigate('/app/quotations');
     },
     onError: (err: any) => {
@@ -221,7 +289,7 @@ export function QuotationCreatePage() {
   return (
     <div>
       <PageHeader
-        title="New Quotation"
+        title={isEdit ? 'Edit Quotation' : 'New Quotation'}
         actions={
           <Button variant="secondary" onClick={() => navigate('/app/quotations')}>
             <ArrowLeft className="h-4 w-4" /> Back
@@ -412,8 +480,8 @@ export function QuotationCreatePage() {
           <Button variant="secondary" onClick={() => navigate('/app/quotations')}>
             Cancel
           </Button>
-          <Button onClick={() => createMutation.mutate()} loading={createMutation.isPending}>
-            <Save className="h-4 w-4" /> Save Draft
+          <Button onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}>
+            <Save className="h-4 w-4" /> {isEdit ? 'Update Quotation' : 'Save Draft'}
           </Button>
         </div>
       </div>
