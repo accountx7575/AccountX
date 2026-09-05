@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -12,7 +12,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { Input, FormField } from '@/components/ui/Input';
 import { ListPagination } from '@/components/ui/ListControls';
-import { usePagedList, likePattern } from '@/hooks/usePagedList';
+import { usePagedList } from '@/hooks/usePagedList';
 import {
   ClipboardList,
   Plus,
@@ -100,7 +100,7 @@ export function QuotationsPage() {
       setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortField(field);
-      setSortOrder('asc');
+      setSortOrder(field === 'quotation_number' ? 'asc' : 'desc');
     }
   };
 
@@ -166,58 +166,76 @@ export function QuotationsPage() {
     }
   };
 
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: [
-      'quotations',
-      activeBusiness?.id,
-      {
-        q: list.debouncedSearch,
-        page: list.page,
-        pageSize: list.pageSize,
-        status: statusFilter,
-        sortField,
-        sortOrder,
-      },
-    ],
+  const { data: rawData, isLoading, isError, refetch } = useQuery({
+    queryKey: ['quotations-data', activeBusiness?.id],
     queryFn: async () => {
-      if (!activeBusiness) return { rows: [] as QuoteRow[], total: 0 };
-      const pattern = list.debouncedSearch ? likePattern(list.debouncedSearch) : null;
-      const run = async (withJoin: boolean) => {
-        let q = supabase
+      if (!activeBusiness) return [] as QuoteRow[];
+
+      const { data: qRows, error } = await supabase
+        .from('quotations')
+        .select('*, customer:customers(name,phone,email)')
+        .eq('business_id', activeBusiness.id);
+
+      if (error) {
+        // Fallback without join
+        const { data: fallbackRows, error: fallbackErr } = await supabase
           .from('quotations')
-          .select((withJoin ? '*, customer:customers(name,phone,email)' : '*') as string, { count: 'exact' })
+          .select('*')
           .eq('business_id', activeBusiness.id);
+        if (fallbackErr) throw fallbackErr;
+        return (fallbackRows || []) as unknown as QuoteRow[];
+      }
 
-        if (statusFilter !== 'all') {
-          q = q.eq('status', statusFilter);
-        }
-
-        if (pattern) {
-          q = withJoin
-            ? q.or(`quotation_number.ilike."${pattern}",customer.name.ilike."${pattern}"`)
-            : q.or(`quotation_number.ilike."${pattern}"`);
-        }
-
-        return q
-          .order(sortField, { ascending: sortOrder === 'asc' })
-          .range(list.from, list.to);
-      };
-
-      let res = await run(true);
-      if (res.error) res = await run(false);
-      if (res.error) return { rows: [] as unknown as QuoteRow[], total: 0 };
-      return { rows: (res.data || []) as unknown as QuoteRow[], total: res.count ?? 0 };
+      return (qRows || []) as unknown as QuoteRow[];
     },
     enabled: !!activeBusiness,
-    placeholderData: (prev) => prev,
   });
 
-  const quotes = data?.rows ?? [];
-  const totalQuotes = data?.total ?? 0;
+  // Client-Side Search, Status Filter & Accurate Sorting
+  const processedQuotes = useMemo(() => {
+    let listData = [...(rawData || [])];
+
+    // 1. Status Filter
+    if (statusFilter !== 'all') {
+      listData = listData.filter((q) => q.status === statusFilter);
+    }
+
+    // 2. Search by Number or Customer Name
+    if (list.search.trim()) {
+      const qLower = list.search.trim().toLowerCase();
+      listData = listData.filter(
+        (q) =>
+          q.quotation_number.toLowerCase().includes(qLower) ||
+          q.customer?.name?.toLowerCase().includes(qLower)
+      );
+    }
+
+    // 3. Sorting (Numeric sequence for Quote No, Date for quote_date)
+    listData.sort((a, b) => {
+      if (sortField === 'quote_date') {
+        const dateA = new Date(a.quote_date).getTime();
+        const dateB = new Date(b.quote_date).getTime();
+        return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+      } else {
+        // Extract sequence number from format like QT/26-27/1
+        const numA = parseInt(a.quotation_number.match(/\d+$/)?.[0] || '0', 10);
+        const numB = parseInt(b.quotation_number.match(/\d+$/)?.[0] || '0', 10);
+        return sortOrder === 'asc' ? numA - numB : numB - numA;
+      }
+    });
+
+    return listData;
+  }, [rawData, statusFilter, list.search, sortField, sortOrder]);
+
+  const totalQuotes = processedQuotes.length;
+  const pagedQuotes = useMemo(() => {
+    const from = (list.page - 1) * list.pageSize;
+    return processedQuotes.slice(from, from + list.pageSize);
+  }, [processedQuotes, list.page, list.pageSize]);
 
   const invalidateAll = () => {
-    ['quotations', 'dashboard-stats'].forEach((k) =>
-      queryClient.invalidateQueries({ queryKey: [k, activeBusiness?.id] })
+    ['quotations-data', 'dashboard-stats'].forEach((k) =>
+      queryClient.invalidateQueries({ queryKey: [k] })
     );
   };
 
@@ -255,6 +273,7 @@ export function QuotationsPage() {
   const deleteMutation = useMutation({
     mutationFn: async (quoteId: string) => {
       if (!activeBusiness) throw new Error('No active business');
+
       const { error: itemsErr } = await supabase
         .from('quotation_items')
         .delete()
@@ -298,6 +317,7 @@ export function QuotationsPage() {
       queryClient.invalidateQueries({ queryKey: ['sales-invoices', activeBusiness?.id] });
       setConvertTarget(null);
       toast(`Converted to ${d?.new_doc_number || 'invoice'}`, 'success');
+      navigate('/app/sales-invoices');
     },
     onError: (err: any) => toast(err.message || 'Conversion failed', 'error'),
   });
@@ -317,6 +337,7 @@ export function QuotationsPage() {
       queryClient.invalidateQueries({ queryKey: ['sales-orders', activeBusiness?.id] });
       setConvertTarget(null);
       toast(`Converted to ${d?.new_doc_number || 'sales order'}`, 'success');
+      navigate('/app/sales-orders');
     },
     onError: (err: any) => toast(err.message || 'Conversion failed', 'error'),
   });
@@ -334,7 +355,7 @@ export function QuotationsPage() {
       />
 
       <div className="card">
-        {/* Filter and Search Bar */}
+        {/* Controls Toolbar */}
         <div className="p-4 border-b border-secondary-200 dark:border-secondary-800 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-1 items-center gap-2 max-w-lg">
             <div className="relative flex-1">
@@ -342,14 +363,18 @@ export function QuotationsPage() {
               <input
                 type="text"
                 value={list.search}
-                onChange={(e) => list.setSearch(e.target.value)}
+                onChange={(e) => {
+                  list.setSearch(e.target.value);
+                  list.setPage(1);
+                }}
                 placeholder="Search by number or customer..."
                 className="input pl-9 text-sm w-full"
               />
             </div>
-            {/* Status Dropdown Filter */}
+
+            {/* Status Filter */}
             <select
-              className="input text-sm w-36 cursor-pointer"
+              className="input text-sm w-40 cursor-pointer font-medium bg-white dark:bg-secondary-900"
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
@@ -371,7 +396,10 @@ export function QuotationsPage() {
             <select
               className="input text-sm w-20 cursor-pointer"
               value={list.pageSize}
-              onChange={(e) => list.setPageSize(Number(e.target.value))}
+              onChange={(e) => {
+                list.setPageSize(Number(e.target.value));
+                list.setPage(1);
+              }}
             >
               <option value={10}>10</option>
               <option value={25}>25</option>
@@ -389,11 +417,15 @@ export function QuotationsPage() {
               <div key={i} className="h-14 rounded-lg bg-secondary-100 dark:bg-secondary-800 animate-pulse" />
             ))}
           </div>
-        ) : quotes.length === 0 ? (
+        ) : pagedQuotes.length === 0 ? (
           <EmptyState
             icon={ClipboardList}
             title="No quotations found"
-            description={statusFilter !== 'all' ? `No quotations matching "${statusFilter}" status.` : 'Create your first quotation'}
+            description={
+              statusFilter !== 'all'
+                ? `No quotations with status "${statusFilter}".`
+                : 'Create your first quotation'
+            }
             action={
               <Button onClick={() => navigate('/app/quotations/new')}>
                 <Plus className="h-4 w-4" /> New Quotation
@@ -405,7 +437,7 @@ export function QuotationsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400 select-none">
-                  {/* Quote No. Sortable Header */}
+                  {/* Quote No. Header Clickable */}
                   <th
                     className="text-left px-4 py-3 font-medium cursor-pointer hover:text-primary-600 transition-colors"
                     onClick={() => toggleSort('quotation_number')}
@@ -413,14 +445,18 @@ export function QuotationsPage() {
                     <div className="flex items-center gap-1.5">
                       <span>Quote No.</span>
                       {sortField === 'quotation_number' ? (
-                        sortOrder === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-primary-600" /> : <ArrowDown className="h-3.5 w-3.5 text-primary-600" />
+                        sortOrder === 'asc' ? (
+                          <ArrowUp className="h-3.5 w-3.5 text-primary-600" />
+                        ) : (
+                          <ArrowDown className="h-3.5 w-3.5 text-primary-600" />
+                        )
                       ) : (
                         <ArrowUpDown className="h-3.5 w-3.5 opacity-40 hover:opacity-100" />
                       )}
                     </div>
                   </th>
 
-                  {/* Date Sortable Header */}
+                  {/* Date Header Clickable */}
                   <th
                     className="text-left px-4 py-3 font-medium hidden sm:table-cell cursor-pointer hover:text-primary-600 transition-colors"
                     onClick={() => toggleSort('quote_date')}
@@ -428,7 +464,11 @@ export function QuotationsPage() {
                     <div className="flex items-center gap-1.5">
                       <span>Date</span>
                       {sortField === 'quote_date' ? (
-                        sortOrder === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-primary-600" /> : <ArrowDown className="h-3.5 w-3.5 text-primary-600" />
+                        sortOrder === 'asc' ? (
+                          <ArrowUp className="h-3.5 w-3.5 text-primary-600" />
+                        ) : (
+                          <ArrowDown className="h-3.5 w-3.5 text-primary-600" />
+                        )
                       ) : (
                         <ArrowUpDown className="h-3.5 w-3.5 opacity-40 hover:opacity-100" />
                       )}
@@ -442,7 +482,7 @@ export function QuotationsPage() {
                 </tr>
               </thead>
               <tbody>
-                {quotes.map((q) => (
+                {pagedQuotes.map((q) => (
                   <tr key={q.id} className="border-b border-secondary-100 dark:border-secondary-800/50 table-row-hover">
                     <td className="px-4 py-3 font-medium text-secondary-900 dark:text-secondary-100">
                       <button
@@ -559,7 +599,7 @@ export function QuotationsPage() {
           page={list.page}
           onPageChange={list.setPage}
           pageSize={list.pageSize}
-          from={list.from}
+          from={(list.page - 1) * list.pageSize}
           total={totalQuotes}
           isLoading={isLoading}
         />
