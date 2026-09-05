@@ -25,6 +25,7 @@ import {
   Eye,
   Pencil,
   MessageCircle,
+  Trash2,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
@@ -75,6 +76,7 @@ export function QuotationsPage() {
 
   const list = usePagedList();
   const [confirmCancel, setConfirmCancel] = useState<Quotation | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<QuoteRow | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [convertTarget, setConvertTarget] = useState<QuoteRow | null>(null);
   const [convertDate, setConvertDate] = useState('');
@@ -193,6 +195,38 @@ export function QuotationsPage() {
     onError: (err: any) => { setConfirmCancel(null); toast(err.message || 'Status update failed', 'error'); },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (quoteId: string) => {
+      if (!activeBusiness) throw new Error('No active business');
+      
+      // Pehle items delete karein
+      const { error: itemsErr } = await supabase
+        .from('quotation_items')
+        .delete()
+        .eq('quotation_id', quoteId);
+      if (itemsErr) throw itemsErr;
+
+      // Fir quotation record delete karein
+      const { error: quoteErr } = await supabase
+        .from('quotations')
+        .delete()
+        .eq('id', quoteId)
+        .eq('business_id', activeBusiness.id);
+      if (quoteErr) throw quoteErr;
+
+      return quoteId;
+    },
+    onSuccess: () => {
+      invalidateAll();
+      toast('Quotation deleted successfully', 'success');
+      setConfirmDelete(null);
+    },
+    onError: (err: any) => {
+      setConfirmDelete(null);
+      toast(err?.message || 'Failed to delete quotation', 'error');
+    },
+  });
+
   const convertMutation = useMutation({
     mutationFn: async () => {
       if (!activeBusiness || !convertTarget) throw new Error('Nothing to convert');
@@ -291,7 +325,7 @@ export function QuotationsPage() {
                     <td className="px-4 py-3 font-medium text-secondary-900 dark:text-secondary-100">
                       <button
                         onClick={() => navigate(`/app/quotations/${q.id}`)}
-                        className="hover:text-primary-600 hover:underline font-semibold"
+                        className="hover:text-primary-600 hover:underline font-semibold text-left"
                       >
                         {q.quotation_number}
                       </button>
@@ -307,8 +341,8 @@ export function QuotationsPage() {
                       <span className={`badge ${statusStyles[q.status]}`}>{q.status}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1.5" title={LOCKED[q.status] ? `Terminal state (${q.status})` : undefined}>
-                        {/* View Button -> Full Page */}
+                      <div className="flex items-center justify-end gap-1.5">
+                        {/* View Button */}
                         <button
                           onClick={() => navigate(`/app/quotations/${q.id}`)}
                           className="p-1.5 rounded-md text-secondary-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
@@ -377,7 +411,7 @@ export function QuotationsPage() {
                           To SO
                         </Button>
 
-                        {/* Direct WhatsApp Action */}
+                        {/* WhatsApp Action */}
                         <Button size="sm" variant="ghost" onClick={() => shareWhatsApp(q)} title="Share on WhatsApp">
                           <MessageCircle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> WhatsApp
                         </Button>
@@ -385,6 +419,15 @@ export function QuotationsPage() {
                         <Button size="sm" variant="ghost" onClick={() => setSendTarget(q)} title="Email with PDF">
                           <Mail className="h-3 w-3" /> Email
                         </Button>
+
+                        {/* Delete Button */}
+                        <button
+                          onClick={() => setConfirmDelete(q)}
+                          className="p-1.5 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                          title="Delete Quotation"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -404,6 +447,18 @@ export function QuotationsPage() {
         />
       </div>
 
+      {/* Delete Quotation Dialog */}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && deleteMutation.mutate(confirmDelete.id)}
+        title={`Delete Quotation ${confirmDelete?.quotation_number || ''}?`}
+        message="Are you sure you want to delete this quotation? This action cannot be undone."
+        confirmText="Delete"
+        loading={deleteMutation.isPending}
+      />
+
+      {/* Cancel Quotation Dialog */}
       <ConfirmDialog
         open={!!confirmCancel}
         onClose={() => setConfirmCancel(null)}
@@ -441,7 +496,6 @@ export function QuotationsPage() {
         </div>
       </Modal>
 
-      {/* Full z-index Safe Send Dialog */}
       <div className="relative z-50">
         <SendDialog
           open={!!sendTarget}
