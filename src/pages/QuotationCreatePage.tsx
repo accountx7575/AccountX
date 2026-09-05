@@ -115,18 +115,17 @@ export function QuotationCreatePage() {
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!activeBusiness) throw new Error('No active business');
-      if (!customerId) throw new Error('Please select a customer from the dropdown');
+      if (!customerId) throw new Error('Please select a customer');
 
       const validLines = lines.filter((l) => l.product_name.trim() && l.quantity > 0);
       if (!validLines.length) throw new Error('Add at least one item');
 
-      // UUID verification in local memory - no broken SQL .or() query
       const chosenCustomer = customers?.find(
         (c) => c.id === customerId || c.name.toLowerCase() === customerId.trim().toLowerCase()
       );
 
       if (!chosenCustomer?.id) {
-        throw new Error('Please select a valid customer from the dropdown list');
+        throw new Error('Please select a valid customer from the dropdown');
       }
 
       const { data: userData } = await supabase.auth.getUser();
@@ -140,66 +139,102 @@ export function QuotationCreatePage() {
         });
         if (numberData) finalDocNumber = String(numberData);
       } catch (e) {
-        console.warn('Fallback sequence number used');
+        console.warn('Fallback document number used');
       }
 
-      const { data: quote, error } = await supabase
+      const payloadBase = {
+        business_id: activeBusiness.id,
+        customer_id: chosenCustomer.id,
+        quote_date: quoteDate,
+        subtotal: totals.subtotal,
+        discount_amount: 0,
+        taxable_amount: totals.taxableAmount,
+        cgst_amount: totals.cgst,
+        sgst_amount: totals.sgst,
+        igst_amount: totals.igst,
+        cess_amount: 0,
+        round_off: 0,
+        grand_total: totals.grandTotal,
+        status: 'draft',
+        created_by: userData?.user?.id || null,
+      };
+
+      // Try saving to 'quotations' first; fallback to 'quotes' if table name differs
+      let quoteId: string | null = null;
+      let targetTable = 'quotations';
+      let itemsTable = 'quotation_items';
+
+      let { data: quote, error } = await supabase
         .from('quotations')
         .insert({
-          business_id: activeBusiness.id,
+          ...payloadBase,
           quotation_number: finalDocNumber,
-          customer_id: chosenCustomer.id, // 100% pure UUID guaranteed
-          quote_date: quoteDate,
-          expiry_date: expiryDate ? expiryDate : null,
-          subtotal: totals.subtotal,
-          discount_amount: 0,
-          taxable_amount: totals.taxableAmount,
-          cgst_amount: totals.cgst,
-          sgst_amount: totals.sgst,
-          igst_amount: totals.igst,
-          cess_amount: 0,
-          round_off: 0,
-          grand_total: totals.grandTotal,
-          status: 'draft',
+          expiry_date: expiryDate || null,
           terms: terms.trim() || null,
-          created_by: userData?.user?.id || null,
         })
         .select('id')
-        .single();
+        .maybeSingle();
+
+      if (error && (error.code === '42P01' || error.message?.includes('404') || error.message?.includes('not found') || error.message?.includes('column'))) {
+        targetTable = 'quotes';
+        itemsTable = 'quote_items';
+        const res = await supabase
+          .from('quotes')
+          .insert({
+            ...payloadBase,
+            quote_number: finalDocNumber,
+            valid_until: expiryDate || null,
+            notes: terms.trim() || null,
+          })
+          .select('id')
+          .single();
+        quote = res.data;
+        error = res.error;
+      }
 
       if (error) throw error;
+      if (!quote?.id) throw new Error('Could not create quotation record');
+      quoteId = quote.id;
 
-      const { error: itemsError } = await supabase.from('quotation_items').insert(
-        validLines.map((l) => {
-          const quantity = Number(l.quantity) || 1;
-          const rate = Number(l.rate) || 0;
-          const taxRate = Number(l.tax_rate) || 0;
-          const taxable = roundTo2(quantity * rate);
-          const gst = calculateGstAmounts(taxable, taxRate, isInterState);
-          return {
-            business_id: activeBusiness.id,
-            quotation_id: quote.id,
-            product_id: l.product_id || null,
-            product_name: l.product_name,
-            quantity,
-            unit: l.unit || 'PCS',
-            rate,
-            tax_rate: taxRate,
-            tax_amount: Number(l.tax_amount) || gst.total_tax,
-            taxable_amount: taxable,
-            total_amount: roundTo2(taxable + gst.total_tax),
-          };
-        })
-      );
+      const itemsPayload = validLines.map((l) => {
+        const quantity = Number(l.quantity) || 1;
+        const rate = Number(l.rate) || 0;
+        const taxRate = Number(l.tax_rate) || 0;
+        const taxable = roundTo2(quantity * rate);
+        const gst = calculateGstAmounts(taxable, taxRate, isInterState);
+        return {
+          business_id: activeBusiness.id,
+          quotation_id: quoteId,
+          product_id: l.product_id || null,
+          product_name: l.product_name,
+          description: l.product_name,
+          quantity,
+          unit: l.unit || 'PCS',
+          rate,
+          tax_rate: taxRate,
+          tax_amount: Number(l.tax_amount) || gst.total_tax,
+          taxable_amount: taxable,
+          total_amount: roundTo2(taxable + gst.total_tax),
+        };
+      });
+
+      let { error: itemsError } = await supabase.from(itemsTable).insert(itemsPayload);
+      if (itemsError && targetTable === 'quotations') {
+        const alt = await supabase.from('quote_items').insert(
+          itemsPayload.map((it) => ({ ...it, quote_id: quoteId }))
+        );
+        itemsError = alt.error;
+      }
 
       if (itemsError) {
-        await supabase.from('quotations').delete().eq('id', quote.id);
+        await supabase.from(targetTable).delete().eq('id', quoteId);
         throw itemsError;
       }
-      return quote.id;
+
+      return quoteId;
     },
     onSuccess: () => {
-      ['quotations', 'dashboard-stats'].forEach((k) =>
+      ['quotations', 'quotes', 'dashboard-stats'].forEach((k) =>
         queryClient.invalidateQueries({ queryKey: [k, activeBusiness?.id] })
       );
       toast('Quotation draft saved successfully!', 'success');
