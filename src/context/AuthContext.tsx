@@ -185,6 +185,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      const newUserId = newSession?.user?.id ?? null;
+      const currentUserId = user?.id ?? null;
       setSession(newSession);
       setUser(newSession?.user ?? null);
       if (!newSession) {
@@ -197,7 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem(IMPERSONATION_STORAGE_KEY);
         localStorage.removeItem('accountx_impersonating');
         localStorage.removeItem('impersonated_tenant_id');
-      } else {
+      } else if (newUserId !== currentUserId) {
         (async () => {
           await loadBusinesses(newSession.user.id);
         })();
