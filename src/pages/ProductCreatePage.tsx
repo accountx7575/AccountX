@@ -10,12 +10,13 @@ import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { ArrowLeft, Save } from 'lucide-react';
+import { todayDateString } from '@/lib/utils';
 import type { Product } from '@/types/db';
 
 const emptyForm = {
   name: '', sku: '', barcode: '', type: 'product', hsn_sac: '', unit: 'PCS',
   purchase_price: '0', selling_price: '0', tax_rate: '0', tax_inclusive: false,
-  opening_stock: '0', minimum_stock: '0', description: '', category_id: '',
+  opening_stock: '0', current_stock: '0', minimum_stock: '0', description: '', category_id: '',
 };
 
 export function ProductCreatePage() {
@@ -52,6 +53,7 @@ export function ProductCreatePage() {
       hsn_sac: p.hsn_sac || '', unit: p.unit, purchase_price: String(p.purchase_price),
       selling_price: String(p.selling_price), tax_rate: String(p.tax_rate),
       tax_inclusive: p.tax_inclusive, opening_stock: String(p.opening_stock),
+      current_stock: String(p.current_stock ?? p.opening_stock ?? 0),
       minimum_stock: String(p.minimum_stock), description: p.description || '',
       category_id: p.category_id || '',
     });
@@ -80,14 +82,33 @@ export function ProductCreatePage() {
         is_active: true,
       };
       if (isEdit) {
-        // Update path: never touch live current_stock here — stock moves
-        // through stock movements, not the edit form.
+        // Update path: opening_stock is historical — never rewritten here.
+        // A changed Current Stock posts an atomic adjustment movement so the
+        // ledger, the product row, and the Products table stay in sync.
+        const existing = existingQuery.data;
+        if (!existing) throw new Error('Product data is still loading. Please try again.');
         const { error } = await supabase
           .from('products')
-          .update(base)
+          .update({ ...base, opening_stock: existing.opening_stock })
           .eq('business_id', activeBusiness.id)
           .eq('id', editId!);
         if (error) throw error;
+        if (form.type === 'product') {
+          const oldStock = Number(existing.current_stock ?? 0);
+          const newStock = parseFloat(form.current_stock) || 0;
+          const delta = newStock - oldStock;
+          if (delta !== 0) {
+            const { error: adjError } = await supabase.rpc('post_stock_adjustment_atomic', {
+              p_business_id: activeBusiness.id,
+              p_product_id: editId!,
+              p_type: delta > 0 ? 'adjustment_in' : 'adjustment_out',
+              p_quantity: Math.abs(delta),
+              p_notes: 'Manual correction from Edit Product',
+              p_date: todayDateString(),
+            });
+            if (adjError) throw adjError;
+          }
+        }
         return;
       }
       const payload = { ...base, current_stock: parseFloat(form.opening_stock) || 0 };
@@ -187,11 +208,32 @@ export function ProductCreatePage() {
         </FormSection>
 
         {form.type === 'product' && (
-          <FormSection title="Stock" description="Opening quantity is posted as an opening stock movement on save">
+          <FormSection
+            title="Stock"
+            description={
+              isEdit
+                ? 'Changing Current Stock posts an adjustment movement — the Products table updates on save'
+                : 'Opening quantity is posted as an opening stock movement on save'
+            }
+          >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Opening Stock">
-                <Input type="number" value={form.opening_stock} onChange={(e) => setForm({ ...form, opening_stock: e.target.value })} placeholder="0" />
-              </FormField>
+              {isEdit ? (
+                <>
+                  <FormField label="Current Stock" required>
+                    <Input type="number" value={form.current_stock} onChange={(e) => setForm({ ...form, current_stock: e.target.value })} placeholder="0" />
+                  </FormField>
+                  <div>
+                    <FormField label="Opening Stock">
+                      <Input type="number" value={form.opening_stock} disabled aria-readonly="true" />
+                    </FormField>
+                    <p className="mt-1 text-xs text-secondary-400">Historical — locked to protect accounting.</p>
+                  </div>
+                </>
+              ) : (
+                <FormField label="Opening Stock">
+                  <Input type="number" value={form.opening_stock} onChange={(e) => setForm({ ...form, opening_stock: e.target.value })} placeholder="0" />
+                </FormField>
+              )}
               <FormField label="Minimum Stock">
                 <Input type="number" value={form.minimum_stock} onChange={(e) => setForm({ ...form, minimum_stock: e.target.value })} placeholder="5" />
               </FormField>
