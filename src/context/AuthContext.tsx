@@ -7,6 +7,7 @@ type AuthContextValue = {
   session: Session | null;
   user: User | null;
   loading: boolean;
+  businessesReady: boolean;
   businesses: Business[];
   activeBusiness: Business | null;
   activeRole: string | null;
@@ -27,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [businessesReady, setBusinessesReady] = useState(false);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [activeBusiness, setActiveBusinessState] = useState<Business | null>(null);
   const [activeRole, setActiveRole] = useState<string | null>(null);
@@ -35,6 +37,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<BusinessMember[]>([]);
 
   const loadBusinesses = async (userId: string) => {
+    setBusinessesReady(false);
+    try {
+      await loadBusinessesInner(userId);
+    } finally {
+      setBusinessesReady(true);
+    }
+  };
+
+  const loadBusinessesInner = async (userId: string) => {
     // Check for impersonation first
     const storedImpersonationId = localStorage.getItem(IMPERSONATION_STORAGE_KEY);
     if (storedImpersonationId) {
@@ -156,6 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('accountx_impersonating');
     localStorage.removeItem('impersonated_tenant_id');
     setBusinesses([]);
+    setBusinessesReady(false);
     setActiveBusinessState(null);
     setActiveRole(null);
     setImpersonatingBusinessId(null);
@@ -177,6 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(newSession?.user ?? null);
       if (!newSession) {
         setBusinesses([]);
+        setBusinessesReady(false);
         setActiveBusinessState(null);
         setActiveRole(null);
         localStorage.removeItem(STORAGE_KEY);
@@ -202,6 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         user,
         loading,
+        businessesReady,
         businesses,
         activeBusiness,
         activeRole,

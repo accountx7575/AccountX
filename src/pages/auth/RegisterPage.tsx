@@ -1,13 +1,25 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { VaultPasswordMeter } from '@/components/auth/VaultPasswordMeter';
+import { useRunawayButton } from '@/hooks/useRunawayButton';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Input, FormField } from '@/components/ui/Input';
 import { AuthLayout } from '@/components/auth/AuthLayout';
+import { InteractiveLogin } from '@/components/auth/InteractiveLogin';
+import { VersoAuthCard, type VersoMode } from '@/components/auth/VersoAuthCard';
+import type { AtlasItem } from '@/components/landing/AtlasTeamCarousel';
 import { useToast } from '@/context/ToastContext';
-import { User, Mail, Phone, Lock, Eye, EyeOff, CheckCircle2, MailCheck } from 'lucide-react';
+import { User, Mail, Phone, Lock, Eye, EyeOff, CheckCircle2, MailCheck, LogIn, Sparkles, Building2, ShieldCheck, Download } from 'lucide-react';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const REGISTER_SHOWCASE: AtlasItem[] = [
+  { icon: Sparkles, title: 'Zero Learning Curve', description: 'No accounting expertise needed', accent: 'from-indigo-500 to-violet-600' },
+  { icon: Building2, title: 'Multi-Business', description: 'Multi-business support from day one', accent: 'from-emerald-500 to-teal-600' },
+  { icon: ShieldCheck, title: 'GST-First', description: 'GST-compliant invoices by default', accent: 'from-amber-500 to-orange-600' },
+  { icon: Download, title: 'Own Your Data', description: 'Your data stays yours — export anytime', accent: 'from-sky-500 to-blue-600' },
+];
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -18,6 +30,24 @@ export function RegisterPage() {
   const [confirmPending, setConfirmPending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const liveValid = useMemo(
+    () =>
+      form.name.trim().length > 0 &&
+      EMAIL_REGEX.test(form.email.trim()) &&
+      form.phone.trim().length > 0 &&
+      form.password.length >= 6,
+    [form]
+  );
+  const runaway = useRunawayButton({ active: !liveValid });
+  // Phyllis interactive layer: Verso flip side, Den shy/celebrate states.
+  const [verso, setVerso] = useState<VersoMode>('signup');
+  const [pwFocused, setPwFocused] = useState(false);
+  const [celebrating, setCelebrating] = useState(false);
+  const celebrateTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (celebrateTimer.current) window.clearTimeout(celebrateTimer.current);
+  }, []);
 
   const clearError = (field: string) => {
     setErrors((prev) => {
@@ -52,12 +82,17 @@ export function RegisterPage() {
         options: { data: { name: form.name.trim(), phone: form.phone.trim() } },
       });
       if (error) throw error;
-      if (data.user && data.session) {
-        toast('Account created! Set up your business to get started.', 'success');
-        navigate('/setup-business');
-      } else if (data.user) {
-        setConfirmPending(true);
-      }
+      // Let Den celebrate briefly before moving on.
+      setCelebrating(true);
+      const sessionUser = data.user && data.session;
+      celebrateTimer.current = window.setTimeout(() => {
+        if (sessionUser) {
+          toast('Account created! Set up your business to get started.', 'success');
+          navigate('/setup-business');
+        } else if (data.user) {
+          setConfirmPending(true);
+        }
+      }, 650);
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : 'Registration failed. Please try again.', 'error');
     } finally {
@@ -98,7 +133,14 @@ export function RegisterPage() {
         'GST-compliant invoices by default',
         'Your data stays yours — export anytime',
       ]}
+      featureShowcase={REGISTER_SHOWCASE}
     >
+      <InteractiveLogin shy={pwFocused && !showPassword} celebrating={celebrating} className="-mt-2 mb-1" />
+      <VersoAuthCard
+        mode={verso}
+        onModeChange={setVerso}
+        signUp={(
+          <>
       <h2 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">Create your account</h2>
       <p className="mt-1.5 text-sm text-secondary-500 dark:text-secondary-400">Get started with AccountX in minutes</p>
 
@@ -166,6 +208,8 @@ export function RegisterPage() {
               placeholder="At least 6 characters"
               className="pl-10 pr-10"
               autoComplete="new-password"
+              onFocus={() => setPwFocused(true)}
+              onBlur={() => setPwFocused(false)}
             />
             <button
               type="button"
@@ -178,7 +222,9 @@ export function RegisterPage() {
           </div>
         </FormField>
 
-        <Button type="submit" loading={loading} className="w-full" size="lg">
+        {form.password.length > 0 && <VaultPasswordMeter password={form.password} />}
+
+        <Button ref={runaway.buttonRef} type="submit" loading={loading} className="w-full" size="lg" style={runaway.style}>
           Create Account
         </Button>
       </form>
@@ -189,6 +235,29 @@ export function RegisterPage() {
           Sign in
         </Link>
       </p>
+          </>
+        )}
+        signIn={(
+          <div className="py-2 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-glow-cash">
+              <LogIn className="h-6 w-6 text-white" aria-hidden="true" />
+            </div>
+            <h2 className="mt-4 text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">Welcome back</h2>
+            <p className="mt-1.5 text-sm text-secondary-500 dark:text-secondary-400">Flip back anytime — your ledger is right where you left it.</p>
+            <ul className="mt-5 space-y-2.5 text-left">
+              {['GST-ready invoicing in one workspace', 'Real-time inventory & ledger sync', 'Tally-compatible exports'].map((f) => (
+                <li key={f} className="flex items-center gap-2.5 text-sm text-secondary-600 dark:text-secondary-300">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" aria-hidden="true" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <Button className="mt-6 w-full" size="lg" onClick={() => navigate('/login')}>
+              Back to sign in
+            </Button>
+          </div>
+        )}
+      />
     </AuthLayout>
   );
 }

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { X } from 'lucide-react';
+import {
+  X, LayoutDashboard, FileText, ShoppingCart, Boxes, BarChart3, Settings,
+} from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { ArcRadioNav, type ArcNavItem } from './ArcRadioNav';
 import { QuickActions } from '@/components/QuickActions';
 import { useAuth } from '@/context/AuthContext';
 import { useAdminTelemetry } from '@/hooks/useAdminTelemetry';
@@ -30,6 +33,16 @@ const announcementStyles: Record<string, string> = {
   critical: 'bg-red-50 text-red-900 border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900',
   maintenance: 'bg-red-50 text-red-900 border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900',
 };
+
+// Core destinations for the floating Arc radio dock (main app navigation).
+const ARC_DOCK_ITEMS: ArcNavItem[] = [
+  { to: '/app', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/app/sales-invoices', label: 'Sales', icon: FileText },
+  { to: '/app/purchase-bills', label: 'Purchases', icon: ShoppingCart },
+  { to: '/app/stock', label: 'Stock', icon: Boxes },
+  { to: '/app/reports', label: 'Reports', icon: BarChart3 },
+  { to: '/app/settings', label: 'Settings', icon: Settings },
+];
 
 export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
@@ -190,7 +203,7 @@ export function AppLayout() {
             </button>
           </div>
         )}
-        <main className="flex-1" id="page-mount">
+        <main className="flex-1 pb-24" id="page-mount">
           {/* Centered content container (~1440px) with page transition mount point */}
           <div className="mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-8 py-4 lg:py-6">
             <div key={location.pathname} className="animate-fade-up motion-reduce:animate-none">
@@ -198,6 +211,10 @@ export function AppLayout() {
             </div>
           </div>
         </main>
+      </div>
+      {/* Floating Arc radio dock: traveling light ring across core routes */}
+      <div className="pointer-events-none fixed bottom-4 left-1/2 z-40 -translate-x-1/2 pb-[env(safe-area-inset-bottom)]">
+        <ArcRadioNav items={ARC_DOCK_ITEMS} ariaLabel="Quick sections" />
       </div>
       <QuickActions open={quickOpen} onClose={() => setQuickOpen(false)} />
     </div>

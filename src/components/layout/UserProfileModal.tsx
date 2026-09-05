@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, KeyRound, Loader2, X } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
+import { VaultPasswordMeter } from '@/components/auth/VaultPasswordMeter';
 import { Button } from '@/components/ui/Button';
 import { Input, FormField } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
@@ -172,6 +173,7 @@ export function UserProfileModal({ open, onClose }: { open: boolean; onClose: ()
               <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
             </FormField>
           </div>
+          {newPassword.length > 0 && <VaultPasswordMeter password={newPassword} />}
           <Button onClick={handleSavePassword} disabled={savingPassword} size="sm" variant="secondary">
             {savingPassword && <Loader2 className="h-4 w-4 animate-spin" />} Update Password
           </Button>

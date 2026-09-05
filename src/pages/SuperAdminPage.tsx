@@ -8,6 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useAdminTelemetry } from '@/hooks/useAdminTelemetry';
 import { AuditTrailTable } from '@/components/admin/AuditTrailTable';
 import { DisasterRecoveryStudio } from '@/components/admin/DisasterRecoveryStudio';
+import { LiquidGlassNav } from '@/components/layout/LiquidGlassNav';
 import { supabase } from '@/lib/supabase';
 import {
   Building2, Users, LogOut, ShieldCheck, Search, CheckCircle, Ban, RefreshCw,
@@ -641,19 +642,13 @@ export function SuperAdminPage() {
           ))}
         </div>
 
-        {/* Tabs */}
-        <div className="bg-white dark:bg-zinc-900 rounded-xl p-1.5 shadow-sm border border-slate-200 dark:border-zinc-800 flex gap-1 flex-wrap">
-          {tabs.map(t => (
-            <button key={t.key} onClick={() => setActiveTab(t.key)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2 whitespace-nowrap ${
-                activeTab === t.key
-                  ? 'bg-slate-900 text-white dark:bg-white dark:text-zinc-900'
-                  : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800'
-              }`}>
-              {t.icon}{t.label}
-            </button>
-          ))}
-        </div>
+        {/* Tabs: Opal liquid-glass dock with spring indicator */}
+        <LiquidGlassNav
+          items={tabs}
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          ariaLabel="Super admin sections"
+        />
 
         {/* TAB 1: Tenants */}
         {activeTab === 'tenants' && (

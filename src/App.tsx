@@ -68,6 +68,7 @@ const TallyMappingPage = lazy(() => import('@/pages/tally/TallyMappingPage').the
 const TallyHistoryPage = lazy(() => import('@/pages/tally/TallyHistoryPage').then((m) => ({ default: m.TallyHistoryPage })));
 const CommunicationsPage = lazy(() => import('@/pages/CommunicationsPage').then((m) => ({ default: m.CommunicationsPage })));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const SleuthNotFoundPage = lazy(() => import('@/pages/SleuthNotFoundPage').then((m) => ({ default: m.SleuthNotFoundPage })));
 import type { ReactNode } from 'react';
 
 const queryClient = new QueryClient({
@@ -88,10 +89,13 @@ function RouteFallback() {
 }
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { session, loading, businesses, user } = useAuth();
+  const { session, loading, businessesReady, businesses, user } = useAuth();
   const location = useLocation();
 
-  if (loading) {
+  // Wait until business membership is resolved: businesses === [] is
+  // ambiguous (still loading vs genuinely none) and deciding too early is
+  // what trapped existing users in the /setup-business onboarding loop.
+  if (loading || (session && !businessesReady)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-secondary-50 dark:bg-secondary-950">
         <div className="animate-pulse flex flex-col items-center gap-4">
@@ -121,6 +125,12 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   const ownerEmail = 'acc.x7575@gmail.com';
   if (user?.email === ownerEmail && !supportMode) {
     return <Navigate to="/super-admin" state={{ from: location }} replace />;
+  }
+
+  // Already-configured users must never sit on the onboarding page: bounce
+  // them straight to the dashboard (unless in super-admin support mode).
+  if (location.pathname === '/setup-business' && businesses.length > 0 && !supportMode) {
+    return <Navigate to="/app" replace />;
   }
 
   if (businesses.length === 0 && !supportMode && location.pathname !== '/setup-business' && !location.pathname.startsWith('/super-admin')) {
@@ -153,6 +163,7 @@ function AppRoutes() {
         <Route path="suppliers/new" element={<SupplierCreatePage />} />
         <Route path="products" element={<ProductsPage />} />
         <Route path="products/new" element={<ProductCreatePage />} />
+        <Route path="products/:id/edit" element={<ProductCreatePage />} />
         <Route path="sales-invoices" element={<SalesInvoicesPage />} />
         <Route path="sales-invoices/new" element={<SalesInvoiceCreatePage />} />
         <Route path="sales-invoices/:id" element={<SalesInvoiceViewPage />} />
@@ -202,9 +213,9 @@ function AppRoutes() {
             <Route path="receivables" element={<ReceivablesPage />} />
             <Route path="payables" element={<PayablesPage />} />
             <Route path="cash-bank" element={<CashBankPage />} />
-        <Route path="*" element={<Navigate to="/app" replace />} />
+        <Route path="*" element={<SleuthNotFoundPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<SleuthNotFoundPage />} />
     </Routes>
   );
 }

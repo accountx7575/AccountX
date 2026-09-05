@@ -2,6 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { resolvePostLoginDestination } from '@/lib/onboardingRoute';
 
 const REMEMBERED_EMAIL_KEY = 'accountx_remembered_email';
 
@@ -93,7 +94,7 @@ export function LoginPage() {
           options: { data: { full_name: fullName } },
         });
         if (error) throw error;
-        if (data.session) navigate('/app');
+        if (data.session) navigate(await resolvePostLoginDestination(data.user));
         else setErrorMsg('Registration successful! Check your email.');
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -107,9 +108,7 @@ export function LoginPage() {
           /* storage unavailable — login still succeeds */
         }
 
-        const isSuperAdmin = data.user?.app_metadata?.is_super_admin;
-        if (isSuperAdmin || email === 'acc.x7575@gmail.com') navigate('/super-admin');
-        else navigate('/app');
+        navigate(await resolvePostLoginDestination(data.user));
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Authentication failed');

@@ -295,3 +295,16 @@
     @apply inline-block rounded-md border border-secondary-200 dark:border-secondary-700 bg-secondary-50 dark:bg-secondary-800 shadow-[inset_0_-1px_0_rgba(24,24,27,0.08)] px-1.5 py-0.5 font-mono text-[10px] leading-none text-secondary-500 dark:text-secondary-300;
   }
 }
+
+/* Vault dial: spins then settles into lock (Tier 4). Respects reduced motion. */
+@keyframes vault-settle {
+  0% { transform: rotate(-180deg) scale(0.85); }
+  60% { transform: rotate(24deg) scale(1.06); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+.vault-dial-settle {
+  animation: vault-settle 0.9s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vault-dial-settle { animation: none; }
+}
