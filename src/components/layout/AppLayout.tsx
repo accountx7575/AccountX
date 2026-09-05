@@ -1,13 +1,34 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { X } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { QuickActions } from '@/components/QuickActions';
 import { useAuth } from '@/context/AuthContext';
+import { usePlatformAnnouncement } from '@/hooks/usePlatformAnnouncement';
 import { supabase } from '@/lib/supabase';
 
-const SUPER_ADMIN_IMPERSONATING_KEY = 'super_admin_impersonating';
+// Legacy keys (previous implementation) + Oscar spec keys. Both schemes are
+// honored so either entry point triggers support mode for super-admins only.
+const LEGACY_IMPERSONATING_KEY = 'super_admin_impersonating';
+const OSCAR_IMPERSONATING_KEY = 'accountx_impersonating';
 const ACTIVE_BUSINESS_KEY = 'accountx_active_business_id';
+const OSCAR_TENANT_KEY = 'impersonated_tenant_id';
+const LEGACY_TENANT_KEY = 'accountx_impersonating_business_id';
+
+function clearImpersonationFlags() {
+  localStorage.removeItem(LEGACY_IMPERSONATING_KEY);
+  localStorage.removeItem(OSCAR_IMPERSONATING_KEY);
+  localStorage.removeItem(OSCAR_TENANT_KEY);
+  localStorage.removeItem(LEGACY_TENANT_KEY);
+}
+
+const announcementStyles: Record<string, string> = {
+  info: 'bg-blue-50 text-blue-900 border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900',
+  warning: 'bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900',
+  critical: 'bg-red-50 text-red-900 border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900',
+  maintenance: 'bg-red-50 text-red-900 border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900',
+};
 
 export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
@@ -18,17 +39,21 @@ export function AppLayout() {
   const { user, activeBusiness } = useAuth();
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [impersonatedName, setImpersonatedName] = useState<string | null>(null);
+  const { announcement, dismiss: dismissAnnouncement } = usePlatformAnnouncement();
 
   const isSuperAdmin =
     Boolean(user?.app_metadata?.is_super_admin) ||
     Boolean(user?.user_metadata?.is_super_admin);
 
   useEffect(() => {
-    const flag = localStorage.getItem(SUPER_ADMIN_IMPERSONATING_KEY) === 'true';
-    // Regular users must never see the banner: gate strictly on super-admin.
+    const flag =
+      localStorage.getItem(LEGACY_IMPERSONATING_KEY) === 'true' ||
+      localStorage.getItem(OSCAR_IMPERSONATING_KEY) === 'true';
+    // Regular users must NEVER see or spoof this banner: gate strictly on
+    // super-admin. Scrub the flags if a non-admin somehow has them set.
     if (!flag || !isSuperAdmin) {
       if (flag && !isSuperAdmin) {
-        localStorage.removeItem(SUPER_ADMIN_IMPERSONATING_KEY);
+        clearImpersonationFlags();
       }
       setIsImpersonating(false);
       setImpersonatedName(null);
@@ -47,7 +72,10 @@ export function AppLayout() {
       return;
     }
 
-    const storedId = localStorage.getItem(ACTIVE_BUSINESS_KEY);
+    const storedId =
+      localStorage.getItem(OSCAR_TENANT_KEY) ||
+      localStorage.getItem(ACTIVE_BUSINESS_KEY) ||
+      localStorage.getItem(LEGACY_TENANT_KEY);
     if (!storedId) {
       setImpersonatedName('Unknown Business');
       return;
@@ -69,13 +97,15 @@ export function AppLayout() {
   }, [isSuperAdmin, activeBusiness]);
 
   const handleExitToControlCenter = () => {
-    localStorage.removeItem(SUPER_ADMIN_IMPERSONATING_KEY);
+    clearImpersonationFlags();
     setIsImpersonating(false);
     setImpersonatedName(null);
     navigate('/super-admin');
   };
 
   const showBanner = isImpersonating && isSuperAdmin;
+  const announcementStyle =
+    announcementStyles[announcement?.severity ?? 'info'] ?? announcementStyles.info;
 
   return (
     <div className="flex min-h-screen bg-secondary-50 dark:bg-secondary-950">
@@ -89,7 +119,9 @@ export function AppLayout() {
         {showBanner && (
           <div className="sticky top-0 z-50 w-full bg-amber-400 text-amber-950 px-4 sm:px-6 py-2 flex items-center justify-center gap-2 text-sm font-medium">
             <span>
-              Viewing as {impersonatedName ?? 'Unknown Business'} (Super Admin Mode)
+              ⚠️ SUPER ADMIN SUPPORT MODE: Viewing dashboard of{' '}
+              {impersonatedName ?? 'Unknown Business'}. Actions taken here will
+              affect tenant live data.
             </span>
             <span aria-hidden="true">—</span>
             <button
@@ -97,7 +129,7 @@ export function AppLayout() {
               onClick={handleExitToControlCenter}
               className="underline underline-offset-2 hover:text-amber-800 font-semibold"
             >
-              Exit to Control Center
+              Exit to Admin Control Center
             </button>
           </div>
         )}
@@ -105,6 +137,25 @@ export function AppLayout() {
           onMobileMenu={() => setMobileOpen(true)}
           onQuickAction={() => setQuickOpen(true)}
         />
+        {announcement && (
+          <div
+            role="status"
+            className={`mx-4 sm:mx-6 lg:mx-8 mt-3 rounded-lg border px-4 py-2.5 flex items-start gap-3 text-sm ${announcementStyle}`}
+          >
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold">{announcement.title}</p>
+              <p className="mt-0.5 break-words">{announcement.message}</p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissAnnouncement}
+              aria-label="Dismiss announcement"
+              className="rounded-md p-1 hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
         <main className="flex-1" id="page-mount">
           {/* Centered content container (~1440px) with page transition mount point */}
           <div className="mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-8 py-4 lg:py-6">

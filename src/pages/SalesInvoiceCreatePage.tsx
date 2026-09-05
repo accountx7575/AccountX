@@ -13,6 +13,8 @@ import { Plus, Trash2, Search, Save, ArrowLeft, Printer, FileText, FileSpreadshe
 import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
 import { computeDocLine } from '@/lib/payloads';
 import { InvoiceSheet, type InvoiceWithCustomer } from '@/components/invoice/InvoiceSheet';
+import { Modal } from '@/components/ui/Modal';
+import { useSubscriptionQuota } from '@/hooks/useSubscriptionQuota';
 import { printInvoice, exportPdfFromElement, exportInvoiceExcel } from '@/lib/invoiceExport';
 import type { Customer, Product, SalesInvoiceItem } from '@/types/db';
 
@@ -56,6 +58,18 @@ export function SalesInvoiceCreatePage() {
   const [productSearch, setProductSearch] = useState('');
   const [searchIdx, setSearchIdx] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [quotaModalOpen, setQuotaModalOpen] = useState(false);
+  const quota = useSubscriptionQuota(activeBusiness?.id);
+
+  const handleGuardedSave = (status: 'issued' | 'draft') => {
+    // Free-tier quota sentinel: show the upgrade modal instead of letting the
+    // save fail with an unhandled database error.
+    if (quota.exceeded) {
+      setQuotaModalOpen(true);
+      return;
+    }
+    saveMutation.mutate(status);
+  };
 
   const productNameRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -604,11 +618,11 @@ export function SalesInvoiceCreatePage() {
             >
               <FileSpreadsheet className="h-4 w-4" /> Export to Excel
             </Button>
-            <Button variant="secondary" className="h-10" onClick={() => saveMutation.mutate('draft')} loading={saving}>
+            <Button variant="secondary" className="h-10" onClick={() => handleGuardedSave('draft')} loading={saving}>
               <Save className="h-4 w-4" /> Save as draft
             </Button>
             <button
-              onClick={() => saveMutation.mutate('issued')}
+              onClick={() => handleGuardedSave('issued')}
               disabled={saving}
               className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 h-10 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -617,6 +631,26 @@ export function SalesInvoiceCreatePage() {
           </div>
         </div>
       </div>
+      <Modal
+        open={quotaModalOpen}
+        onClose={() => setQuotaModalOpen(false)}
+        title="Monthly invoice limit reached"
+        size="sm"
+      >
+        <p className="text-sm text-secondary-600 dark:text-secondary-300">
+          Your Free plan allows {quota.limit} invoices per month. You have used{' '}
+          {quota.used} this month. Upgrade your subscription to keep creating
+          invoices.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setQuotaModalOpen(false)}>
+            Close
+          </Button>
+          <Button onClick={() => { setQuotaModalOpen(false); navigate('/app/settings'); }}>
+            Upgrade plan
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
