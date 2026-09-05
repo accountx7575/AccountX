@@ -10,9 +10,25 @@ import { DatePicker } from '@/components/common/DatePicker';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { ArrowLeft, Save, X } from 'lucide-react';
-import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
+import { formatCurrency, roundTo2 } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
 import type { Customer, Product, Quotation, QuotationItem } from '@/types/db';
+
+function getLocalTodayDate(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getLocalNowTime(): string {
+  return new Date().toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
 
 type LineItem = {
   product_id: string | null;
@@ -47,7 +63,8 @@ export function QuotationCreatePage() {
   const isEdit = Boolean(editId);
 
   const [customerId, setCustomerId] = useState('');
-  const [quoteDate, setQuoteDate] = useState(todayDateString());
+  const [quoteDate, setQuoteDate] = useState(getLocalTodayDate());
+  const [quoteTime, setQuoteTime] = useState(getLocalNowTime());
   const [expiryDate, setExpiryDate] = useState('');
   const [terms, setTerms] = useState('');
   const [lines, setLines] = useState<LineItem[]>([{ ...emptyLine }]);
@@ -81,7 +98,6 @@ export function QuotationCreatePage() {
     enabled: !!activeBusiness,
   });
 
-  // Edit Mode: Load existing quotation and items
   const { data: existingQuote } = useQuery({
     queryKey: ['quotation', activeBusiness?.id, editId],
     queryFn: async () => {
@@ -110,6 +126,15 @@ export function QuotationCreatePage() {
     const { quote, items } = existingQuote;
     setCustomerId(quote.customer_id);
     setQuoteDate(quote.quote_date);
+    if (quote.created_at) {
+      setQuoteTime(
+        new Date(quote.created_at).toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        })
+      );
+    }
     setExpiryDate(quote.expiry_date || '');
     setTerms(quote.terms || quote.notes || '');
 
@@ -141,7 +166,10 @@ export function QuotationCreatePage() {
   };
 
   const totals = useMemo(() => {
-    let taxableAmount = 0, cgst = 0, sgst = 0, igst = 0;
+    let taxableAmount = 0,
+      cgst = 0,
+      sgst = 0,
+      igst = 0;
     for (const l of lines) {
       if (!l.product_name.trim() || l.quantity <= 0) continue;
       const taxable = roundTo2(l.quantity * l.rate);
@@ -180,7 +208,6 @@ export function QuotationCreatePage() {
       let targetQuoteId = editId;
 
       if (isEdit && targetQuoteId) {
-        // Update existing quotation header
         const { error: updateErr } = await supabase
           .from('quotations')
           .update({
@@ -201,10 +228,8 @@ export function QuotationCreatePage() {
 
         if (updateErr) throw updateErr;
 
-        // Refresh line items
         await supabase.from('quotation_items').delete().eq('quotation_id', targetQuoteId);
       } else {
-        // Insert new quotation
         let docNumber = `QT-${Date.now().toString().slice(-6)}`;
         try {
           const { data: generated } = await supabase.rpc('next_document_number', {
@@ -246,7 +271,6 @@ export function QuotationCreatePage() {
         targetQuoteId = newQuote.id;
       }
 
-      // Insert line items
       const itemsRecord = validLines.map((l) => {
         const quantity = Number(l.quantity) || 1;
         const rate = Number(l.rate) || 0;
@@ -273,8 +297,8 @@ export function QuotationCreatePage() {
       return targetQuoteId;
     },
     onSuccess: () => {
-      ['quotations', 'dashboard-stats'].forEach((k) =>
-        queryClient.invalidateQueries({ queryKey: [k, activeBusiness?.id] })
+      ['quotations-data', 'quotations', 'dashboard-stats'].forEach((k) =>
+        queryClient.invalidateQueries({ queryKey: [k] })
       );
       toast(isEdit ? 'Quotation updated successfully!' : 'Quotation draft saved successfully!', 'success');
       navigate('/app/quotations');
@@ -299,8 +323,8 @@ export function QuotationCreatePage() {
 
       <div className="card p-6">
         <FormSection title="Party & Dates">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <FormField label="Customer" required>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <FormField label="Customer" required className="sm:col-span-2">
               <select
                 className="input"
                 value={customerId}
@@ -317,7 +341,16 @@ export function QuotationCreatePage() {
             <FormField label="Quote Date" required>
               <DatePicker value={quoteDate} onChange={setQuoteDate} />
             </FormField>
-            <FormField label="Valid Until">
+            <FormField label="Time">
+              <Input
+                type="text"
+                value={quoteTime}
+                onChange={(e) => setQuoteTime(e.target.value)}
+                placeholder="12:00 PM"
+                className="figure"
+              />
+            </FormField>
+            <FormField label="Valid Until" className="sm:col-span-2">
               <DatePicker value={expiryDate} onChange={setExpiryDate} />
             </FormField>
           </div>
@@ -419,7 +452,9 @@ export function QuotationCreatePage() {
                   </FormField>
                   <button
                     type="button"
-                    onClick={() => setLines((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)))}
+                    onClick={() =>
+                      setLines((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)))
+                    }
                     className="mt-6 p-2 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
                     title="Remove line"
                   >

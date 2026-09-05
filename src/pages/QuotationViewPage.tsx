@@ -80,7 +80,7 @@ export function QuotationViewPage() {
   const items = data?.items || [];
 
   const invalidateAll = () => {
-    ['quotations', 'quotation', 'dashboard-stats'].forEach((k) =>
+    ['quotations', 'quotations-data', 'quotation', 'dashboard-stats'].forEach((k) =>
       queryClient.invalidateQueries({ queryKey: [k] })
     );
   };
@@ -103,14 +103,14 @@ export function QuotationViewPage() {
   const convertMutation = useMutation({
     mutationFn: async () => {
       if (!activeBusiness || !id) return;
-      const { data, error } = await supabase.rpc('convert_quotation_to_invoice', {
+      const { data: cData, error } = await supabase.rpc('convert_quotation_to_invoice', {
         p_business_id: activeBusiness.id,
         p_quotation_id: id,
         p_invoice_date: convertDate,
         p_due_date: convertDue || null,
       });
       if (error) throw error;
-      return data;
+      return cData;
     },
     onSuccess: (d: any) => {
       invalidateAll();
@@ -125,12 +125,12 @@ export function QuotationViewPage() {
   const convertSoMutation = useMutation({
     mutationFn: async () => {
       if (!activeBusiness || !id) return;
-      const { data, error } = await supabase.rpc('convert_quotation_to_sales_order', {
+      const { data: sData, error } = await supabase.rpc('convert_quotation_to_sales_order', {
         p_quotation_id: id,
         p_order_date: convertDate,
       });
       if (error) throw error;
-      return data;
+      return sData;
     },
     onSuccess: (d: any) => {
       invalidateAll();
@@ -241,7 +241,6 @@ export function QuotationViewPage() {
         }
       />
 
-      {/* Main Document Preview Card */}
       <div className="card p-6 sm:p-8 space-y-6 border border-secondary-200 dark:border-secondary-800 shadow-sm">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-secondary-200 dark:border-secondary-800">
           <div>
@@ -284,7 +283,6 @@ export function QuotationViewPage() {
           </div>
         </div>
 
-        {/* Customer & Quote Metadata */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 p-4 rounded-xl bg-secondary-50/80 dark:bg-secondary-900/50">
           <div>
             <p className="text-xs font-medium text-secondary-400">Customer</p>
@@ -293,8 +291,17 @@ export function QuotationViewPage() {
             {quote.customer?.phone && <p className="text-xs text-secondary-500">{quote.customer.phone}</p>}
           </div>
           <div>
-            <p className="text-xs font-medium text-secondary-400">Quote Date</p>
+            <p className="text-xs font-medium text-secondary-400">Quote Date & Time</p>
             <p className="text-base font-semibold text-secondary-900 dark:text-secondary-100 mt-0.5">{formatDate(quote.quote_date)}</p>
+            <p className="text-xs text-secondary-500">
+              {quote.created_at
+                ? new Date(quote.created_at).toLocaleTimeString('en-IN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true,
+                  })
+                : ''}
+            </p>
           </div>
           <div>
             <p className="text-xs font-medium text-secondary-400">Valid Until</p>
@@ -302,7 +309,6 @@ export function QuotationViewPage() {
           </div>
         </div>
 
-        {/* Items Table */}
         <div className="border border-secondary-200 dark:border-secondary-800 rounded-xl overflow-hidden">
           <table className="w-full text-left text-sm">
             <thead className="bg-secondary-100/70 dark:bg-secondary-800/60 text-secondary-600 dark:text-secondary-300 text-xs uppercase tracking-wider font-semibold">
@@ -328,7 +334,6 @@ export function QuotationViewPage() {
           </table>
         </div>
 
-        {/* Notes & Totals */}
         <div className="flex flex-col sm:flex-row justify-between gap-6 pt-2">
           <div className="flex-1 text-sm space-y-3">
             {quote.terms && (
@@ -405,62 +410,64 @@ export function QuotationViewPage() {
         </div>
       </Modal>
 
-      <SendDialog
-        open={sendOpen}
-        onClose={() => setSendOpen(false)}
-        contextLabel={`Quotation ${quote.quotation_number}`}
-        docType="quotation"
-        docId={quote.id}
-        docNumber={quote.quotation_number}
-        templateKey="quotation_sent"
-        templateVariables={{
-          customer_name: quote.customer?.name || '',
-          quotation_number: quote.quotation_number,
-          business_name: activeBusiness?.name || '',
-          amount: formatCurrency(Number(quote.grand_total || 0), activeBusiness?.currency_symbol),
-          expiry_date: quote.expiry_date ? formatDate(quote.expiry_date) : '—',
-        }}
-        defaultSubject={`Quotation ${quote.quotation_number} from ${activeBusiness?.name || 'us'}`}
-        defaultMessage={`Dear ${quote.customer?.name || 'customer'}, please find attached quotation ${quote.quotation_number} totalling ${formatCurrency(Number(quote.grand_total || 0), activeBusiness?.currency_symbol)}.`}
-        recipients={[
-          {
-            label: quote.customer?.name || 'Customer on record',
-            email: quote.customer?.email,
-            phone: quote.customer?.phone,
-          },
-        ]}
-        attachments={[
-          {
-            id: 'quotation-pdf',
-            label: 'Quotation PDF',
-            filename: `${quote.quotation_number}.pdf`,
-            build: async () => {
-              if (!activeBusiness) throw new Error('Business unavailable');
-              return renderDocSheetToPdfBlob(activeBusiness, {
-                docTitle: 'QUOTATION',
-                docNumber: quote.quotation_number,
-                dateLabel: 'Quote Date',
-                dateValue: formatDate(quote.quote_date),
-                expiryLabel: 'Valid Until',
-                expiryValue: quote.expiry_date,
-                partyLabel: 'Customer',
-                partyName: quote.customer?.name || '—',
-                status: quote.status,
-                items,
-                subtotal: Number(quote.subtotal),
-                taxableAmount: Number(quote.taxable_amount),
-                cgst: Number(quote.cgst_amount),
-                sgst: Number(quote.sgst_amount),
-                igst: Number(quote.igst_amount),
-                roundOff: Number(quote.round_off) || 0,
-                grandTotal: Number(quote.grand_total),
-                notes: quote.notes,
-                terms: quote.terms,
-              });
+      <div className="relative z-50">
+        <SendDialog
+          open={sendOpen}
+          onClose={() => setSendOpen(false)}
+          contextLabel={`Quotation ${quote.quotation_number}`}
+          docType="quotation"
+          docId={quote.id}
+          docNumber={quote.quotation_number}
+          templateKey="quotation_sent"
+          templateVariables={{
+            customer_name: quote.customer?.name || '',
+            quotation_number: quote.quotation_number,
+            business_name: activeBusiness?.name || '',
+            amount: formatCurrency(Number(quote.grand_total || 0), activeBusiness?.currency_symbol),
+            expiry_date: quote.expiry_date ? formatDate(quote.expiry_date) : '—',
+          }}
+          defaultSubject={`Quotation ${quote.quotation_number} from ${activeBusiness?.name || 'us'}`}
+          defaultMessage={`Dear ${quote.customer?.name || 'customer'}, please find attached quotation ${quote.quotation_number} totalling ${formatCurrency(Number(quote.grand_total || 0), activeBusiness?.currency_symbol)}.`}
+          recipients={[
+            {
+              label: quote.customer?.name || 'Customer on record',
+              email: quote.customer?.email,
+              phone: quote.customer?.phone,
             },
-          },
-        ]}
-      />
+          ]}
+          attachments={[
+            {
+              id: 'quotation-pdf',
+              label: 'Quotation PDF',
+              filename: `${quote.quotation_number}.pdf`,
+              build: async () => {
+                if (!activeBusiness) throw new Error('Business unavailable');
+                return renderDocSheetToPdfBlob(activeBusiness, {
+                  docTitle: 'QUOTATION',
+                  docNumber: quote.quotation_number,
+                  dateLabel: 'Quote Date',
+                  dateValue: formatDate(quote.quote_date),
+                  expiryLabel: 'Valid Until',
+                  expiryValue: quote.expiry_date,
+                  partyLabel: 'Customer',
+                  partyName: quote.customer?.name || '—',
+                  status: quote.status,
+                  items,
+                  subtotal: Number(quote.subtotal),
+                  taxableAmount: Number(quote.taxable_amount),
+                  cgst: Number(quote.cgst_amount),
+                  sgst: Number(quote.sgst_amount),
+                  igst: Number(quote.igst_amount),
+                  roundOff: Number(quote.round_off) || 0,
+                  grandTotal: Number(quote.grand_total),
+                  notes: quote.notes,
+                  terms: quote.terms,
+                });
+              },
+            },
+          ]}
+        />
+      </div>
     </div>
   );
 }

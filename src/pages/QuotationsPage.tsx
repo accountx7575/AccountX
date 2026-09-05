@@ -177,7 +177,6 @@ export function QuotationsPage() {
         .eq('business_id', activeBusiness.id);
 
       if (error) {
-        // Fallback without join
         const { data: fallbackRows, error: fallbackErr } = await supabase
           .from('quotations')
           .select('*')
@@ -191,16 +190,13 @@ export function QuotationsPage() {
     enabled: !!activeBusiness,
   });
 
-  // Client-Side Search, Status Filter & Accurate Sorting
   const processedQuotes = useMemo(() => {
     let listData = [...(rawData || [])];
 
-    // 1. Status Filter
     if (statusFilter !== 'all') {
-      listData = listData.filter((q) => q.status === statusFilter);
+      listData = listData.filter((q) => q.status.toLowerCase() === statusFilter.toLowerCase());
     }
 
-    // 2. Search by Number or Customer Name
     if (list.search.trim()) {
       const qLower = list.search.trim().toLowerCase();
       listData = listData.filter(
@@ -210,14 +206,12 @@ export function QuotationsPage() {
       );
     }
 
-    // 3. Sorting (Numeric sequence for Quote No, Date for quote_date)
     listData.sort((a, b) => {
       if (sortField === 'quote_date') {
-        const dateA = new Date(a.quote_date).getTime();
-        const dateB = new Date(b.quote_date).getTime();
-        return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : new Date(a.quote_date).getTime();
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : new Date(b.quote_date).getTime();
+        return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
       } else {
-        // Extract sequence number from format like QT/26-27/1
         const numA = parseInt(a.quotation_number.match(/\d+$/)?.[0] || '0', 10);
         const numB = parseInt(b.quotation_number.match(/\d+$/)?.[0] || '0', 10);
         return sortOrder === 'asc' ? numA - numB : numB - numA;
@@ -355,7 +349,6 @@ export function QuotationsPage() {
       />
 
       <div className="card">
-        {/* Controls Toolbar */}
         <div className="p-4 border-b border-secondary-200 dark:border-secondary-800 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-1 items-center gap-2 max-w-lg">
             <div className="relative flex-1">
@@ -372,9 +365,8 @@ export function QuotationsPage() {
               />
             </div>
 
-            {/* Status Filter */}
             <select
-              className="input text-sm w-40 cursor-pointer font-medium bg-white dark:bg-secondary-900"
+              className="input text-sm w-36 cursor-pointer font-medium"
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
@@ -437,7 +429,6 @@ export function QuotationsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400 select-none">
-                  {/* Quote No. Header Clickable */}
                   <th
                     className="text-left px-4 py-3 font-medium cursor-pointer hover:text-primary-600 transition-colors"
                     onClick={() => toggleSort('quotation_number')}
@@ -456,13 +447,12 @@ export function QuotationsPage() {
                     </div>
                   </th>
 
-                  {/* Date Header Clickable */}
                   <th
                     className="text-left px-4 py-3 font-medium hidden sm:table-cell cursor-pointer hover:text-primary-600 transition-colors"
                     onClick={() => toggleSort('quote_date')}
                   >
                     <div className="flex items-center gap-1.5">
-                      <span>Date</span>
+                      <span>Date & Time</span>
                       {sortField === 'quote_date' ? (
                         sortOrder === 'asc' ? (
                           <ArrowUp className="h-3.5 w-3.5 text-primary-600" />
@@ -492,7 +482,20 @@ export function QuotationsPage() {
                         {q.quotation_number}
                       </button>
                     </td>
-                    <td className="px-4 py-3 hidden sm:table-cell text-secondary-500">{formatDate(q.quote_date)}</td>
+                    <td className="px-4 py-3 hidden sm:table-cell text-secondary-500">
+                      <div className="font-medium text-secondary-900 dark:text-secondary-100">
+                        {formatDate(q.quote_date)}
+                      </div>
+                      <div className="text-[11px] text-secondary-400">
+                        {q.created_at
+                          ? new Date(q.created_at).toLocaleTimeString('en-IN', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: true,
+                            })
+                          : ''}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 hidden md:table-cell text-secondary-900 dark:text-secondary-100">
                       {q.customer?.name || '—'}
                     </td>
