@@ -94,9 +94,18 @@ export function QuotationCreatePage() {
       const validLines = lines.filter((l) => l.product_name.trim() && l.quantity > 0);
       if (!validLines.length) throw new Error('Add at least one line with a description and quantity');
 
-      // Customer UUID validation — reject placeholder/empty values before hitting the DB.
       const cid = customerId.trim();
       if (!cid || cid.length < 5) throw new Error('Please select a valid customer');
+
+      // Resolve customer_id strictly to UUID: handle the case where the
+      // picker stored customer.name instead of customer.id.
+      const { data: customerRecord } = await supabase
+        .from('customers')
+        .select('id')
+        .or(`id.eq.${cid},name.eq.${cid}`)
+        .limit(1)
+        .maybeSingle();
+      const validCustomerId = customerRecord?.id || cid;
 
       const { data: userData } = await supabase.auth.getUser();
       const { data: number, error: numberError } = await supabase.rpc('next_document_number', {
@@ -110,7 +119,7 @@ export function QuotationCreatePage() {
       const { data: quote, error } = await supabase.from('quotations').insert({
         business_id: activeBusiness.id,
         quotation_number: String(number),
-        customer_id: cid,
+        customer_id: validCustomerId,
         quote_date: quoteDate,
         expiry_date: expiryDate || null,
         subtotal: totals.subtotal,
@@ -139,7 +148,7 @@ export function QuotationCreatePage() {
             business_id: activeBusiness.id,
             quotation_id: quote.id,
             product_id: l.product_id || null,
-            description: l.product_name || '',
+            product_name: l.product_name || '',
             quantity,
             unit: l.unit,
             rate,
@@ -227,14 +236,6 @@ export function QuotationCreatePage() {
                         {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                         <option value="__custom__">Custom line…</option>
                       </select>
-                      {isCustom && (
-                        <input
-                          className="input mt-1.5"
-                          placeholder="Type description…"
-                          value={l.product_name}
-                          onChange={(e) => updateLine(idx, { product_name: e.target.value })}
-                        />
-                      )}
                     </FormField>
                   </div>
                   <FormField label="Qty" className="w-20">
