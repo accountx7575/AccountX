@@ -16,8 +16,7 @@ type LiquidGlassNavProps<K extends string> = {
 };
 
 /**
- * Shared "Opal" liquid-glass shell. ArcRadioNav reuses this so both docks
- * speak the same design language across the app navigation.
+ * Shared "Opal" liquid-glass shell for navigation surfaces.
  */
 export const opalGlassShellStyle: CSSProperties = {
   backdropFilter: 'blur(16px) saturate(180%)',
