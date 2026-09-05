@@ -28,6 +28,7 @@ const ExpenseCreatePage = lazy(() => import('@/pages/ExpenseCreatePage').then((m
 const PaymentReceiveCreatePage = lazy(() => import('@/pages/PaymentReceiveCreatePage').then((m) => ({ default: m.PaymentReceiveCreatePage })));
 const PaymentMakeCreatePage = lazy(() => import('@/pages/PaymentMakeCreatePage').then((m) => ({ default: m.PaymentMakeCreatePage })));
 const QuotationCreatePage = lazy(() => import('@/pages/QuotationCreatePage').then((m) => ({ default: m.QuotationCreatePage })));
+const QuotationViewPage = lazy(() => import('@/pages/QuotationViewPage').then((m) => ({ default: m.QuotationViewPage })));
 const SalesOrderCreatePage = lazy(() => import('@/pages/SalesOrderCreatePage').then((m) => ({ default: m.SalesOrderCreatePage })));
 const PurchaseOrderCreatePage = lazy(() => import('@/pages/PurchaseOrderCreatePage').then((m) => ({ default: m.PurchaseOrderCreatePage })));
 const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })));
@@ -215,6 +216,10 @@ function AppRoutes() {
         <Route path="*" element={<SleuthNotFoundPage />} />
 	<Route path="quotations" element={<QuotationsPage />} />
 	<Route path="quotations/new" element={<QuotationCreatePage />} />
+	<Route path="quotations/:id/edit" element={<QuotationCreatePage />} />
+	<Route path="quotations" element={<QuotationsPage />} />
+	<Route path="quotations/new" element={<QuotationCreatePage />} />
+	<Route path="quotations/:id" element={<QuotationViewPage />} />
 	<Route path="quotations/:id/edit" element={<QuotationCreatePage />} />
       </Route>
       <Route path="*" element={<SleuthNotFoundPage />} />

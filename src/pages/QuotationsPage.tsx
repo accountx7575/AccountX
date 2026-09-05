@@ -13,7 +13,19 @@ import { Modal } from '@/components/ui/Modal';
 import { Input, FormField } from '@/components/ui/Input';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
-import { ClipboardList, Plus, Lock, Send, Check, X, Printer, Share2, Mail, Eye, Pencil } from 'lucide-react';
+import {
+  ClipboardList,
+  Plus,
+  Lock,
+  Send,
+  Check,
+  X,
+  Printer,
+  Mail,
+  Eye,
+  Pencil,
+  MessageCircle,
+} from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
 import { openWhatsAppShare } from '@/lib/whatsapp';
@@ -70,26 +82,6 @@ export function QuotationsPage() {
   const [convertMode, setConvertMode] = useState<ConvertMode>('invoice');
   const [sendTarget, setSendTarget] = useState<QuoteRow | null>(null);
 
-  // View Modal state
-  const [viewingQuote, setViewingQuote] = useState<QuoteRow | null>(null);
-  const [viewItems, setViewItems] = useState<QuotationItem[]>([]);
-  const [loadingItems, setLoadingItems] = useState(false);
-
-  const openView = async (q: QuoteRow) => {
-    setViewingQuote(q);
-    setLoadingItems(true);
-    try {
-      const { data: items } = await supabase
-        .from('quotation_items')
-        .select('*')
-        .eq('quotation_id', q.id)
-        .order('created_at');
-      setViewItems((items || []) as QuotationItem[]);
-    } finally {
-      setLoadingItems(false);
-    }
-  };
-
   const openConvert = (q: QuoteRow, mode: ConvertMode) => {
     setConvertTarget(q);
     setConvertMode(mode);
@@ -97,12 +89,12 @@ export function QuotationsPage() {
     setConvertDue('');
   };
 
-  const shareQuote = (q: QuoteRow) => {
+  const shareWhatsApp = (q: QuoteRow) => {
     const opened = openWhatsAppShare({
       partyName: q.customer?.name || '',
       docNumber: q.quotation_number,
       dateDDMMYYYY: formatDate(q.quote_date),
-      amountInr: formatCurrency(q.grand_total, activeBusiness?.currency_symbol || '\u20B9'),
+      amountInr: formatCurrency(q.grand_total, activeBusiness?.currency_symbol || '₹'),
       bank: {
         name: activeBusiness?.bank_name,
         ifsc: activeBusiness?.bank_ifsc_code,
@@ -297,7 +289,12 @@ export function QuotationsPage() {
                 {quotes.map((q) => (
                   <tr key={q.id} className="border-b border-secondary-100 dark:border-secondary-800/50 table-row-hover">
                     <td className="px-4 py-3 font-medium text-secondary-900 dark:text-secondary-100">
-                      {q.quotation_number}
+                      <button
+                        onClick={() => navigate(`/app/quotations/${q.id}`)}
+                        className="hover:text-primary-600 hover:underline font-semibold"
+                      >
+                        {q.quotation_number}
+                      </button>
                     </td>
                     <td className="px-4 py-3 hidden sm:table-cell text-secondary-500">{formatDate(q.quote_date)}</td>
                     <td className="px-4 py-3 hidden md:table-cell text-secondary-900 dark:text-secondary-100">
@@ -311,13 +308,16 @@ export function QuotationsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5" title={LOCKED[q.status] ? `Terminal state (${q.status})` : undefined}>
+                        {/* View Button -> Full Page */}
                         <button
-                          onClick={() => openView(q)}
+                          onClick={() => navigate(`/app/quotations/${q.id}`)}
                           className="p-1.5 rounded-md text-secondary-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
                           title="View Quotation"
                         >
                           <Eye className="h-4 w-4" />
                         </button>
+                        
+                        {/* Edit Button */}
                         {!LOCKED[q.status] && (
                           <button
                             onClick={() => navigate(`/app/quotations/${q.id}/edit`)}
@@ -327,19 +327,23 @@ export function QuotationsPage() {
                             <Pencil className="h-4 w-4" />
                           </button>
                         )}
+
                         <Button size="sm" variant="ghost" loading={printingId === q.id} onClick={() => printQuote(q)} title="Download PDF">
                           <Printer className="h-3 w-3" /> PDF
                         </Button>
+                        
                         {LOCKED[q.status] && (
                           <span className="inline-flex items-center gap-1 text-xs text-secondary-400">
                             <Lock className="h-3 w-3" /> Locked
                           </span>
                         )}
+                        
                         {!LOCKED[q.status] && q.status === 'draft' && (
                           <Button size="sm" onClick={() => statusMutation.mutate({ id: q.id, status: 'sent' })} loading={statusMutation.isPending}>
                             <Send className="h-3 w-3" /> Send
                           </Button>
                         )}
+                        
                         {!LOCKED[q.status] && q.status === 'sent' && (
                           <>
                             <Button size="sm" onClick={() => statusMutation.mutate({ id: q.id, status: 'accepted' })}>
@@ -353,6 +357,7 @@ export function QuotationsPage() {
                             </Button>
                           </>
                         )}
+
                         <Button
                           size="sm"
                           variant={CAN_CONVERT[q.status] ? 'primary' : 'secondary'}
@@ -371,9 +376,12 @@ export function QuotationsPage() {
                         >
                           To SO
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => shareQuote(q)} title="Share on WhatsApp">
-                          <Share2 className="h-3 w-3" /> Share
+
+                        {/* Direct WhatsApp Action */}
+                        <Button size="sm" variant="ghost" onClick={() => shareWhatsApp(q)} title="Share on WhatsApp">
+                          <MessageCircle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> WhatsApp
                         </Button>
+
                         <Button size="sm" variant="ghost" onClick={() => setSendTarget(q)} title="Email with PDF">
                           <Mail className="h-3 w-3" /> Email
                         </Button>
@@ -396,100 +404,6 @@ export function QuotationsPage() {
         />
       </div>
 
-      {/* View Quotation Modal */}
-      <Modal open={!!viewingQuote} onClose={() => setViewingQuote(null)} title={`Quotation — ${viewingQuote?.quotation_number || ''}`} size="lg">
-        {viewingQuote && (
-          <div className="space-y-5 text-sm">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-secondary-50 dark:bg-secondary-900/60 border border-secondary-200 dark:border-secondary-800">
-              <div>
-                <p className="text-xs text-secondary-400">Customer</p>
-                <p className="font-semibold text-secondary-900 dark:text-secondary-100">{viewingQuote.customer?.name || '—'}</p>
-                {viewingQuote.customer?.phone && <p className="text-xs text-secondary-500">{viewingQuote.customer.phone}</p>}
-              </div>
-              <div>
-                <p className="text-xs text-secondary-400">Date</p>
-                <p className="font-semibold">{formatDate(viewingQuote.quote_date)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-secondary-400">Valid Until</p>
-                <p className="font-semibold">{viewingQuote.expiry_date ? formatDate(viewingQuote.expiry_date) : '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-secondary-400">Status</p>
-                <span className={`badge ${statusStyles[viewingQuote.status]}`}>{viewingQuote.status}</span>
-              </div>
-            </div>
-
-            <div className="border border-secondary-200 dark:border-secondary-800 rounded-xl overflow-hidden">
-              <table className="w-full text-left">
-                <thead className="bg-secondary-100 dark:bg-secondary-800/60 text-secondary-600 dark:text-secondary-300 text-xs">
-                  <tr>
-                    <th className="px-4 py-2.5">Item</th>
-                    <th className="px-4 py-2.5 text-right">Qty</th>
-                    <th className="px-4 py-2.5 text-right">Rate</th>
-                    <th className="px-4 py-2.5 text-right">Tax %</th>
-                    <th className="px-4 py-2.5 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-secondary-100 dark:divide-secondary-800/50">
-                  {loadingItems ? (
-                    <tr>
-                      <td colSpan={5} className="text-center py-6 text-secondary-400">Loading items...</td>
-                    </tr>
-                  ) : (
-                    viewItems.map((it) => (
-                      <tr key={it.id}>
-                        <td className="px-4 py-2.5 font-medium">{it.product_name}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums">{it.quantity} {it.unit}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums">{formatCurrency(it.rate, activeBusiness?.currency_symbol)}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums">{it.tax_rate}%</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{formatCurrency(it.total_amount, activeBusiness?.currency_symbol)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <div className="w-64 space-y-1.5 text-right">
-                <div className="flex justify-between text-secondary-500">
-                  <span>Taxable:</span>
-                  <span className="tabular-nums">{formatCurrency(viewingQuote.taxable_amount, activeBusiness?.currency_symbol)}</span>
-                </div>
-                {Number(viewingQuote.cgst_amount) > 0 && (
-                  <div className="flex justify-between text-secondary-500">
-                    <span>CGST:</span>
-                    <span className="tabular-nums">{formatCurrency(viewingQuote.cgst_amount, activeBusiness?.currency_symbol)}</span>
-                  </div>
-                )}
-                {Number(viewingQuote.sgst_amount) > 0 && (
-                  <div className="flex justify-between text-secondary-500">
-                    <span>SGST:</span>
-                    <span className="tabular-nums">{formatCurrency(viewingQuote.sgst_amount, activeBusiness?.currency_symbol)}</span>
-                  </div>
-                )}
-                {Number(viewingQuote.igst_amount) > 0 && (
-                  <div className="flex justify-between text-secondary-500">
-                    <span>IGST:</span>
-                    <span className="tabular-nums">{formatCurrency(viewingQuote.igst_amount, activeBusiness?.currency_symbol)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between font-bold text-base border-t border-secondary-200 dark:border-secondary-800 pt-2 text-primary-600 dark:text-primary-400">
-                  <span>Grand Total:</span>
-                  <span className="tabular-nums">{formatCurrency(viewingQuote.grand_total, activeBusiness?.currency_symbol)}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-secondary-200 dark:border-secondary-800">
-              <Button variant="secondary" onClick={() => setViewingQuote(null)}>Close</Button>
-              <Button onClick={() => printQuote(viewingQuote)}><Printer className="h-4 w-4" /> Download PDF</Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
       <ConfirmDialog
         open={!!confirmCancel}
         onClose={() => setConfirmCancel(null)}
@@ -503,7 +417,7 @@ export function QuotationsPage() {
       <Modal open={!!convertTarget} onClose={() => setConvertTarget(null)} title={CONVERT_TARGETS[convertMode].modalTitle} size="sm">
         <p className="text-sm text-secondary-500 dark:text-secondary-400 mb-4">
           Converting quotation <span className="font-semibold text-secondary-900 dark:text-secondary-100">{convertTarget?.quotation_number}</span>
-          {convertTarget?.customer?.name ? ` for ${convertTarget.customer.name}` : ''}. Items, taxes and totals carry over.
+          {convertTarget?.customer?.name ? ` for ${convertTarget.customer.name}` : ''}.
         </p>
         <div className="space-y-4">
           <FormField label={CONVERT_TARGETS[convertMode].dateLabel} required>
@@ -527,68 +441,71 @@ export function QuotationsPage() {
         </div>
       </Modal>
 
-      <SendDialog
-        open={!!sendTarget}
-        onClose={() => setSendTarget(null)}
-        contextLabel={`Quotation ${sendTarget?.quotation_number ?? ''}`}
-        docType="quotation"
-        docId={sendTarget?.id}
-        docNumber={sendTarget?.quotation_number}
-        templateKey="quotation_sent"
-        templateVariables={{
-          customer_name: sendTarget?.customer?.name || '',
-          quotation_number: sendTarget?.quotation_number || '',
-          business_name: activeBusiness?.name || '',
-          amount: formatCurrency(Number(sendTarget?.grand_total || 0), activeBusiness?.currency_symbol),
-          expiry_date: sendTarget?.expiry_date ? formatDate(sendTarget.expiry_date) : '—',
-        }}
-        defaultSubject={`Quotation ${sendTarget?.quotation_number ?? ''} from ${activeBusiness?.name || 'us'}`}
-        defaultMessage={`Dear ${sendTarget?.customer?.name || 'customer'}, please find attached quotation ${sendTarget?.quotation_number ?? ''} totalling ${formatCurrency(Number(sendTarget?.grand_total || 0), activeBusiness?.currency_symbol)}.`}
-        recipients={[
-          {
-            label: sendTarget?.customer?.name || 'Customer on record',
-            email: sendTarget?.customer?.email,
-            phone: sendTarget?.customer?.phone,
-          },
-        ]}
-        attachments={[
-          {
-            id: 'quotation-pdf',
-            label: 'Quotation PDF',
-            filename: `${sendTarget?.quotation_number ?? 'quotation'}.pdf`,
-            build: async () => {
-              if (!sendTarget || !activeBusiness) throw new Error('Quotation is not ready.');
-              const { data: items, error } = await supabase
-                .from('quotation_items')
-                .select('*')
-                .eq('quotation_id', sendTarget.id)
-                .order('created_at');
-              if (error) throw new Error(error.message);
-              return renderDocSheetToPdfBlob(activeBusiness, {
-                docTitle: 'QUOTATION',
-                docNumber: sendTarget.quotation_number,
-                dateLabel: 'Quote Date',
-                dateValue: formatDate(sendTarget.quote_date),
-                expiryLabel: 'Valid Until',
-                expiryValue: sendTarget.expiry_date,
-                partyLabel: 'Customer',
-                partyName: sendTarget.customer?.name || '—',
-                status: sendTarget.status,
-                items: (items || []) as QuotationItem[],
-                subtotal: Number(sendTarget.subtotal),
-                taxableAmount: Number(sendTarget.taxable_amount),
-                cgst: Number(sendTarget.cgst_amount),
-                sgst: Number(sendTarget.sgst_amount),
-                igst: Number(sendTarget.igst_amount),
-                roundOff: Number(sendTarget.round_off) || 0,
-                grandTotal: Number(sendTarget.grand_total),
-                notes: sendTarget.notes,
-                terms: sendTarget.terms,
-              });
+      {/* Full z-index Safe Send Dialog */}
+      <div className="relative z-50">
+        <SendDialog
+          open={!!sendTarget}
+          onClose={() => setSendTarget(null)}
+          contextLabel={`Quotation ${sendTarget?.quotation_number ?? ''}`}
+          docType="quotation"
+          docId={sendTarget?.id}
+          docNumber={sendTarget?.quotation_number}
+          templateKey="quotation_sent"
+          templateVariables={{
+            customer_name: sendTarget?.customer?.name || '',
+            quotation_number: sendTarget?.quotation_number || '',
+            business_name: activeBusiness?.name || '',
+            amount: formatCurrency(Number(sendTarget?.grand_total || 0), activeBusiness?.currency_symbol),
+            expiry_date: sendTarget?.expiry_date ? formatDate(sendTarget.expiry_date) : '—',
+          }}
+          defaultSubject={`Quotation ${sendTarget?.quotation_number ?? ''} from ${activeBusiness?.name || 'us'}`}
+          defaultMessage={`Dear ${sendTarget?.customer?.name || 'customer'}, please find attached quotation ${sendTarget?.quotation_number ?? ''} totalling ${formatCurrency(Number(sendTarget?.grand_total || 0), activeBusiness?.currency_symbol)}.`}
+          recipients={[
+            {
+              label: sendTarget?.customer?.name || 'Customer on record',
+              email: sendTarget?.customer?.email,
+              phone: sendTarget?.customer?.phone,
             },
-          },
-        ]}
-      />
+          ]}
+          attachments={[
+            {
+              id: 'quotation-pdf',
+              label: 'Quotation PDF',
+              filename: `${sendTarget?.quotation_number ?? 'quotation'}.pdf`,
+              build: async () => {
+                if (!sendTarget || !activeBusiness) throw new Error('Quotation is not ready.');
+                const { data: items, error } = await supabase
+                  .from('quotation_items')
+                  .select('*')
+                  .eq('quotation_id', sendTarget.id)
+                  .order('created_at');
+                if (error) throw new Error(error.message);
+                return renderDocSheetToPdfBlob(activeBusiness, {
+                  docTitle: 'QUOTATION',
+                  docNumber: sendTarget.quotation_number,
+                  dateLabel: 'Quote Date',
+                  dateValue: formatDate(sendTarget.quote_date),
+                  expiryLabel: 'Valid Until',
+                  expiryValue: sendTarget.expiry_date,
+                  partyLabel: 'Customer',
+                  partyName: sendTarget.customer?.name || '—',
+                  status: sendTarget.status,
+                  items: (items || []) as QuotationItem[],
+                  subtotal: Number(sendTarget.subtotal),
+                  taxableAmount: Number(sendTarget.taxable_amount),
+                  cgst: Number(sendTarget.cgst_amount),
+                  sgst: Number(sendTarget.sgst_amount),
+                  igst: Number(sendTarget.igst_amount),
+                  roundOff: Number(sendTarget.round_off) || 0,
+                  grandTotal: Number(sendTarget.grand_total),
+                  notes: sendTarget.notes,
+                  terms: sendTarget.terms,
+                });
+              },
+            },
+          ]}
+        />
+      </div>
     </div>
   );
 }
