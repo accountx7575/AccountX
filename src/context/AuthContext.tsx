@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import type { Business, BusinessMember } from '@/types/db';
@@ -35,9 +35,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [impersonatingBusinessId, setImpersonatingBusinessIdState] = useState<string | null>(null);
 
   const [members, setMembers] = useState<BusinessMember[]>([]);
+  const currentUserIdRef = useRef<string | null>(null);
 
-  const loadBusinesses = async (userId: string) => {
-    setBusinessesReady(false);
+  const loadBusinesses = async (userId: string, isInitial = false) => {
+    // Sirf first time load par screen block karein, background me kabhi unmount na ho
+    if (isInitial) {
+      setBusinessesReady(false);
+    }
     try {
       await loadBusinessesInner(userId);
     } finally {
@@ -57,16 +61,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (bizData) {
         const target = bizData as Business;
         setActiveBusinessState(target);
-        setActiveRole('super-admin'); // impersonation mode has super-admin role
+        setActiveRole('super-admin');
         return;
       }
-      // Impersonation ID no longer exists, clear it
       localStorage.removeItem(IMPERSONATION_STORAGE_KEY);
       setImpersonatingBusinessId(null);
     }
 
-    // Super-admin support mode: flag + active business id set from SuperAdminPage.
-    // Only super-admins may use it; regular users get the flag cleared.
     if (localStorage.getItem(SUPER_ADMIN_IMPERSONATING_KEY) === 'true') {
       const { data: authData } = await supabase.auth.getUser();
       const authUser = authData?.user;
@@ -145,7 +146,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshBusinesses = async () => {
-    if (user) await loadBusinesses(user.id);
+    if (currentUserIdRef.current) {
+      await loadBusinesses(currentUserIdRef.current, false);
+    }
   };
 
   const setImpersonatingBusinessId = (id: string | null) => {
@@ -163,9 +166,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(IMPERSONATION_STORAGE_KEY);
     localStorage.removeItem(SUPER_ADMIN_IMPERSONATING_KEY);
-    // Oscar-spec impersonation keys + maintenance dismissal residue.
     localStorage.removeItem('accountx_impersonating');
     localStorage.removeItem('impersonated_tenant_id');
+    currentUserIdRef.current = null;
     setBusinesses([]);
     setBusinessesReady(false);
     setActiveBusinessState(null);
@@ -174,21 +177,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    // Initial Session Mount
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
-      setUser(data.session?.user ?? null);
-      if (data.session?.user) {
-        loadBusinesses(data.session.user.id).finally(() => setLoading(false));
+      const u = data.session?.user ?? null;
+      setUser(u);
+      currentUserIdRef.current = u?.id ?? null;
+
+      if (u) {
+        loadBusinesses(u.id, true).finally(() => setLoading(false));
       } else {
         setLoading(false);
+        setBusinessesReady(true);
       }
     });
 
+    // Auth State Listener
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       const newUserId = newSession?.user?.id ?? null;
-      const currentUserId = user?.id ?? null;
+      const previousUserId = currentUserIdRef.current;
+
       setSession(newSession);
       setUser(newSession?.user ?? null);
+      currentUserIdRef.current = newUserId;
+
       if (!newSession) {
         setBusinesses([]);
         setBusinessesReady(false);
@@ -199,10 +211,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem(IMPERSONATION_STORAGE_KEY);
         localStorage.removeItem('accountx_impersonating');
         localStorage.removeItem('impersonated_tenant_id');
-      } else if (newUserId !== currentUserId) {
-        (async () => {
-          await loadBusinesses(newSession.user.id);
-        })();
+      } else if (newUserId && newUserId !== previousUserId) {
+        // Sirf user ID actually badalne par hi businesses re-fetch karein
+        loadBusinesses(newUserId, false);
       }
     });
 
