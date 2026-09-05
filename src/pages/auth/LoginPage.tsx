@@ -3,6 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
+const REMEMBERED_EMAIL_KEY = 'accountx_remembered_email';
+
+function readRememberedEmail(): string {
+  try {
+    return localStorage.getItem(REMEMBERED_EMAIL_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * LoginPage — "Huddle" style animated auth screen.
  *
@@ -31,7 +41,8 @@ const LIGHT = 'rgba(244, 244, 245, 0.95)'; // light marks on the black body
 export function LoginPage() {
   const navigate = useNavigate();
   const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(readRememberedEmail);
+  const [rememberMe, setRememberMe] = useState(() => readRememberedEmail() !== '');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -88,6 +99,14 @@ export function LoginPage() {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
 
+        // "Remember me": persist the email for next visit, or clear it.
+        try {
+          if (rememberMe && email) localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
+          else localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+        } catch {
+          /* storage unavailable — login still succeeds */
+        }
+
         const isSuperAdmin = data.user?.app_metadata?.is_super_admin;
         if (isSuperAdmin || email === 'acc.x7575@gmail.com') navigate('/super-admin');
         else navigate('/app');
@@ -101,11 +120,22 @@ export function LoginPage() {
 
   const handleGoogleLogin = async () => {
     setErrorMsg(null);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/app` },
-    });
-    if (error) setErrorMsg(error.message);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: `${window.location.origin}/app` },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      const raw = typeof err?.message === 'string' ? err.message : '';
+      if (/unsupported provider|provider is not enabled/i.test(raw)) {
+        setErrorMsg(
+          'Google Sign-In is not yet enabled in the Supabase Dashboard. Please sign in with email and password.'
+        );
+      } else {
+        setErrorMsg(raw || 'Google sign-in failed. Please try again.');
+      }
+    }
   };
 
   return (
@@ -330,10 +360,20 @@ export function LoginPage() {
                 <label className="flex items-center gap-2.5 cursor-pointer">
                   <input
                     type="checkbox"
-                    defaultChecked
+                    checked={rememberMe}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setRememberMe(checked);
+                      try {
+                        if (!checked) localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+                        else if (email) localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
+                      } catch {
+                        /* ignore storage failures */
+                      }
+                    }}
                     className="w-4 h-4 rounded-[4px] border-stone-300 text-stone-900 focus:ring-stone-900"
                   />
-                  <span className="text-[13px] font-medium text-stone-600">Remember for 30 days</span>
+                  <span className="text-[13px] font-medium text-stone-600">Remember me</span>
                 </label>
               </div>
             )}
@@ -388,3 +428,4 @@ export function LoginPage() {
     </div>
   );
 }
+
