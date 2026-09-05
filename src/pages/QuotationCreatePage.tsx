@@ -115,45 +115,40 @@ export function QuotationCreatePage() {
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!activeBusiness) throw new Error('No active business');
-      if (!customerId) throw new Error('Please select a customer');
+      if (!customerId) throw new Error('Please select a customer from the dropdown');
 
       const validLines = lines.filter((l) => l.product_name.trim() && l.quantity > 0);
-      if (!validLines.length) throw new Error('Add at least one valid line item');
+      if (!validLines.length) throw new Error('Add at least one item');
 
-      // UUID Validation Check
-      let finalCustomerId = customerId.trim();
-      const matchedCustomer = customers?.find(
-        (c) => c.id === finalCustomerId || c.name.toLowerCase() === finalCustomerId.toLowerCase()
+      // UUID verification in local memory - no broken SQL .or() query
+      const chosenCustomer = customers?.find(
+        (c) => c.id === customerId || c.name.toLowerCase() === customerId.trim().toLowerCase()
       );
 
-      if (matchedCustomer) {
-        finalCustomerId = matchedCustomer.id;
-      } else {
+      if (!chosenCustomer?.id) {
         throw new Error('Please select a valid customer from the dropdown list');
       }
 
       const { data: userData } = await supabase.auth.getUser();
 
-      // Quotation Number Generation
       let finalDocNumber = `QT-${Date.now().toString().slice(-6)}`;
       try {
-        const { data: generatedNumber } = await supabase.rpc('next_document_number', {
+        const { data: numberData } = await supabase.rpc('next_document_number', {
           p_business_id: activeBusiness.id,
           p_doc_type: 'quotation',
           p_date: quoteDate,
         });
-        if (generatedNumber) finalDocNumber = String(generatedNumber);
+        if (numberData) finalDocNumber = String(numberData);
       } catch (e) {
-        console.warn('Fallback to generated quote number', e);
+        console.warn('Fallback sequence number used');
       }
 
-      // Safe Quotation Insert
       const { data: quote, error } = await supabase
         .from('quotations')
         .insert({
           business_id: activeBusiness.id,
           quotation_number: finalDocNumber,
-          customer_id: finalCustomerId,
+          customer_id: chosenCustomer.id, // 100% pure UUID guaranteed
           quote_date: quoteDate,
           expiry_date: expiryDate ? expiryDate : null,
           subtotal: totals.subtotal,
@@ -174,7 +169,6 @@ export function QuotationCreatePage() {
 
       if (error) throw error;
 
-      // Safe Items Insert
       const { error: itemsError } = await supabase.from('quotation_items').insert(
         validLines.map((l) => {
           const quantity = Number(l.quantity) || 1;
@@ -186,7 +180,7 @@ export function QuotationCreatePage() {
             business_id: activeBusiness.id,
             quotation_id: quote.id,
             product_id: l.product_id || null,
-            product_name: l.product_name || 'Item',
+            product_name: l.product_name,
             quantity,
             unit: l.unit || 'PCS',
             rate,
@@ -212,7 +206,7 @@ export function QuotationCreatePage() {
       navigate('/app/quotations');
     },
     onError: (err: any) => {
-      console.error('Full Save Error:', err);
+      console.error('Save failed:', err);
       toast(err?.message || 'Failed to save quotation', 'error');
     },
   });
