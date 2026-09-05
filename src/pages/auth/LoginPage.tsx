@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -14,34 +14,10 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Eye pupil coordinates
-  const [pupilPos, setPupilPos] = useState({ x: 0, y: 0 });
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (focusedField === 'email' || focusedField === 'name') {
-      // Look towards the form fields on the right
-      setPupilPos({ x: 4, y: 3 });
-    } else if (focusedField === 'password') {
-      // Look down / away shyly
-      setPupilPos({ x: -4, y: 5 });
-    } else {
-      setPupilPos({ x: 0, y: 0 });
-    }
-  }, [focusedField]);
-
-  // Track global mouse position when not actively focused
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (focusedField) return;
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width - 0.5) * 8;
-    const y = ((e.clientY - rect.top) / rect.height - 0.5) * 8;
-    setPupilPos({ 
-      x: Math.max(-5, Math.min(5, x)), 
-      y: Math.max(-5, Math.min(5, y)) 
-    });
-  };
+  // Dynamic eye tracking calculated from caret index
+  const caretRatio = Math.min(Math.max(email.length / 26, 0), 1);
+  const pupilX = (caretRatio - 0.5) * 12; // -6px to +6px tracking
+  const isPw = focusedField === 'password';
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,7 +35,7 @@ export function LoginPage() {
         if (data.session) {
           navigate('/app');
         } else {
-          setErrorMsg('Registration successful! Check your email for confirmation link.');
+          setErrorMsg('Registration successful! Please check your email inbox.');
         }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -82,130 +58,171 @@ export function LoginPage() {
     }
   };
 
-  const isShy = focusedField === 'password';
-
   return (
-    <div 
-      ref={containerRef}
-      onMouseMove={handleMouseMove}
-      className="min-h-screen w-full bg-[#f6eee3] dark:bg-[#111317] flex items-center justify-center p-4 sm:p-8 font-sans selection:bg-amber-200"
-    >
-      <div className="w-full max-w-4xl bg-white dark:bg-[#1a1e26] rounded-3xl shadow-2xl border border-stone-200/80 dark:border-zinc-800 overflow-hidden grid grid-cols-1 md:grid-cols-2">
-        
-        {/* Left Side: Huddle Animated Characters Stage */}
-        <div className="bg-[#eddcc8] dark:bg-[#161a22] p-8 flex flex-col items-center justify-end relative min-h-[340px] md:min-h-[520px] overflow-hidden border-b md:border-b-0 md:border-r border-stone-200 dark:border-zinc-800 select-none">
-          
-          {/* Subtle Ambient Shapes */}
-          <div className="absolute top-10 left-10 w-24 h-24 rounded-full bg-[#e3cdb4]/50 dark:bg-zinc-800/30 blur-xl pointer-events-none" />
-          <div className="absolute bottom-6 w-72 h-8 bg-stone-900/10 dark:bg-black/30 rounded-full blur-md" />
+    <div className="min-h-screen w-full bg-[#f6eee3] dark:bg-[#111317] flex items-center justify-center p-4 sm:p-6 font-sans">
+      <style>{`
+        .huddle-purple-face {
+          transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+        }
+        .huddle-hand {
+          transition: transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+        }
+        .huddle-monster {
+          transition: transform 0.35s ease, opacity 0.3s ease;
+        }
+      `}</style>
 
-          {/* Characters Container */}
-          <div className="relative w-full max-w-[320px] h-[240px] flex items-end justify-center gap-2 z-10">
+      <div className="w-full max-w-[880px] bg-white dark:bg-[#181c24] rounded-[28px] shadow-2xl border border-stone-200/90 dark:border-zinc-800 overflow-hidden grid grid-cols-1 md:grid-cols-[1.08fr_1fr]">
+        
+        {/* Left Stage: Huddle Interactive Character Suite */}
+        <div className="bg-[#eddcc8] dark:bg-[#151922] p-6 sm:p-8 flex flex-col items-center justify-end relative min-h-[360px] md:min-h-[500px] select-none overflow-hidden border-b md:border-b-0 md:border-r border-stone-200/80 dark:border-zinc-800">
+          
+          {/* Ground Shadow */}
+          <div className="absolute bottom-6 w-64 sm:w-72 h-4 bg-stone-900/10 dark:bg-black/30 rounded-full blur-sm" />
+
+          {/* SVG Stage */}
+          <div className="relative w-full max-w-[310px] h-[260px] flex items-end justify-center">
             
-            {/* 1. Orange Character (Left Pill) */}
-            <div className={`w-16 h-36 bg-[#ff6b4a] rounded-t-full relative flex flex-col items-center pt-8 shadow-md transition-all duration-300 ${isShy ? 'rotate-[-6deg] translate-y-2' : ''}`}>
+            {/* 1. ORANGE ARCH CHARACTER (Left) */}
+            <div 
+              className={`absolute left-4 bottom-0 w-[84px] h-[142px] bg-[#ff5733] rounded-t-full flex flex-col items-center pt-8 shadow-sm transition-transform duration-300 ${
+                isPw ? 'translate-y-2' : ''
+              }`}
+            >
               {/* Eyes */}
-              <div className="flex gap-2">
-                <div className="w-3.5 h-3.5 bg-white rounded-full relative overflow-hidden">
+              <div className="flex gap-2.5 z-0">
+                <div className="w-3.5 h-3.5 bg-white rounded-full relative overflow-hidden flex items-center justify-center">
                   <div 
-                    className="w-2 h-2 bg-stone-900 rounded-full absolute transition-transform duration-100"
-                    style={{ transform: isShy ? 'translate(0px, 2px)' : `translate(${pupilPos.x * 0.4}px, ${pupilPos.y * 0.4}px)` }}
+                    className="w-2 h-2 bg-[#1c2024] rounded-full absolute transition-all duration-100"
+                    style={{ transform: isPw ? 'translateY(3px)' : `translate(${pupilX * 0.45}px, ${focusedField ? 2 : 0}px)` }}
                   />
                 </div>
-                <div className="w-3.5 h-3.5 bg-white rounded-full relative overflow-hidden">
+                <div className="w-3.5 h-3.5 bg-white rounded-full relative overflow-hidden flex items-center justify-center">
                   <div 
-                    className="w-2 h-2 bg-stone-900 rounded-full absolute transition-transform duration-100"
-                    style={{ transform: isShy ? 'translate(0px, 2px)' : `translate(${pupilPos.x * 0.4}px, ${pupilPos.y * 0.4}px)` }}
+                    className="w-2 h-2 bg-[#1c2024] rounded-full absolute transition-all duration-100"
+                    style={{ transform: isPw ? 'translateY(3px)' : `translate(${pupilX * 0.45}px, ${focusedField ? 2 : 0}px)` }}
                   />
                 </div>
               </div>
-              {/* Mouth */}
-              <div className="w-2 h-1 bg-stone-900 rounded-full mt-3 opacity-60" />
+              <div className="w-2.5 h-1 bg-[#b32b0e] rounded-full mt-3" />
+
+              {/* Paws Covering Eyes on Password Mode */}
+              <div 
+                className={`huddle-hand absolute -left-2 top-7 w-7 h-7 bg-[#ff5733] border-2 border-[#ff704d] rounded-full z-20 ${
+                  isPw ? 'translate-x-4 -translate-y-1' : '-translate-x-4 opacity-0'
+                }`} 
+              />
+              <div 
+                className={`huddle-hand absolute -right-2 top-7 w-7 h-7 bg-[#ff5733] border-2 border-[#ff704d] rounded-full z-20 ${
+                  isPw ? '-translate-x-4 -translate-y-1' : 'translate-x-4 opacity-0'
+                }`} 
+              />
             </div>
 
-            {/* 2. Purple Tall Character (Center-Left) */}
-            <div className={`w-20 h-52 bg-[#5d3ebd] rounded-t-[40px] relative flex flex-col items-center pt-10 shadow-lg z-20 transition-all duration-300 ${isShy ? 'rotate-[4deg]' : ''}`}>
-              {/* Eyes Container */}
-              <div className="flex gap-3">
-                {isShy ? (
-                  // Closed shy lines
-                  <>
-                    <div className="w-4 h-1 bg-white rounded-full mt-2 rotate-12" />
-                    <div className="w-4 h-1 bg-white rounded-full mt-2 -rotate-12" />
-                  </>
-                ) : (
-                  <>
-                    <div className="w-5 h-5 bg-white rounded-full relative overflow-hidden flex items-center justify-center">
-                      <div 
-                        className="w-2.5 h-2.5 bg-stone-950 rounded-full absolute transition-transform duration-100"
-                        style={{ transform: `translate(${pupilPos.x * 0.6}px, ${pupilPos.y * 0.6}px)` }}
-                      />
-                    </div>
-                    <div className="w-5 h-5 bg-white rounded-full relative overflow-hidden flex items-center justify-center">
-                      <div 
-                        className="w-2.5 h-2.5 bg-stone-950 rounded-full absolute transition-transform duration-100"
-                        style={{ transform: `translate(${pupilPos.x * 0.6}px, ${pupilPos.y * 0.6}px)` }}
-                      />
-                    </div>
-                  </>
-                )}
+            {/* 2. PURPLE TALL CHARACTER (Center Pillar) */}
+            <div 
+              className={`absolute left-[78px] bottom-0 w-[96px] h-[210px] bg-[#5b32e8] rounded-t-[48px] flex flex-col items-center pt-10 shadow-lg z-10 transition-transform duration-300 ${
+                isPw ? 'rotate-[-3deg]' : ''
+              }`}
+            >
+              {/* If password focused -> Head turns around (back of head), Else front eyes */}
+              <div 
+                className={`huddle-purple-face flex flex-col items-center ${
+                  isPw ? 'rotate-[180deg] scale-x-[-1] opacity-0' : 'opacity-100'
+                }`}
+              >
+                <div className="flex gap-3">
+                  <div className="w-5 h-5 bg-white rounded-full relative overflow-hidden flex items-center justify-center shadow-inner">
+                    <div 
+                      className="w-2.5 h-2.5 bg-[#0f1115] rounded-full absolute transition-all duration-100"
+                      style={{ transform: `translate(${pupilX * 0.7}px, ${focusedField ? 3 : 0}px)` }}
+                    />
+                  </div>
+                  <div className="w-5 h-5 bg-white rounded-full relative overflow-hidden flex items-center justify-center shadow-inner">
+                    <div 
+                      className="w-2.5 h-2.5 bg-[#0f1115] rounded-full absolute transition-all duration-100"
+                      style={{ transform: `translate(${pupilX * 0.7}px, ${focusedField ? 3 : 0}px)` }}
+                    />
+                  </div>
+                </div>
+                <div className="w-2 h-1 bg-[#3a1d9e] rounded-full mt-4" />
               </div>
-              {/* Cute Blushing Cheeks when Shy */}
-              {isShy && (
-                <div className="flex justify-between w-14 mt-2">
-                  <div className="w-2.5 h-1.5 bg-pink-400 rounded-full opacity-80" />
-                  <div className="w-2.5 h-1.5 bg-pink-400 rounded-full opacity-80" />
+
+              {/* Back of Head Details when turned away */}
+              {isPw && (
+                <div className="flex flex-col items-center mt-3">
+                  <div className="w-6 h-1 bg-[#4722c2] rounded-full opacity-60" />
+                  <div className="w-8 h-1 bg-[#4722c2] rounded-full mt-1.5 opacity-40" />
                 </div>
               )}
             </div>
 
-            {/* 3. Black Peek Monster (Center-Right) */}
-            <div className={`w-14 h-32 bg-[#1e232a] rounded-t-full relative flex flex-col items-center pt-6 shadow-md transition-all duration-300 ${isShy ? 'translate-y-4' : ''}`}>
+            {/* 3. BLACK PEEK MONSTER (Center-Right) */}
+            <div 
+              className={`huddle-monster absolute right-[68px] bottom-0 w-[72px] h-[130px] bg-[#161922] rounded-t-full flex flex-col items-center pt-6 shadow-md z-20 ${
+                isPw ? 'translate-y-[85px] opacity-70' : 'translate-y-0 opacity-100'
+              }`}
+            >
               <div className="flex gap-2">
-                <div className="w-3 h-3 bg-amber-400 rounded-full relative overflow-hidden">
+                <div className="w-3.5 h-3.5 bg-[#facc15] rounded-full relative overflow-hidden flex items-center justify-center">
                   <div 
-                    className="w-1.5 h-1.5 bg-black rounded-full absolute"
-                    style={{ transform: isShy ? 'translate(1px, 2px)' : `translate(${pupilPos.x * 0.3}px, ${pupilPos.y * 0.3}px)` }}
+                    className="w-2 h-2 bg-black rounded-full absolute transition-all duration-100"
+                    style={{ transform: isPw ? 'translateY(3px)' : `translate(${pupilX * 0.4}px, ${focusedField ? 2 : 0}px)` }}
                   />
                 </div>
-                <div className="w-3 h-3 bg-amber-400 rounded-full relative overflow-hidden">
+                <div className="w-3.5 h-3.5 bg-[#facc15] rounded-full relative overflow-hidden flex items-center justify-center">
                   <div 
-                    className="w-1.5 h-1.5 bg-black rounded-full absolute"
-                    style={{ transform: isShy ? 'translate(1px, 2px)' : `translate(${pupilPos.x * 0.3}px, ${pupilPos.y * 0.3}px)` }}
+                    className="w-2 h-2 bg-black rounded-full absolute transition-all duration-100"
+                    style={{ transform: isPw ? 'translateY(3px)' : `translate(${pupilX * 0.4}px, ${focusedField ? 2 : 0}px)` }}
                   />
                 </div>
               </div>
             </div>
 
-            {/* 4. Yellow Round Blob (Far Right) */}
-            <div className={`w-16 h-24 bg-[#ffcb37] rounded-t-full relative flex flex-col items-center pt-5 shadow-sm transition-all duration-300 ${isShy ? 'rotate-12 translate-y-3' : ''}`}>
-              <div className="flex gap-2">
-                <div className="w-2.5 h-2.5 bg-stone-900 rounded-full" />
-                <div className="w-2.5 h-2.5 bg-stone-900 rounded-full" />
+            {/* 4. YELLOW BLOB CHARACTER (Right) */}
+            <div 
+              className={`absolute right-4 bottom-0 w-[80px] h-[92px] bg-[#f59e0b] rounded-t-full flex flex-col items-center pt-4 z-0 transition-transform duration-300 ${
+                isPw ? 'rotate-[8deg] translate-y-1' : ''
+              }`}
+            >
+              <div className="flex gap-2.5">
+                <div className="w-2.5 h-2.5 bg-[#1e232a] rounded-full relative overflow-hidden flex items-center justify-center">
+                  <div 
+                    className="w-1.5 h-1.5 bg-white rounded-full absolute"
+                    style={{ transform: isPw ? 'translateY(1.5px)' : `translate(${pupilX * 0.3}px, 0px)` }}
+                  />
+                </div>
+                <div className="w-2.5 h-2.5 bg-[#1e232a] rounded-full relative overflow-hidden flex items-center justify-center">
+                  <div 
+                    className="w-1.5 h-1.5 bg-white rounded-full absolute"
+                    style={{ transform: isPw ? 'translateY(1.5px)' : `translate(${pupilX * 0.3}px, 0px)` }}
+                  />
+                </div>
               </div>
-              <div className="w-3 h-1.5 border-b-2 border-stone-900 rounded-full mt-2" />
+              <div className="w-3 h-1.5 border-b-2 border-[#92400e] rounded-full mt-2" />
             </div>
 
           </div>
 
-          <p className="text-xs text-stone-500 dark:text-zinc-500 mt-6 font-medium tracking-wide text-center">
-            {isShy ? "Shh... we're looking away!" : "Type your password. Watch them look away."}
+          {/* Subtitle Badge */}
+          <p className="text-xs text-stone-500 dark:text-zinc-400 mt-6 font-medium text-center">
+            {isPw ? "Shh... we're looking away!" : 'Type your password. Watch them look away.'}
           </p>
         </div>
 
-        {/* Right Side: Clean Authentication Form */}
-        <div className="p-8 sm:p-12 flex flex-col justify-center">
-          <div className="mb-6 text-center sm:text-left">
+        {/* Right Stage: Authentication Form */}
+        <div className="p-8 sm:p-10 flex flex-col justify-center">
+          <div className="mb-6">
             <h1 className="text-2xl sm:text-3xl font-bold text-stone-900 dark:text-white tracking-tight">
               {isSignUp ? 'Create your account' : 'Welcome back'}
             </h1>
             <p className="text-xs sm:text-sm text-stone-500 dark:text-zinc-400 mt-1">
-              {isSignUp ? 'Start managing GST invoices with AccountX' : 'Please enter your credentials to continue.'}
+              {isSignUp ? 'Start issuing GST invoices today' : 'Please enter your credentials to continue.'}
             </p>
           </div>
 
           {errorMsg && (
-            <div className="mb-5 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-xs text-rose-600 dark:text-rose-400">
+            <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-xs text-rose-600 dark:text-rose-400">
               {errorMsg}
             </div>
           )}
@@ -213,7 +230,7 @@ export function LoginPage() {
           <form onSubmit={handleAuth} className="space-y-4">
             {isSignUp && (
               <div>
-                <label className="block text-xs font-semibold text-stone-700 dark:text-zinc-300 mb-1">Full Name</label>
+                <label className="block text-xs font-medium text-stone-700 dark:text-zinc-300 mb-1">Full Name</label>
                 <input
                   type="text"
                   required
@@ -222,13 +239,13 @@ export function LoginPage() {
                   onFocus={() => setFocusedField('name')}
                   onBlur={() => setFocusedField(null)}
                   onChange={e => setFullName(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-stone-300 dark:border-zinc-700 bg-stone-50/50 dark:bg-zinc-800 text-stone-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-stone-900 dark:focus:ring-white transition"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-stone-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-stone-900 dark:focus:ring-white transition"
                 />
               </div>
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-stone-700 dark:text-zinc-300 mb-1">Email</label>
+              <label className="block text-xs font-medium text-stone-700 dark:text-zinc-300 mb-1">Email</label>
               <input
                 type="email"
                 required
@@ -237,13 +254,13 @@ export function LoginPage() {
                 onFocus={() => setFocusedField('email')}
                 onBlur={() => setFocusedField(null)}
                 onChange={e => setEmail(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-stone-300 dark:border-zinc-700 bg-stone-50/50 dark:bg-zinc-800 text-stone-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-stone-900 dark:focus:ring-white transition"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-stone-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-stone-900 dark:focus:ring-white transition"
               />
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold text-stone-700 dark:text-zinc-300">Password</label>
+                <label className="text-xs font-medium text-stone-700 dark:text-zinc-300">Password</label>
                 {!isSignUp && (
                   <a href="#" className="text-xs text-stone-500 hover:text-stone-900 dark:hover:text-white">
                     Forgot password?
@@ -259,7 +276,7 @@ export function LoginPage() {
                   onFocus={() => setFocusedField('password')}
                   onBlur={() => setFocusedField(null)}
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 pr-10 rounded-xl border border-stone-300 dark:border-zinc-700 bg-stone-50/50 dark:bg-zinc-800 text-stone-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-stone-900 dark:focus:ring-white transition"
+                  className="w-full px-3.5 py-2.5 pr-10 rounded-xl border border-stone-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-stone-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-stone-900 dark:focus:ring-white transition font-mono"
                 />
                 <button
                   type="button"
@@ -271,9 +288,9 @@ export function LoginPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-1">
+            <div className="flex items-center justify-between pt-0.5">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4 rounded border-stone-300 text-stone-900 focus:ring-stone-900 dark:bg-zinc-800" />
+                <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-stone-300 text-stone-900 focus:ring-stone-900 dark:bg-zinc-800" />
                 <span className="text-xs text-stone-600 dark:text-zinc-400">Remember for 30 days</span>
               </label>
             </div>
@@ -281,19 +298,19 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 px-4 bg-stone-900 hover:bg-stone-800 dark:bg-white dark:hover:bg-stone-200 text-white dark:text-stone-900 font-semibold rounded-xl text-sm transition-all shadow-md active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-60"
+              className="w-full py-2.5 px-4 bg-stone-900 hover:bg-stone-800 dark:bg-white dark:hover:bg-stone-200 text-white dark:text-stone-900 font-semibold rounded-xl text-sm transition shadow-md active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-60 mt-2"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {isSignUp ? 'Create Account' : 'Log in'}
+              {isSignUp ? 'Create Account' : 'Log In'}
             </button>
           </form>
 
-          {/* Social Sign In */}
-          <div className="mt-6">
+          {/* Social Google */}
+          <div className="mt-4">
             <button
               type="button"
               onClick={() => supabase.auth.signInWithOAuth({ provider: 'google' })}
-              className="w-full py-2.5 px-4 bg-stone-50 hover:bg-stone-100 dark:bg-zinc-800/80 dark:hover:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-xl text-xs font-semibold text-stone-700 dark:text-zinc-200 flex items-center justify-center gap-2.5 transition active:scale-[0.99]"
+              className="w-full py-2.5 px-4 bg-white hover:bg-stone-50 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-xl text-xs font-semibold text-stone-700 dark:text-zinc-200 flex items-center justify-center gap-2 transition"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -305,8 +322,8 @@ export function LoginPage() {
             </button>
           </div>
 
-          {/* Toggle between Sign In and Sign Up */}
-          <p className="text-center text-xs text-stone-500 dark:text-zinc-400 mt-6">
+          {/* Mode Switcher */}
+          <p className="text-center text-xs text-stone-500 dark:text-zinc-400 mt-5">
             {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
             <button
               type="button"
@@ -316,7 +333,7 @@ export function LoginPage() {
               }}
               className="font-semibold text-stone-900 dark:text-white hover:underline ml-1"
             >
-              {isSignUp ? 'Sign In' : 'Sign up'}
+              {isSignUp ? 'Log in' : 'Sign up'}
             </button>
           </p>
 
