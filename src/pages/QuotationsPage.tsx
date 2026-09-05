@@ -11,7 +11,7 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { Input, FormField } from '@/components/ui/Input';
-import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { ListPagination } from '@/components/ui/ListControls';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
 import {
   ClipboardList,
@@ -26,6 +26,10 @@ import {
   Pencil,
   MessageCircle,
   Trash2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Search,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
@@ -68,6 +72,9 @@ const convertHint = (status: string, mode: ConvertMode) =>
   : !CAN_CONVERT[status] ? 'Only sent or accepted quotations can be converted'
   : CONVERT_TARGETS[mode].hint;
 
+type SortField = 'quotation_number' | 'quote_date';
+type SortOrder = 'asc' | 'desc';
+
 export function QuotationsPage() {
   const { activeBusiness } = useAuth();
   const { toast } = useToast();
@@ -75,6 +82,10 @@ export function QuotationsPage() {
   const queryClient = useQueryClient();
 
   const list = usePagedList();
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sortField, setSortField] = useState<SortField>('quote_date');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+
   const [confirmCancel, setConfirmCancel] = useState<Quotation | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<QuoteRow | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
@@ -83,6 +94,15 @@ export function QuotationsPage() {
   const [convertDue, setConvertDue] = useState('');
   const [convertMode, setConvertMode] = useState<ConvertMode>('invoice');
   const [sendTarget, setSendTarget] = useState<QuoteRow | null>(null);
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
 
   const openConvert = (q: QuoteRow, mode: ConvertMode) => {
     setConvertTarget(q);
@@ -147,7 +167,18 @@ export function QuotationsPage() {
   };
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['quotations', activeBusiness?.id, { q: list.debouncedSearch, page: list.page, pageSize: list.pageSize }],
+    queryKey: [
+      'quotations',
+      activeBusiness?.id,
+      {
+        q: list.debouncedSearch,
+        page: list.page,
+        pageSize: list.pageSize,
+        status: statusFilter,
+        sortField,
+        sortOrder,
+      },
+    ],
     queryFn: async () => {
       if (!activeBusiness) return { rows: [] as QuoteRow[], total: 0 };
       const pattern = list.debouncedSearch ? likePattern(list.debouncedSearch) : null;
@@ -156,13 +187,22 @@ export function QuotationsPage() {
           .from('quotations')
           .select((withJoin ? '*, customer:customers(name,phone,email)' : '*') as string, { count: 'exact' })
           .eq('business_id', activeBusiness.id);
+
+        if (statusFilter !== 'all') {
+          q = q.eq('status', statusFilter);
+        }
+
         if (pattern) {
           q = withJoin
             ? q.or(`quotation_number.ilike."${pattern}",customer.name.ilike."${pattern}"`)
             : q.or(`quotation_number.ilike."${pattern}"`);
         }
-        return q.order('created_at', { ascending: false }).range(list.from, list.to);
+
+        return q
+          .order(sortField, { ascending: sortOrder === 'asc' })
+          .range(list.from, list.to);
       };
+
       let res = await run(true);
       if (res.error) res = await run(false);
       if (res.error) return { rows: [] as unknown as QuoteRow[], total: 0 };
@@ -171,6 +211,7 @@ export function QuotationsPage() {
     enabled: !!activeBusiness,
     placeholderData: (prev) => prev,
   });
+
   const quotes = data?.rows ?? [];
   const totalQuotes = data?.total ?? 0;
 
@@ -183,30 +224,43 @@ export function QuotationsPage() {
   const statusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       if (!activeBusiness) throw new Error('No active business');
-      const { error } = await supabase.from('quotations').update({ status }).eq('id', id).eq('business_id', activeBusiness.id);
+      const { error } = await supabase
+        .from('quotations')
+        .update({ status })
+        .eq('id', id)
+        .eq('business_id', activeBusiness.id);
       if (error) throw error;
       return status;
     },
     onSuccess: (status) => {
       invalidateAll();
-      toast(status === 'sent' ? 'Quotation marked sent' : status === 'accepted' ? 'Quotation accepted' : status === 'rejected' ? 'Quotation rejected' : 'Quotation cancelled', 'success');
+      toast(
+        status === 'sent'
+          ? 'Quotation marked sent'
+          : status === 'accepted'
+          ? 'Quotation accepted'
+          : status === 'rejected'
+          ? 'Quotation rejected'
+          : 'Quotation cancelled',
+        'success'
+      );
       setConfirmCancel(null);
     },
-    onError: (err: any) => { setConfirmCancel(null); toast(err.message || 'Status update failed', 'error'); },
+    onError: (err: any) => {
+      setConfirmCancel(null);
+      toast(err.message || 'Status update failed', 'error');
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (quoteId: string) => {
       if (!activeBusiness) throw new Error('No active business');
-      
-      // Pehle items delete karein
       const { error: itemsErr } = await supabase
         .from('quotation_items')
         .delete()
         .eq('quotation_id', quoteId);
       if (itemsErr) throw itemsErr;
 
-      // Fir quotation record delete karein
       const { error: quoteErr } = await supabase
         .from('quotations')
         .delete()
@@ -280,13 +334,53 @@ export function QuotationsPage() {
       />
 
       <div className="card">
-        <ListToolbar
-          search={list.search}
-          onSearchChange={list.setSearch}
-          placeholder="Search by number or customer..."
-          pageSize={list.pageSize}
-          onPageSizeChange={list.setPageSize}
-        />
+        {/* Filter and Search Bar */}
+        <div className="p-4 border-b border-secondary-200 dark:border-secondary-800 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-1 items-center gap-2 max-w-lg">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400" />
+              <input
+                type="text"
+                value={list.search}
+                onChange={(e) => list.setSearch(e.target.value)}
+                placeholder="Search by number or customer..."
+                className="input pl-9 text-sm w-full"
+              />
+            </div>
+            {/* Status Dropdown Filter */}
+            <select
+              className="input text-sm w-36 cursor-pointer"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                list.setPage(1);
+              }}
+            >
+              <option value="all">All Status</option>
+              <option value="draft">Draft</option>
+              <option value="sent">Sent</option>
+              <option value="accepted">Accepted</option>
+              <option value="rejected">Rejected</option>
+              <option value="converted">Converted</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-secondary-500">Rows:</span>
+            <select
+              className="input text-sm w-20 cursor-pointer"
+              value={list.pageSize}
+              onChange={(e) => list.setPageSize(Number(e.target.value))}
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+        </div>
+
         {isError ? (
           <ErrorState title="Unable to load quotations." onRetry={() => refetch()} />
         ) : isLoading ? (
@@ -298,8 +392,8 @@ export function QuotationsPage() {
         ) : quotes.length === 0 ? (
           <EmptyState
             icon={ClipboardList}
-            title="No quotations yet"
-            description="Create your first quotation"
+            title="No quotations found"
+            description={statusFilter !== 'all' ? `No quotations matching "${statusFilter}" status.` : 'Create your first quotation'}
             action={
               <Button onClick={() => navigate('/app/quotations/new')}>
                 <Plus className="h-4 w-4" /> New Quotation
@@ -310,9 +404,37 @@ export function QuotationsPage() {
           <div className="overflow-x-auto scrollbar-thin">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
-                  <th className="text-left px-4 py-3 font-medium">Quote No.</th>
-                  <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Date</th>
+                <tr className="border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400 select-none">
+                  {/* Quote No. Sortable Header */}
+                  <th
+                    className="text-left px-4 py-3 font-medium cursor-pointer hover:text-primary-600 transition-colors"
+                    onClick={() => toggleSort('quotation_number')}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Quote No.</span>
+                      {sortField === 'quotation_number' ? (
+                        sortOrder === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-primary-600" /> : <ArrowDown className="h-3.5 w-3.5 text-primary-600" />
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5 opacity-40 hover:opacity-100" />
+                      )}
+                    </div>
+                  </th>
+
+                  {/* Date Sortable Header */}
+                  <th
+                    className="text-left px-4 py-3 font-medium hidden sm:table-cell cursor-pointer hover:text-primary-600 transition-colors"
+                    onClick={() => toggleSort('quote_date')}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Date</span>
+                      {sortField === 'quote_date' ? (
+                        sortOrder === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-primary-600" /> : <ArrowDown className="h-3.5 w-3.5 text-primary-600" />
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5 opacity-40 hover:opacity-100" />
+                      )}
+                    </div>
+                  </th>
+
                   <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Customer</th>
                   <th className="text-right px-4 py-3 font-medium">Total</th>
                   <th className="text-left px-4 py-3 font-medium">Status</th>
@@ -342,7 +464,6 @@ export function QuotationsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5">
-                        {/* View Button */}
                         <button
                           onClick={() => navigate(`/app/quotations/${q.id}`)}
                           className="p-1.5 rounded-md text-secondary-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
@@ -350,8 +471,7 @@ export function QuotationsPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        
-                        {/* Edit Button */}
+
                         {!LOCKED[q.status] && (
                           <button
                             onClick={() => navigate(`/app/quotations/${q.id}/edit`)}
@@ -365,19 +485,19 @@ export function QuotationsPage() {
                         <Button size="sm" variant="ghost" loading={printingId === q.id} onClick={() => printQuote(q)} title="Download PDF">
                           <Printer className="h-3 w-3" /> PDF
                         </Button>
-                        
+
                         {LOCKED[q.status] && (
                           <span className="inline-flex items-center gap-1 text-xs text-secondary-400">
                             <Lock className="h-3 w-3" /> Locked
                           </span>
                         )}
-                        
+
                         {!LOCKED[q.status] && q.status === 'draft' && (
                           <Button size="sm" onClick={() => statusMutation.mutate({ id: q.id, status: 'sent' })} loading={statusMutation.isPending}>
                             <Send className="h-3 w-3" /> Send
                           </Button>
                         )}
-                        
+
                         {!LOCKED[q.status] && q.status === 'sent' && (
                           <>
                             <Button size="sm" onClick={() => statusMutation.mutate({ id: q.id, status: 'accepted' })}>
@@ -411,7 +531,6 @@ export function QuotationsPage() {
                           To SO
                         </Button>
 
-                        {/* WhatsApp Action */}
                         <Button size="sm" variant="ghost" onClick={() => shareWhatsApp(q)} title="Share on WhatsApp">
                           <MessageCircle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> WhatsApp
                         </Button>
@@ -420,7 +539,6 @@ export function QuotationsPage() {
                           <Mail className="h-3 w-3" /> Email
                         </Button>
 
-                        {/* Delete Button */}
                         <button
                           onClick={() => setConfirmDelete(q)}
                           className="p-1.5 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
@@ -447,7 +565,6 @@ export function QuotationsPage() {
         />
       </div>
 
-      {/* Delete Quotation Dialog */}
       <ConfirmDialog
         open={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
@@ -458,7 +575,6 @@ export function QuotationsPage() {
         loading={deleteMutation.isPending}
       />
 
-      {/* Cancel Quotation Dialog */}
       <ConfirmDialog
         open={!!confirmCancel}
         onClose={() => setConfirmCancel(null)}
