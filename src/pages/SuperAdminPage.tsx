@@ -641,7 +641,7 @@ export function SuperAdminPage() {
         </div>
 
         {/* Tabs */}
-        <div className="bg-white dark:bg-zinc-900 rounded-xl p-1.5 shadow-sm border border-slate-200 dark:border-zinc-800 flex gap-1 overflow-x-auto">
+        <div className="bg-white dark:bg-zinc-900 rounded-xl p-1.5 shadow-sm border border-slate-200 dark:border-zinc-800 flex gap-1 flex-wrap">
           {tabs.map(t => (
             <button key={t.key} onClick={() => setActiveTab(t.key)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-2 whitespace-nowrap ${
@@ -687,7 +687,7 @@ export function SuperAdminPage() {
             )}
 
             <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="flex-wrap">
                 <table className="w-full text-left text-sm min-w-[900px]">
                   <thead className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-200 dark:border-zinc-800 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     <tr>
@@ -789,7 +789,7 @@ export function SuperAdminPage() {
               <div className="px-5 py-4 border-b border-slate-200 dark:border-zinc-800">
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Active Announcements</h3>
               </div>
-              <div className="overflow-x-auto">
+              <div className="flex-wrap">
                 <table className="w-full text-left text-sm min-w-[520px]">
                   <thead className="bg-slate-50 dark:bg-zinc-800/50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     <tr><th className="px-5 py-3">Title</th><th className="px-5 py-3">Severity</th><th className="px-5 py-3">Created</th><th className="px-5 py-3 text-right">Actions</th></tr>
@@ -846,7 +846,7 @@ export function SuperAdminPage() {
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Tenant Quota Usage</h3>
                 <span className="text-xs text-slate-400">{tenants.length} tenants</span>
               </div>
-              <div className="overflow-x-auto">
+              <div className="flex-wrap">
                 <table className="w-full text-left text-sm min-w-[640px]">
                   <thead className="bg-slate-50 dark:bg-zinc-800/50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     <tr><th className="px-5 py-3">Business</th><th className="px-5 py-3">Plan</th><th className="px-5 py-3">Usage</th><th className="px-5 py-3 text-right">Edit</th></tr>
@@ -936,7 +936,7 @@ export function SuperAdminPage() {
               <span className="text-xs text-slate-400">{filteredMembers.length} members</span>
             </div>
             <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="flex-wrap">
                 <table className="w-full text-left text-sm min-w-[860px]">
                   <thead className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-200 dark:border-zinc-800 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     <tr>
@@ -1303,3 +1303,4 @@ export function SuperAdminPage() {
     </div>
   );
 }
+
