@@ -32,9 +32,8 @@ import {
   Search,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
+import { renderDocSheetToPdf, type PrintableDocData } from '@/lib/docPrint';
 import { openWhatsAppShare } from '@/lib/whatsapp';
-import { SendDialog } from '@/components/comms/SendDialog';
 import type { Quotation, QuotationItem } from '@/types/db';
 
 type QuoteRow = Quotation & { customer: { name: string; phone: string | null; email: string | null } | null };
@@ -93,7 +92,6 @@ export function QuotationsPage() {
   const [convertDate, setConvertDate] = useState('');
   const [convertDue, setConvertDue] = useState('');
   const [convertMode, setConvertMode] = useState<ConvertMode>('invoice');
-  const [sendTarget, setSendTarget] = useState<QuoteRow | null>(null);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -578,7 +576,13 @@ export function QuotationsPage() {
                           <MessageCircle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> WhatsApp
                         </Button>
 
-                        <Button size="sm" variant="ghost" onClick={() => setSendTarget(q)} title="Email with PDF">
+                        {/* Dedicated Full Page Route Navigation */}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => navigate(`/app/quotations/${q.id}/send`)}
+                          title="Email Quotation"
+                        >
                           <Mail className="h-3 w-3" /> Email
                         </Button>
 
@@ -654,71 +658,6 @@ export function QuotationsPage() {
           </Button>
         </div>
       </Modal>
-
-      <div className="relative z-50">
-        <SendDialog
-          open={!!sendTarget}
-          onClose={() => setSendTarget(null)}
-          contextLabel={`Quotation ${sendTarget?.quotation_number ?? ''}`}
-          docType="quotation"
-          docId={sendTarget?.id}
-          docNumber={sendTarget?.quotation_number}
-          templateKey="quotation_sent"
-          templateVariables={{
-            customer_name: sendTarget?.customer?.name || '',
-            quotation_number: sendTarget?.quotation_number || '',
-            business_name: activeBusiness?.name || '',
-            amount: formatCurrency(Number(sendTarget?.grand_total || 0), activeBusiness?.currency_symbol),
-            expiry_date: sendTarget?.expiry_date ? formatDate(sendTarget.expiry_date) : '—',
-          }}
-          defaultSubject={`Quotation ${sendTarget?.quotation_number ?? ''} from ${activeBusiness?.name || 'us'}`}
-          defaultMessage={`Dear ${sendTarget?.customer?.name || 'customer'}, please find attached quotation ${sendTarget?.quotation_number ?? ''} totalling ${formatCurrency(Number(sendTarget?.grand_total || 0), activeBusiness?.currency_symbol)}.`}
-          recipients={[
-            {
-              label: sendTarget?.customer?.name || 'Customer on record',
-              email: sendTarget?.customer?.email,
-              phone: sendTarget?.customer?.phone,
-            },
-          ]}
-          attachments={[
-            {
-              id: 'quotation-pdf',
-              label: 'Quotation PDF',
-              filename: `${sendTarget?.quotation_number ?? 'quotation'}.pdf`,
-              build: async () => {
-                if (!sendTarget || !activeBusiness) throw new Error('Quotation is not ready.');
-                const { data: items, error } = await supabase
-                  .from('quotation_items')
-                  .select('*')
-                  .eq('quotation_id', sendTarget.id)
-                  .order('created_at');
-                if (error) throw new Error(error.message);
-                return renderDocSheetToPdfBlob(activeBusiness, {
-                  docTitle: 'QUOTATION',
-                  docNumber: sendTarget.quotation_number,
-                  dateLabel: 'Quote Date',
-                  dateValue: formatDate(sendTarget.quote_date),
-                  expiryLabel: 'Valid Until',
-                  expiryValue: sendTarget.expiry_date,
-                  partyLabel: 'Customer',
-                  partyName: sendTarget.customer?.name || '—',
-                  status: sendTarget.status,
-                  items: (items || []) as QuotationItem[],
-                  subtotal: Number(sendTarget.subtotal),
-                  taxableAmount: Number(sendTarget.taxable_amount),
-                  cgst: Number(sendTarget.cgst_amount),
-                  sgst: Number(sendTarget.sgst_amount),
-                  igst: Number(sendTarget.igst_amount),
-                  roundOff: Number(sendTarget.round_off) || 0,
-                  grandTotal: Number(sendTarget.grand_total),
-                  notes: sendTarget.notes,
-                  terms: sendTarget.terms,
-                });
-              },
-            },
-          ]}
-        />
-      </div>
     </div>
   );
 }
