@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/common/DatePicker';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, X } from 'lucide-react';
 import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
 import type { Customer, Product } from '@/types/db';
@@ -22,10 +22,12 @@ type LineItem = {
   unit: string;
   rate: number;
   tax_rate: number;
+  tax_amount: number;
+  total: number;
 };
 
 const emptyLine: LineItem = {
-  product_id: null, product_name: '', hsn_sac: '', quantity: 1, unit: 'PCS', rate: 0, tax_rate: 18,
+  product_id: null, product_name: '', hsn_sac: '', quantity: 1, unit: 'PCS', rate: 0, tax_rate: 18, tax_amount: 0, total: 0,
 };
 
 export function QuotationCreatePage() {
@@ -91,6 +93,11 @@ export function QuotationCreatePage() {
       if (!customerId) throw new Error('Please select a customer');
       const validLines = lines.filter((l) => l.product_name.trim() && l.quantity > 0);
       if (!validLines.length) throw new Error('Add at least one line with a description and quantity');
+
+      // Customer UUID validation — reject placeholder/empty values before hitting the DB.
+      const cid = customerId.trim();
+      if (!cid || cid.length < 5) throw new Error('Please select a valid customer');
+
       const { data: userData } = await supabase.auth.getUser();
       const { data: number, error: numberError } = await supabase.rpc('next_document_number', {
         p_business_id: activeBusiness.id,
@@ -99,10 +106,12 @@ export function QuotationCreatePage() {
       });
       if (numberError) throw numberError;
 
+      const quoteNumber = `QT-${Date.now().toString().slice(-6)}`;
       const { data: quote, error } = await supabase.from('quotations').insert({
         business_id: activeBusiness.id,
         quotation_number: String(number),
-        customer_id: customerId,
+        quote_number: quoteNumber,
+        customer_id: cid,
         quote_date: quoteDate,
         expiry_date: expiryDate || null,
         subtotal: totals.subtotal,
@@ -122,18 +131,21 @@ export function QuotationCreatePage() {
 
       const { error: itemsError } = await supabase.from('quotation_items').insert(
         validLines.map((l) => {
-          const taxable = roundTo2(l.quantity * l.rate);
-          const gst = calculateGstAmounts(taxable, l.tax_rate, isInterState);
+          const quantity = Number(l.quantity) || 1;
+          const rate = Number(l.rate) || 0;
+          const taxRate = Number(l.tax_rate) || 0;
+          const taxable = roundTo2(quantity * rate);
+          const gst = calculateGstAmounts(taxable, taxRate, isInterState);
           return {
             business_id: activeBusiness.id,
             quotation_id: quote.id,
-            product_id: l.product_id,
-            product_name: l.product_name.trim(),
-            hsn_sac: l.hsn_sac || null,
-            quantity: l.quantity,
+            product_id: l.product_id || null,
+            description: l.product_name || '',
+            quantity,
             unit: l.unit,
-            rate: l.rate,
-            tax_rate: l.tax_rate,
+            rate,
+            tax_rate: taxRate,
+            tax_amount: Number(l.tax_amount) || 0,
             taxable_amount: taxable,
             total_amount: roundTo2(taxable + gst.total_tax),
           };
@@ -152,7 +164,7 @@ export function QuotationCreatePage() {
       toast('Quotation draft saved', 'success');
       navigate('/app/quotations');
     },
-    onError: (err: any) => toast(err.message || 'Failed to save quotation', 'error'),
+    onError: (err: any) => toast(err?.message || 'Failed to save quotation', 'error'),
   });
 
   const sym = activeBusiness?.currency_symbol || '₹';
@@ -185,37 +197,61 @@ export function QuotationCreatePage() {
 
         <FormSection
           title="Lines"
-          description="Free-text description or pick a product to autofill rate and tax"
+          description="Pick a product to autofill, or type a free-text description. Numbered via the document service on save."
           actions={
             <button onClick={() => setLines((prev) => [...prev, { ...emptyLine }])}
               className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline">+ Add line</button>
           }
         >
           <div className="border border-secondary-200 dark:border-secondary-800 rounded-lg divide-y divide-secondary-100 dark:divide-secondary-800/50">
-            {lines.map((l, idx) => (
-              <div key={idx} className="p-3 space-y-2">
-                <Input placeholder="Product / description (free text or pick below)" value={l.product_name}
-                  onChange={(e) => updateLine(idx, { product_name: e.target.value })} />
-                <div className="grid grid-cols-[1fr_5rem_5rem_5rem_2rem] gap-2 items-center">
-                  <select className="input text-xs" value={l.product_id ?? ''}
-                    onChange={(e) => {
-                      const p = products?.find((pr) => pr.id === e.target.value);
-                      if (p) updateLine(idx, { product_id: p.id, product_name: p.name, hsn_sac: p.hsn_sac || '', unit: p.unit, rate: p.selling_price, tax_rate: p.tax_rate });
-                      else updateLine(idx, { product_id: null });
-                    }}>
-                    <option value="">Custom line…</option>
-                    {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                  <Input type="number" min={0} value={String(l.quantity)} onChange={(e) => updateLine(idx, { quantity: parseFloat(e.target.value) || 0 })} className="text-right figure" title="Qty" />
-                  <Input type="number" min={0} value={String(l.rate)} onChange={(e) => updateLine(idx, { rate: parseFloat(e.target.value) || 0 })} className="text-right figure" title="Rate" />
-                  <Input type="number" min={0} max={28} value={String(l.tax_rate)} onChange={(e) => updateLine(idx, { tax_rate: parseFloat(e.target.value) || 0 })} className="text-right figure" title="Tax %" />
-                  <button onClick={() => setLines((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)))}
-                    className="text-xs text-secondary-400 hover:text-error-600" title="Remove line">×</button>
+            {lines.map((l, idx) => {
+              const lineTotal = roundTo2(l.quantity * l.rate);
+              return (
+                <div key={idx} className="p-3 flex gap-2 items-start flex-wrap">
+                  <div className="flex-1 min-w-[160px]">
+                    <FormField label="Product / Description">
+                      <input
+                        list="quot-product-list"
+                        className="input"
+                        placeholder="Type or pick a product…"
+                        value={l.product_name}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateLine(idx, { product_name: val });
+                          const match = products?.find((p) => p.name === val);
+                          if (match) {
+                            updateLine(idx, { product_id: match.id, hsn_sac: match.hsn_sac || '', unit: match.unit, rate: match.selling_price, tax_rate: match.tax_rate });
+                          } else if (val) {
+                            const pick = products?.find((p) => p.name.toLowerCase() === val.toLowerCase());
+                            if (pick) updateLine(idx, { product_id: pick.id, hsn_sac: pick.hsn_sac || '', unit: pick.unit, rate: pick.selling_price, tax_rate: pick.tax_rate });
+                          }
+                        }}
+                      />
+                      <datalist id="quot-product-list">
+                        {products?.map((p) => <option key={p.id} value={p.name} />)}
+                      </datalist>
+                    </FormField>
+                  </div>
+                  <FormField label="Qty" className="w-20">
+                    <Input type="number" min={0} value={String(l.quantity)} onChange={(e) => updateLine(idx, { quantity: Number(e.target.value) || 0 })} className="text-right figure" />
+                  </FormField>
+                  <FormField label="Rate" className="w-24">
+                    <Input type="number" min={0} value={String(l.rate)} onChange={(e) => updateLine(idx, { rate: Number(e.target.value) || 0 })} className="text-right figure" />
+                  </FormField>
+                  <FormField label="Tax %" className="w-20">
+                    <Input type="number" min={0} max={28} value={String(l.tax_rate)} onChange={(e) => updateLine(idx, { tax_rate: Number(e.target.value) || 0 })} className="text-right figure" />
+                  </FormField>
+                  <FormField label="Amount" className="w-28">
+                    <div className="input text-right figure bg-secondary-50 dark:bg-secondary-900/60">{formatCurrency(lineTotal, sym)}</div>
+                  </FormField>
+                  <button type="button" onClick={() => setLines((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)))}
+                    className="mt-6 p-2 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors" title="Remove line">
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-          <p className="text-xs text-secondary-400 mt-3">Numbered via the document service on save. Quotes have no stock impact.</p>
         </FormSection>
 
         <FormSection title="Terms & Totals">
