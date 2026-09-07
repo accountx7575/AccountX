@@ -831,7 +831,7 @@ export function SettingsPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <StampSignatureSlot
-              title="Company Stamp / Logo"
+              title="Company / Firm Logo"
               hint="Rendered top-left on quotation and sales invoice header"
               value={form.stamp_url}
               disabled={!canEditSettings}
@@ -839,7 +839,7 @@ export function SettingsPage() {
               onRemove={() => setForm((prev) => ({ ...prev, stamp_url: '' }))}
             />
             <StampSignatureSlot
-              title="Authorized Signatory Signature"
+              title="Company / Firm Stamp & Sign"
               hint="Transparent PNG recommended - sits above the sign line"
               value={form.signature_url}
               disabled={!canEditSettings}
