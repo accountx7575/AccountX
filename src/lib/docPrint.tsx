@@ -1,3 +1,6 @@
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+
 export interface PrintableDocData {
   docTitle: string;
   docNumber: string;
@@ -37,7 +40,6 @@ export interface PrintableDocData {
   terms?: string | null;
 }
 
-// Fallback Crisp Vector SVG Logo for Solar Home
 const SOLAR_HOME_LOGO = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="95" height="75" viewBox="0 0 110 85">
   <circle cx="55" cy="30" r="22" fill="%23f59e0b"/>
   <polygon points="55,10 18,38 24,42 55,17 86,42 92,38" fill="%231e3a8a"/>
@@ -161,7 +163,6 @@ export function generateOmStyleHtml(
   const accountNo = business?.bank_account_number || '120034396413';
   const ifsc = business?.bank_ifsc_code || 'CNRB0018631';
 
-  // Dynamic Logo & Stamp/Signature from SettingsPage (with fallback)
   const dynamicLogo = business?.stamp_url || business?.logo_url || SOLAR_HOME_LOGO;
   const dynamicSignature = business?.signature_url || null;
 
@@ -206,9 +207,10 @@ export function generateOmStyleHtml(
   }
 
   .page {
-    width: 100%;
-    max-width: 194mm;
+    width: 194mm;
     margin: 0 auto;
+    background: #fff;
+    padding: 4mm;
   }
 
   .top-title {
@@ -230,7 +232,6 @@ export function generateOmStyleHtml(
     border-collapse: collapse;
   }
 
-  /* Exact 50% split for vertical center continuity */
   .company-row {
     display: flex;
     min-height: 38mm;
@@ -363,7 +364,6 @@ export function generateOmStyleHtml(
     color: #000;
   }
 
-  /* Items Table: Exactly 50.0% split on 2nd column (8% + 42% = 50%) */
   .items-table-wrap {
     width: 100%;
     border-bottom: 1px solid #000;
@@ -452,7 +452,6 @@ export function generateOmStyleHtml(
     font-size: 10.5px;
   }
 
-  /* Standalone GST Box with 6px top margin */
   .gst-box-wrap {
     margin-top: 6px;
     border-top: 1px solid #000;
@@ -491,7 +490,6 @@ export function generateOmStyleHtml(
     font-weight: 600;
   }
 
-  /* 6px gap before words box */
   .words-box-wrap {
     margin-top: 6px;
     border-top: 1px solid #000;
@@ -514,7 +512,6 @@ export function generateOmStyleHtml(
     color: #111;
   }
 
-  /* Bottom: Bank Details, Terms & Conditions, and Dynamic Signature */
   .bottom {
     display: flex;
     min-height: 34mm;
@@ -595,33 +592,14 @@ export function generateOmStyleHtml(
     font-size: 9px;
     font-weight: 700;
   }
-
-  @media print {
-    .page {
-      max-width: none;
-    }
-
-    .sheet {
-      break-inside: avoid;
-    }
-
-    .items,
-    .gst,
-    .bottom {
-      break-inside: avoid;
-    }
-  }
 </style>
 </head>
 
 <body>
-<div class="page">
-  <!-- Title with Underline -->
+<div class="page" id="pdf-printable-area">
   <div class="top-title">${esc(title)}</div>
 
   <div class="sheet">
-
-    <!-- Header Box -->
     <div class="company-row">
       <div class="company-cell-left">
         <div class="logo-wrap">
@@ -650,7 +628,6 @@ export function generateOmStyleHtml(
         </div>
       </div>
 
-      <!-- Meta Grid -->
       <div class="company-cell-right">
         <div class="meta-grid">
           <div class="meta-cell">
@@ -671,7 +648,6 @@ export function generateOmStyleHtml(
       </div>
     </div>
 
-    <!-- Bill To & Ship To -->
     <div class="party-row">
       <div class="party-cell">
         <div class="party-heading">BILL TO</div>
@@ -695,7 +671,6 @@ export function generateOmStyleHtml(
       </div>
     </div>
 
-    <!-- Items Table: Exactly 50% split on 2nd column (8% + 42% = 50%) -->
     <div class="items-table-wrap">
       <table class="items">
         <colgroup>
@@ -759,7 +734,6 @@ export function generateOmStyleHtml(
       </table>
     </div>
 
-    <!-- GST Box: Closed vertical partition between SGST Amount and Total Tax Amount -->
     <div class="gst-box-wrap">
       ${
         isInterState
@@ -832,7 +806,6 @@ export function generateOmStyleHtml(
       }
     </div>
 
-    <!-- Total Amount in words: 6px gap + Normal weight -->
     <div class="words-box-wrap">
       <div class="words">
         <div class="words-label">Total Amount (in words)</div>
@@ -840,7 +813,6 @@ export function generateOmStyleHtml(
       </div>
     </div>
 
-    <!-- Bottom Section: Bank Details, Terms, and Dynamic Signature / Stamp -->
     <div class="bottom">
       <div class="bottom-cell-1">
         <div class="section-title">Bank Details</div>
@@ -896,38 +868,54 @@ export async function renderDocSheetToPdf(
 ): Promise<void> {
   const htmlContent = generateOmStyleHtml(business, doc);
 
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  iframe.setAttribute('aria-hidden', 'true');
+  const container = document.createElement('div');
+  container.innerHTML = htmlContent;
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '0';
+  document.body.appendChild(container);
 
-  document.body.appendChild(iframe);
+  const printableElement = container.querySelector('#pdf-printable-area') as HTMLElement;
 
-  const frameDocument = iframe.contentWindow?.document;
+  try {
+    const canvas = await html2canvas(printableElement, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
 
-  if (!frameDocument) {
-    document.body.removeChild(iframe);
-    throw new Error('Unable to create print document.');
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+    pdf.save(`${doc.docNumber || 'document'}.pdf`);
+  } catch (err) {
+    console.error('PDF Generation Error:', err);
+    // Fallback to iframe print
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    const frameDoc = iframe.contentWindow?.document;
+    if (frameDoc) {
+      frameDoc.open();
+      frameDoc.write(htmlContent);
+      frameDoc.close();
+      setTimeout(() => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => document.body.removeChild(iframe), 2000);
+      }, 500);
+    }
+  } finally {
+    document.body.removeChild(container);
   }
-
-  frameDocument.open();
-  frameDocument.write(htmlContent);
-  frameDocument.close();
-
-  setTimeout(() => {
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
-
-    setTimeout(() => {
-      if (document.body.contains(iframe)) {
-        document.body.removeChild(iframe);
-      }
-    }, 2000);
-  }, 500);
 }
 
 export async function renderDocSheetToPdfBlob(
@@ -935,5 +923,33 @@ export async function renderDocSheetToPdfBlob(
   doc: PrintableDocData,
 ): Promise<Blob> {
   const htmlContent = generateOmStyleHtml(business, doc);
-  return new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+  const container = document.createElement('div');
+  container.innerHTML = htmlContent;
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '0';
+  document.body.appendChild(container);
+
+  const printableElement = container.querySelector('#pdf-printable-area') as HTMLElement;
+
+  try {
+    const canvas = await html2canvas(printableElement, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+    const pdfOutput = pdf.output('blob');
+    document.body.removeChild(container);
+    return pdfOutput;
+  } catch (err) {
+    document.body.removeChild(container);
+    return new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+  }
 }
