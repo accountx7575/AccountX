@@ -30,6 +30,7 @@ import {
   ArrowUp,
   ArrowDown,
   Search,
+  Download,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { renderDocSheetToPdfBlob } from '@/lib/docPrint';
@@ -88,6 +89,7 @@ export function QuotationsPage() {
   const [confirmCancel, setConfirmCancel] = useState<Quotation | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<QuoteRow | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [convertTarget, setConvertTarget] = useState<QuoteRow | null>(null);
   const [convertDate, setConvertDate] = useState('');
   const [convertDue, setConvertDue] = useState('');
@@ -193,6 +195,55 @@ export function QuotationsPage() {
       setPrintingId(null);
     }
   };
+  // Handle PDF Download
+  const handleDownloadPdf = async (q: QuoteRow) => {
+    if (!activeBusiness) return;
+    setDownloadingId(q.id);
+    try {
+      const { data: items, error } = await supabase
+        .from('quotation_items')
+        .select('*')
+        .eq('quotation_id', q.id)
+        .order('created_at');
+      if (error) throw error;
+
+      const blob = await renderDocSheetToPdfBlob(activeBusiness, {
+        docTitle: 'QUOTATION',
+        docNumber: q.quotation_number,
+        dateLabel: 'Quote Date',
+        dateValue: formatDate(q.quote_date),
+        expiryLabel: 'Valid Until',
+        expiryValue: q.expiry_date,
+        partyLabel: 'Customer',
+        partyName: q.customer?.name || '—',
+        status: q.status,
+        items: (items || []) as QuotationItem[],
+        subtotal: Number(q.subtotal),
+        taxableAmount: Number(q.taxable_amount),
+        cgst: Number(q.cgst_amount),
+        sgst: Number(q.sgst_amount),
+        igst: Number(q.igst_amount),
+        roundOff: Number(q.round_off) || 0,
+        grandTotal: Number(q.grand_total),
+        notes: q.notes,
+        terms: q.terms,
+      });
+
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `${q.quotation_number}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      toast(err?.message || 'Failed to download PDF', 'error');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
 
   const { data: rawData, isLoading, isError, refetch } = useQuery({
     queryKey: ['quotations-data', activeBusiness?.id],
@@ -562,6 +613,17 @@ export function QuotationsPage() {
                           title="Print / Save PDF Preview"
                         >
                           <Printer className="h-3 w-3" /> Print
+                        </Button>
+
+                        {/* Download PDF Button */}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={downloadingId === q.id}
+                          onClick={() => handleDownloadPdf(q)}
+                          title="Download PDF"
+                        >
+                          <Download className="h-3 w-3" /> PDF
                         </Button>
 
                         {LOCKED[q.status] && (
