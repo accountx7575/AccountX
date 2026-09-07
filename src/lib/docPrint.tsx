@@ -32,7 +32,7 @@ export interface PrintableDocData {
   terms?: string | null;
 }
 
-function numberToWordsINR(num: number): string {
+function numberToWordsINR(num: number, appendOnly: boolean = false): string {
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
@@ -51,7 +51,7 @@ function numberToWordsINR(num: number): string {
   }
 
   const rounded = Math.round(num);
-  if (rounded === 0) return 'Zero Rupees Only';
+  if (rounded === 0) return appendOnly ? 'Zero Rupees Only' : 'Zero Rupees';
 
   const crore = Math.floor(rounded / 10000000);
   const lakh = Math.floor((rounded % 10000000) / 100000);
@@ -64,22 +64,52 @@ function numberToWordsINR(num: number): string {
   if (thousand) out += inWords(thousand) + 'Thousand ';
   if (hundred) out += inWords(hundred);
 
-  return out.trim() + ' Rupees Only';
+  const words = out.trim() + ' Rupees';
+  return appendOnly ? words + ' Only' : words;
 }
+
+// Formats money. forceDecimals=true always shows 2 decimals (Rate/Tax/Taxable Value/GST rows).
+// forceDecimals=false trims ".00" for whole numbers (used for the AMOUNT column, matching source PDF).
+function formatMoney(num: number, forceDecimals: boolean = true): string {
+  const n = Number(num || 0);
+  if (!forceDecimals && Number.isInteger(n)) {
+    return n.toLocaleString('en-IN');
+  }
+  return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+const SOLAR_HOME_LOGO_SVG = `
+<svg width="56" height="56" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <g stroke="#f7941d" stroke-width="5" stroke-linecap="round">
+    <line x1="50" y1="2" x2="50" y2="13"/>
+    <line x1="21" y1="11" x2="28" y2="21"/>
+    <line x1="79" y1="11" x2="72" y2="21"/>
+    <line x1="8" y1="34" x2="20" y2="37"/>
+    <line x1="92" y1="34" x2="80" y2="37"/>
+  </g>
+  <circle cx="50" cy="30" r="13" fill="#fdb913"/>
+  <polygon points="14,58 50,30 86,58" fill="#f7941d"/>
+  <line x1="14" y1="58" x2="86" y2="58" stroke="#ffffff" stroke-width="1.5"/>
+  <line x1="32" y1="45" x2="32" y2="58" stroke="#ffffff" stroke-width="1.5"/>
+  <line x1="50" y1="35" x2="50" y2="58" stroke="#ffffff" stroke-width="1.5"/>
+  <line x1="68" y1="45" x2="68" y2="58" stroke="#ffffff" stroke-width="1.5"/>
+  <rect x="24" y="58" width="52" height="30" fill="#1c3f94"/>
+  <rect x="42" y="70" width="16" height="18" fill="#ffffff"/>
+</svg>`;
 
 export function generateOmStyleHtml(business: any, doc: PrintableDocData): string {
   const isInterState = doc.igst > 0;
   const totalQty = doc.items.reduce((acc, it) => acc + Number(it.quantity || 0), 0);
   const totalTaxAmount = doc.cgst + doc.sgst + doc.igst;
-  const grandTotalWords = numberToWordsINR(doc.grandTotal);
+  const grandTotalWords = numberToWordsINR(doc.grandTotal, false);
 
-  // Canara Bank exact details
-  const bankName = business?.bank_name || 'Canara Bank';
-  const branchName = 'Barabanki';
-  const accName = business?.name || 'Avadh Boring Company';
-  const accNo = business?.bank_account_number || '120034396413';
-  const ifsc = business?.bank_ifsc_code || 'CNRB0018631';
-  const panNo = business?.gstin ? business.gstin.slice(2, 12) : 'AABPQ3096M';
+  // OM ENTERPRISES exact bank details (fallbacks used only if business object doesn't supply them)
+  const bankName = business?.bank_name || 'Indian Bank';
+  const branchName = business?.bank_branch || 'LUCKNOW MOHAMMADPUR';
+  const accName = business?.name || 'OM ENTERPRISES';
+  const accNo = business?.bank_account_number || '50331189248';
+  const ifsc = business?.bank_ifsc_code || 'IDIB000M730';
+  const panNo = business?.pan_number || (business?.gstin ? business.gstin.slice(2, 12) : 'AYLPV6076C');
 
   return `
   <!DOCTYPE html>
@@ -97,6 +127,9 @@ export function generateOmStyleHtml(business: any, doc: PrintableDocData): strin
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
+      html, body {
+        height: 100%;
+      }
       body {
         margin: 0;
         padding: 0;
@@ -109,7 +142,10 @@ export function generateOmStyleHtml(business: any, doc: PrintableDocData): strin
         width: 100%;
         max-width: 194mm;
         margin: 0 auto;
+        min-height: 280mm;
         border: 1.5px solid #000;
+        display: flex;
+        flex-direction: column;
       }
       .header-title-bar {
         text-align: center;
@@ -132,18 +168,25 @@ export function generateOmStyleHtml(business: any, doc: PrintableDocData): strin
         border-right: 1.5px solid #000;
         display: flex;
         flex-direction: column;
+        align-items: center;
         justify-content: center;
+        text-align: center;
+      }
+      .company-left .logo-icon {
+        margin-bottom: 2px;
       }
       .company-left .badge-title {
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 800;
         line-height: 1.1;
+        color: #1c3f94;
       }
       .company-left .badge-sub {
-        font-size: 8px;
+        font-size: 7.5px;
         font-weight: 700;
         letter-spacing: 0.5px;
         margin-top: 2px;
+        color: #f7941d;
       }
       .company-center {
         width: 72%;
@@ -199,10 +242,17 @@ export function generateOmStyleHtml(business: any, doc: PrintableDocData): strin
         margin-bottom: 2px;
         text-transform: uppercase;
       }
+      .items-fill {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        border-bottom: 1.5px solid #000;
+      }
       .table-grid {
         width: 100%;
+        height: 100%;
         border-collapse: collapse;
-        border-bottom: 1.5px solid #000;
+        flex: 1;
       }
       .table-grid th, .table-grid td {
         border-right: 1.5px solid #000;
@@ -218,10 +268,24 @@ export function generateOmStyleHtml(business: any, doc: PrintableDocData): strin
         font-weight: 800;
         text-align: center;
       }
+      .spacer-row td {
+        height: 100%;
+        padding: 0;
+        border-right: 1.5px solid #000;
+      }
+      .spacer-row td:last-child {
+        border-right: none;
+      }
       .table-total-row td {
         border-top: 1.5px solid #000;
         font-weight: 800;
         background: #fbfbfb;
+      }
+      .item-sub-line {
+        font-size: 9px;
+        font-weight: 400;
+        color: #222;
+        line-height: 1.5;
       }
       .tax-table {
         width: 100%;
@@ -282,21 +346,22 @@ export function generateOmStyleHtml(business: any, doc: PrintableDocData): strin
   <body>
     <div class="page-container">
       <div class="header-title-bar">
-        <h1>QUOTATION</h1>
+        <h1>${doc.docTitle ? doc.docTitle.toUpperCase() : 'QUOTATION'}</h1>
       </div>
 
       <!-- Top Company Details -->
       <div class="company-block">
         <div class="company-left">
+          <div class="logo-icon">${SOLAR_HOME_LOGO_SVG}</div>
           <div class="badge-title">SOLAR HOME</div>
           <div class="badge-sub">RENEWABLE ENERGY</div>
         </div>
         <div class="company-center">
-          <div class="company-name">${business?.name || 'AVADH BORING COMPANY'}</div>
+          <div class="company-name">${business?.name || 'OM ENTERPRISES'}</div>
           <div class="company-meta-line">
-            AN-25, LAUTA BAGH, AZAD NAGR, NAWABGANJ, Barabanki, Uttar Pradesh, 225001<br/>
-            <strong>GSTIN:</strong> ${business?.gstin || '09AABPQ3096M1Z5'}&nbsp;&nbsp;&nbsp;&nbsp;<strong>PAN Number:</strong> ${panNo}<br/>
-            <strong>Mobile:</strong> ${business?.phone || '9450942418'}&nbsp;&nbsp;&nbsp;&nbsp;<strong>Email:</strong> ${business?.email || 'abc.solar7575@gmail.com'}
+            ${business?.address || 'NEAR -MAA DURGA MANDIR BANKI TIRAHA<br/>BARABANKI, Barabanki, Uttar Pradesh, 225001'}<br/>
+            <strong>GSTIN:</strong> ${business?.gstin || '09AYLPV6076C1ZW'}&nbsp;&nbsp;&nbsp;&nbsp;<strong>PAN Number:</strong> ${panNo}<br/>
+            <strong>Mobile:</strong> ${business?.phone || '8052955923'}&nbsp;&nbsp;&nbsp;&nbsp;<strong>Email:</strong> ${business?.email || 'om.enterprises09111992@gmail.com'}
           </div>
         </div>
       </div>
@@ -304,16 +369,16 @@ export function generateOmStyleHtml(business: any, doc: PrintableDocData): strin
       <!-- Meta Grid -->
       <div class="meta-grid">
         <div class="meta-cell">
-          <div class="meta-label">Quotation No.</div>
+          <div class="meta-label">${doc.docTitle || 'Quotation'} No.</div>
           <div class="meta-value">${doc.docNumber}</div>
         </div>
         <div class="meta-cell">
-          <div class="meta-label">Quotation Date</div>
+          <div class="meta-label">${doc.docTitle || 'Quotation'} Date</div>
           <div class="meta-value">${doc.dateValue}</div>
         </div>
         <div class="meta-cell">
           <div class="meta-label">Expiry Date</div>
-          <div class="meta-value">${doc.expiryValue || '29/07/2026'}</div>
+          <div class="meta-value">${doc.expiryValue || '-'}</div>
         </div>
       </div>
 
@@ -323,62 +388,67 @@ export function generateOmStyleHtml(business: any, doc: PrintableDocData): strin
           <div class="party-header">BILL TO</div>
           <div style="font-weight: 800; font-size: 11px;">${doc.partyName}</div>
           <div style="font-size: 9.5px; color: #111;">
-            Address: ${doc.partyAddress || 'Daxin Tola Banki, Barabanki, Uttar Pradesh, 225001'}<br/>
+            Address: ${doc.partyAddress || '-'}<br/>
             Place of Supply: ${business?.state || 'Uttar Pradesh'}<br/>
-            Mobile: ${doc.partyPhone || '7985032002'}
+            Mobile: ${doc.partyPhone || '-'}
           </div>
         </div>
         <div class="party-cell">
           <div class="party-header">SHIP TO</div>
           <div style="font-weight: 800; font-size: 11px;">${doc.partyName}</div>
           <div style="font-size: 9.5px; color: #111;">
-            Address: ${doc.partyAddress || 'Daxin Tola Banki, Barabanki, Uttar Pradesh, 225001'}<br/>
-            Place of Supply: ${business?.state || 'Uttar Pradesh'}<br/>
-            Mobile: ${doc.partyPhone || '7985032002'}
+            Address: ${doc.partyAddress || '-'}
           </div>
         </div>
       </div>
 
       <!-- Items Grid -->
-      <table class="table-grid">
-        <thead>
-          <tr>
-            <th style="width: 32px;">S.NO.</th>
-            <th style="text-align: left;">ITEMS</th>
-            <th style="width: 55px;">QTY.</th>
-            <th style="width: 80px; text-align: right;">RATE</th>
-            <th style="width: 75px; text-align: right;">TAX</th>
-            <th style="width: 85px; text-align: right;">AMOUNT</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${doc.items.map((it, idx) => {
-            const taxAmt = (it.total_amount - (it.taxable_amount || (it.rate * it.quantity)));
-            return `
-              <tr>
-                <td style="text-align: center; vertical-align: top;">${idx + 1}</td>
-                <td style="vertical-align: top;">
-                  <strong style="font-size: 10.5px;">${it.product_name}</strong>
-                </td>
-                <td style="text-align: center; vertical-align: top;">${it.quantity} ${it.unit || 'PCS'}</td>
-                <td style="text-align: right; vertical-align: top;">${it.rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                <td style="text-align: right; vertical-align: top;">
-                  ${taxAmt > 0 ? taxAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}<br/>
-                  <span style="font-size: 8.5px; color: #444;">(${it.tax_rate}%)</span>
-                </td>
-                <td style="text-align: right; vertical-align: top; font-weight: 700;">${it.total_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-              </tr>
-            `;
-          }).join('')}
-          <tr class="table-total-row">
-            <td colspan="2" style="text-align: right; padding-right: 12px;">TOTAL</td>
-            <td style="text-align: center;">${totalQty}</td>
-            <td></td>
-            <td style="text-align: right;">${totalTaxAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-            <td style="text-align: right; font-size: 11px;">${doc.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="items-fill">
+        <table class="table-grid">
+          <thead>
+            <tr>
+              <th style="width: 32px;">S.NO.</th>
+              <th style="text-align: left;">ITEMS</th>
+              <th style="width: 55px;">QTY.</th>
+              <th style="width: 80px; text-align: right;">RATE</th>
+              <th style="width: 75px; text-align: right;">TAX</th>
+              <th style="width: 85px; text-align: right;">AMOUNT</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${doc.items.map((it, idx) => {
+              const taxAmt = (it.total_amount - (it.taxable_amount || (it.rate * it.quantity)));
+              const lines = String(it.product_name || '').split('\n').map(l => l.trim()).filter(Boolean);
+              const mainLine = lines[0] || '';
+              const subLines = lines.slice(1);
+              return `
+                <tr>
+                  <td style="text-align: center; vertical-align: top;">${idx + 1}</td>
+                  <td style="vertical-align: top;">
+                    <strong style="font-size: 10.5px;">${mainLine}</strong>
+                    ${subLines.map(l => `<div class="item-sub-line">${l}</div>`).join('')}
+                  </td>
+                  <td style="text-align: center; vertical-align: top;">${it.quantity} ${it.unit || 'PCS'}</td>
+                  <td style="text-align: right; vertical-align: top;">${formatMoney(it.rate, true)}</td>
+                  <td style="text-align: right; vertical-align: top;">
+                    ${taxAmt > 0 ? formatMoney(taxAmt, true) : '0.00'}<br/>
+                    <span style="font-size: 8.5px; color: #444;">(${it.tax_rate}%)</span>
+                  </td>
+                  <td style="text-align: right; vertical-align: top; font-weight: 700;">${formatMoney(it.total_amount, false)}</td>
+                </tr>
+              `;
+            }).join('')}
+            <tr class="spacer-row"><td colspan="6"></td></tr>
+            <tr class="table-total-row">
+              <td colspan="2" style="text-align: right; padding-right: 12px;">TOTAL</td>
+              <td style="text-align: center;">${totalQty}</td>
+              <td></td>
+              <td style="text-align: right;">₹ ${formatMoney(totalTaxAmount, true)}</td>
+              <td style="text-align: right; font-size: 11px;">₹ ${formatMoney(doc.grandTotal, false)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       <!-- GST Summary Grid -->
       <table class="tax-table">
@@ -399,13 +469,13 @@ export function generateOmStyleHtml(business: any, doc: PrintableDocData): strin
         </thead>
         <tbody>
           <tr>
-            <td>${doc.items[0]?.hsn_sac || '—'}</td>
-            <td>${doc.taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td>${doc.items[0]?.hsn_sac || '-'}</td>
+            <td>${formatMoney(doc.taxableAmount, true)}</td>
             <td>${doc.items[0]?.tax_rate ? (doc.items[0].tax_rate / 2) : 2.5}%</td>
-            <td>${doc.cgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td>${formatMoney(doc.cgst, true)}</td>
             <td>${doc.items[0]?.tax_rate ? (doc.items[0].tax_rate / 2) : 2.5}%</td>
-            <td>${doc.sgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-            <td>${totalTaxAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td>${formatMoney(doc.sgst, true)}</td>
+            <td>₹ ${formatMoney(totalTaxAmount, true)}</td>
           </tr>
         </tbody>
       </table>
@@ -433,17 +503,17 @@ export function generateOmStyleHtml(business: any, doc: PrintableDocData): strin
               </tr>
               <tr>
                 <td>Bank:</td>
-                <td><strong>${bankName}, ${branchName}</strong></td>
+                <td><strong>${bankName} ,${branchName}</strong></td>
               </tr>
             </table>
 
             <div style="font-size: 9.5px; font-weight: 800; border-top: 1px solid #000; padding-top: 4px; margin-top: 6px;">Terms and Conditions</div>
             <div style="font-size: 8.5px; line-height: 1.35; color: #111;">
               Payment 100% Advance.<br/>
-              All payments to be drawn in favour of "${business?.name || 'Avadh Boring Company'}", payable at Barabanki<br/>
+              All payments to be drawn in favour of "${business?.name || 'Om Enterprises'}.", payable at ${business?.city || 'Barabanki'}<br/>
               This quotation is valid for 15 Days, subject to availability with our principals<br/>
-              <strong>ALL SUBJECT TO BARABANKI JURISDICTION</strong><br/>
-              (E. & O.E.)
+              <strong>ALL SUBJECT TO ${(business?.city || 'BARABANKI').toUpperCase()} JURISDICTION</strong><br/>
+              (E.&amp;O.E.)
             </div>
           </div>
         </div>
@@ -451,7 +521,7 @@ export function generateOmStyleHtml(business: any, doc: PrintableDocData): strin
         <div class="bottom-right">
           <div style="font-size: 9.5px; font-weight: 700;">
             Authorised Signatory For<br/>
-            <strong>${business?.name || 'AVADH BORING COMPANY'}</strong>
+            <strong>${business?.name || 'OM ENTERPRISES'}</strong>
           </div>
           <div class="sign-box"></div>
           <div style="border-top: 1px solid #000; padding-top: 3px; font-size: 8.5px;">
