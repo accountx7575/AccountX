@@ -1,6 +1,3 @@
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
-
 export interface PrintableDocData {
   docTitle: string;
   docNumber: string;
@@ -13,13 +10,9 @@ export interface PrintableDocData {
   partyAddress?: string;
   partyGstin?: string;
   partyPhone?: string;
-  shipToName?: string;
-  shipToAddress?: string;
-  shipToPhone?: string;
   status: string;
   items: Array<{
     product_name: string;
-    description?: string;
     hsn_sac?: string;
     quantity: number;
     unit?: string;
@@ -39,7 +32,6 @@ export interface PrintableDocData {
   terms?: string | null;
 }
 
-// Helper to convert number to Indian Currency Words
 function numberToWordsINR(num: number): string {
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
@@ -75,314 +67,434 @@ function numberToWordsINR(num: number): string {
   return out.trim() + ' Rupees Only';
 }
 
-function money(n: number): string {
-  return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function initials(name: string): string {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
-}
-
-const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  draft: { bg: '#f1f5f9', fg: '#475569' },
-  sent: { bg: '#e0f2fe', fg: '#0369a1' },
-  accepted: { bg: '#dcfce7', fg: '#15803d' },
-  rejected: { bg: '#fee2e2', fg: '#b91c1c' },
-  paid: { bg: '#dcfce7', fg: '#15803d' },
-  overdue: { bg: '#fee2e2', fg: '#b91c1c' },
-};
-
-function buildHtmlTemplate(business: any, doc: PrintableDocData): HTMLElement {
-  const PAGE_W = 794; // A4 @ 96dpi
-  const INK = '#101828';
-  const SUB = '#667085';
-  const LINE = '#e4e7ec';
-  const NAVY = '#0F2947';
-  const GOLD = '#B4790F';
-
-  const container = document.createElement('div');
-  container.style.width = `${PAGE_W}px`;
-  container.style.backgroundColor = '#ffffff';
-  container.style.color = INK;
-  container.style.fontFamily = '"Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif';
-  container.style.fontSize = '12.5px';
-  container.style.lineHeight = '1.5';
-  container.style.boxSizing = 'border-box';
-  container.style.WebkitFontSmoothing = 'antialiased';
-
+export function generateOmStyleHtml(business: any, doc: PrintableDocData): string {
   const isInterState = doc.igst > 0;
+  const totalQty = doc.items.reduce((acc, it) => acc + Number(it.quantity || 0), 0);
+  const totalTaxAmount = doc.cgst + doc.sgst + doc.igst;
   const grandTotalWords = numberToWordsINR(doc.grandTotal);
-  const statusKey = (doc.status || '').toLowerCase();
-  const statusColor = STATUS_COLORS[statusKey] || { bg: '#f1f5f9', fg: '#475569' };
 
-  const itemRows = doc.items
-    .map((it, idx) => {
-      const descLines = (it.description || '')
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .map((l) => `<div style="font-size:10.5px;color:${SUB};margin-top:2px;">${l}</div>`)
-        .join('');
-      const taxAmount = it.total_amount - (it.taxable_amount ?? it.rate * it.quantity);
-      return `
-        <tr>
-          <td style="padding:10px 8px;text-align:center;color:${INK};border:1px solid ${LINE};vertical-align:top;">${idx + 1}</td>
-          <td style="padding:10px 8px;border:1px solid ${LINE};vertical-align:top;">
-            <div style="font-weight:700;color:${INK};font-size:12px;">${it.product_name}</div>
-            ${descLines}
-          </td>
-          <td style="padding:10px 8px;text-align:center;color:${INK};border:1px solid ${LINE};vertical-align:top;white-space:nowrap;">${it.quantity} ${it.unit || 'PCS'}</td>
-          <td style="padding:10px 8px;text-align:right;color:${INK};border:1px solid ${LINE};vertical-align:top;font-variant-numeric:tabular-nums;">${money(it.rate)}</td>
-          <td style="padding:10px 8px;text-align:right;color:${INK};border:1px solid ${LINE};vertical-align:top;font-variant-numeric:tabular-nums;">
-            ${money(taxAmount)}<div style="font-size:9.5px;color:${SUB};">(${it.tax_rate}%)</div>
-          </td>
-          <td style="padding:10px 8px;text-align:right;color:${INK};font-weight:700;border:1px solid ${LINE};vertical-align:top;font-variant-numeric:tabular-nums;">${money(it.total_amount)}</td>
-        </tr>`;
-    })
-    .join('');
+  // Canara Bank exact details
+  const bankName = business?.bank_name || 'Canara Bank';
+  const branchName = 'Barabanki';
+  const accName = business?.name || 'Avadh Boring Company';
+  const accNo = business?.bank_account_number || '120034396413';
+  const ifsc = business?.bank_ifsc_code || 'CNRB0018631';
+  const panNo = business?.gstin ? business.gstin.slice(2, 12) : 'AABPQ3096M';
 
-  const totalQty = doc.items.reduce((s, it) => s + (Number(it.quantity) || 0), 0);
-  const totalTax = doc.igst > 0 ? doc.igst : doc.cgst + doc.sgst;
+  return `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${doc.docNumber} - Quotation</title>
+    <style>
+      @page {
+        size: A4 portrait;
+        margin: 8mm;
+      }
+      * {
+        box-sizing: border-box;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 11px;
+        color: #000;
+        background: #fff;
+      }
+      .page-container {
+        width: 100%;
+        max-width: 194mm;
+        margin: 0 auto;
+        border: 1.5px solid #000;
+      }
+      .header-title-bar {
+        text-align: center;
+        border-bottom: 1.5px solid #000;
+        padding: 4px 0;
+      }
+      .header-title-bar h1 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+      }
+      .company-block {
+        display: flex;
+        border-bottom: 1.5px solid #000;
+      }
+      .company-left {
+        width: 28%;
+        padding: 8px;
+        border-right: 1.5px solid #000;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .company-left .badge-title {
+        font-size: 14px;
+        font-weight: 800;
+        line-height: 1.1;
+      }
+      .company-left .badge-sub {
+        font-size: 8px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        margin-top: 2px;
+      }
+      .company-center {
+        width: 72%;
+        padding: 8px 12px;
+      }
+      .company-name {
+        font-size: 15px;
+        font-weight: 800;
+        margin-bottom: 3px;
+        text-transform: uppercase;
+      }
+      .company-meta-line {
+        font-size: 10px;
+        line-height: 1.35;
+      }
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border-bottom: 1.5px solid #000;
+        text-align: left;
+      }
+      .meta-cell {
+        padding: 5px 8px;
+        border-right: 1.5px solid #000;
+      }
+      .meta-cell:last-child {
+        border-right: none;
+      }
+      .meta-label {
+        font-size: 9.5px;
+        font-weight: 700;
+      }
+      .meta-value {
+        font-size: 11px;
+        font-weight: 800;
+        margin-top: 2px;
+      }
+      .party-grid {
+        display: flex;
+        border-bottom: 1.5px solid #000;
+      }
+      .party-cell {
+        width: 50%;
+        padding: 6px 8px;
+        line-height: 1.35;
+      }
+      .party-cell:first-child {
+        border-right: 1.5px solid #000;
+      }
+      .party-header {
+        font-size: 10px;
+        font-weight: 800;
+        margin-bottom: 2px;
+        text-transform: uppercase;
+      }
+      .table-grid {
+        width: 100%;
+        border-collapse: collapse;
+        border-bottom: 1.5px solid #000;
+      }
+      .table-grid th, .table-grid td {
+        border-right: 1.5px solid #000;
+        padding: 5px 6px;
+        font-size: 10px;
+      }
+      .table-grid th:last-child, .table-grid td:last-child {
+        border-right: none;
+      }
+      .table-grid th {
+        border-bottom: 1.5px solid #000;
+        background: #fafafa;
+        font-weight: 800;
+        text-align: center;
+      }
+      .table-total-row td {
+        border-top: 1.5px solid #000;
+        font-weight: 800;
+        background: #fbfbfb;
+      }
+      .tax-table {
+        width: 100%;
+        border-collapse: collapse;
+        border-bottom: 1.5px solid #000;
+        font-size: 9.5px;
+      }
+      .tax-table th, .tax-table td {
+        border-right: 1.5px solid #000;
+        border-bottom: 1px solid #000;
+        padding: 4px 6px;
+        text-align: center;
+      }
+      .tax-table th:last-child, .tax-table td:last-child {
+        border-right: none;
+      }
+      .tax-table th {
+        font-weight: 800;
+        background: #f9f9f9;
+      }
+      .bottom-section {
+        display: flex;
+      }
+      .bottom-left {
+        width: 65%;
+        border-right: 1.5px solid #000;
+        padding: 6px 8px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .bottom-right {
+        width: 35%;
+        padding: 6px 8px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        text-align: center;
+      }
+      .bank-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 4px;
+        font-size: 9.5px;
+      }
+      .bank-table td {
+        padding: 2px 0;
+      }
+      .sign-box {
+        height: 65px;
+      }
+      .authorised-label {
+        font-size: 9.5px;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-container">
+      <div class="header-title-bar">
+        <h1>QUOTATION</h1>
+      </div>
 
-  const cgstRate = doc.taxableAmount ? ((doc.cgst / doc.taxableAmount) * 100) : 0;
-  const sgstRate = doc.taxableAmount ? ((doc.sgst / doc.taxableAmount) * 100) : 0;
-  const igstRate = doc.taxableAmount ? ((doc.igst / doc.taxableAmount) * 100) : 0;
-
-  const hsnSacSet = Array.from(new Set(doc.items.map((it) => it.hsn_sac).filter(Boolean))).join(', ');
-
-  const hsnTableHtml = isInterState
-    ? `
-      <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid ${LINE};">
-        <thead>
-          <tr style="background:#F1F5F9;color:${SUB};">
-            <th style="padding:6px 8px;text-align:left;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};">HSN/SAC</th>
-            <th style="padding:6px 8px;text-align:right;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};">Taxable value</th>
-            <th style="padding:6px 8px;text-align:center;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};" colspan="2">IGST</th>
-            <th style="padding:6px 8px;text-align:right;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};">Total tax</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style="padding:7px 8px;border:1px solid ${LINE};color:${SUB};">${hsnSacSet || '—'}</td>
-            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.taxableAmount)}</td>
-            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:center;color:${SUB};">${igstRate.toFixed(0)}%</td>
-            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.igst)}</td>
-            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">₹${money(doc.igst)}</td>
-          </tr>
-        </tbody>
-      </table>`
-    : `
-      <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid ${LINE};">
-        <thead>
-          <tr style="background:#F1F5F9;color:${SUB};">
-            <th style="padding:6px 8px;text-align:left;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};">HSN/SAC</th>
-            <th style="padding:6px 8px;text-align:right;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};">Taxable value</th>
-            <th style="padding:6px 8px;text-align:center;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};" colspan="2">CGST</th>
-            <th style="padding:6px 8px;text-align:center;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};" colspan="2">SGST</th>
-            <th style="padding:6px 8px;text-align:right;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};">Total tax</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style="padding:7px 8px;border:1px solid ${LINE};color:${SUB};">${hsnSacSet || '—'}</td>
-            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.taxableAmount)}</td>
-            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:center;color:${SUB};">${cgstRate.toFixed(0)}%</td>
-            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.cgst)}</td>
-            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:center;color:${SUB};">${sgstRate.toFixed(0)}%</td>
-            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.sgst)}</td>
-            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">₹${money(totalTax)}</td>
-          </tr>
-        </tbody>
-      </table>`;
-
-  container.innerHTML = `
-    <div style="padding:36px 40px 30px 40px;">
-
-      <!-- ============ HEADER ============ -->
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:20px;border-bottom:2px solid ${NAVY};">
-        <div style="display:flex;gap:14px;">
-          <div style="width:52px;height:52px;flex-shrink:0;border-radius:10px;background:${NAVY};color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;letter-spacing:0.5px;">
-            ${initials(business.name || 'CO')}
+      <!-- Top Company Details -->
+      <div class="company-block">
+        <div class="company-left">
+          <div class="badge-title">SOLAR HOME</div>
+          <div class="badge-sub">RENEWABLE ENERGY</div>
+        </div>
+        <div class="company-center">
+          <div class="company-name">${business?.name || 'AVADH BORING COMPANY'}</div>
+          <div class="company-meta-line">
+            AN-25, LAUTA BAGH, AZAD NAGR, NAWABGANJ, Barabanki, Uttar Pradesh, 225001<br/>
+            <strong>GSTIN:</strong> ${business?.gstin || '09AABPQ3096M1Z5'}&nbsp;&nbsp;&nbsp;&nbsp;<strong>PAN Number:</strong> ${panNo}<br/>
+            <strong>Mobile:</strong> ${business?.phone || '9450942418'}&nbsp;&nbsp;&nbsp;&nbsp;<strong>Email:</strong> ${business?.email || 'abc.solar7575@gmail.com'}
           </div>
+        </div>
+      </div>
+
+      <!-- Meta Grid -->
+      <div class="meta-grid">
+        <div class="meta-cell">
+          <div class="meta-label">Quotation No.</div>
+          <div class="meta-value">${doc.docNumber}</div>
+        </div>
+        <div class="meta-cell">
+          <div class="meta-label">Quotation Date</div>
+          <div class="meta-value">${doc.dateValue}</div>
+        </div>
+        <div class="meta-cell">
+          <div class="meta-label">Expiry Date</div>
+          <div class="meta-value">${doc.expiryValue || '29/07/2026'}</div>
+        </div>
+      </div>
+
+      <!-- Bill To & Ship To -->
+      <div class="party-grid">
+        <div class="party-cell">
+          <div class="party-header">BILL TO</div>
+          <div style="font-weight: 800; font-size: 11px;">${doc.partyName}</div>
+          <div style="font-size: 9.5px; color: #111;">
+            Address: ${doc.partyAddress || 'Daxin Tola Banki, Barabanki, Uttar Pradesh, 225001'}<br/>
+            Place of Supply: ${business?.state || 'Uttar Pradesh'}<br/>
+            Mobile: ${doc.partyPhone || '7985032002'}
+          </div>
+        </div>
+        <div class="party-cell">
+          <div class="party-header">SHIP TO</div>
+          <div style="font-weight: 800; font-size: 11px;">${doc.partyName}</div>
+          <div style="font-size: 9.5px; color: #111;">
+            Address: ${doc.partyAddress || 'Daxin Tola Banki, Barabanki, Uttar Pradesh, 225001'}<br/>
+            Place of Supply: ${business?.state || 'Uttar Pradesh'}<br/>
+            Mobile: ${doc.partyPhone || '7985032002'}
+          </div>
+        </div>
+      </div>
+
+      <!-- Items Grid -->
+      <table class="table-grid">
+        <thead>
+          <tr>
+            <th style="width: 32px;">S.NO.</th>
+            <th style="text-align: left;">ITEMS</th>
+            <th style="width: 55px;">QTY.</th>
+            <th style="width: 80px; text-align: right;">RATE</th>
+            <th style="width: 75px; text-align: right;">TAX</th>
+            <th style="width: 85px; text-align: right;">AMOUNT</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${doc.items.map((it, idx) => {
+            const taxAmt = (it.total_amount - (it.taxable_amount || (it.rate * it.quantity)));
+            return `
+              <tr>
+                <td style="text-align: center; vertical-align: top;">${idx + 1}</td>
+                <td style="vertical-align: top;">
+                  <strong style="font-size: 10.5px;">${it.product_name}</strong>
+                </td>
+                <td style="text-align: center; vertical-align: top;">${it.quantity} ${it.unit || 'PCS'}</td>
+                <td style="text-align: right; vertical-align: top;">${it.rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                <td style="text-align: right; vertical-align: top;">
+                  ${taxAmt > 0 ? taxAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}<br/>
+                  <span style="font-size: 8.5px; color: #444;">(${it.tax_rate}%)</span>
+                </td>
+                <td style="text-align: right; vertical-align: top; font-weight: 700;">${it.total_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+              </tr>
+            `;
+          }).join('')}
+          <tr class="table-total-row">
+            <td colspan="2" style="text-align: right; padding-right: 12px;">TOTAL</td>
+            <td style="text-align: center;">${totalQty}</td>
+            <td></td>
+            <td style="text-align: right;">${totalTaxAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td style="text-align: right; font-size: 11px;">${doc.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- GST Summary Grid -->
+      <table class="tax-table">
+        <thead>
+          <tr>
+            <th rowspan="2">HSN/SAC</th>
+            <th rowspan="2">Taxable Value</th>
+            <th colspan="2">CGST</th>
+            <th colspan="2">SGST</th>
+            <th rowspan="2">Total Tax Amount</th>
+          </tr>
+          <tr>
+            <th>Rate</th>
+            <th>Amount</th>
+            <th>Rate</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>${doc.items[0]?.hsn_sac || '—'}</td>
+            <td>${doc.taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td>${doc.items[0]?.tax_rate ? (doc.items[0].tax_rate / 2) : 2.5}%</td>
+            <td>${doc.cgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td>${doc.items[0]?.tax_rate ? (doc.items[0].tax_rate / 2) : 2.5}%</td>
+            <td>${doc.sgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td>${totalTaxAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Bottom Split -->
+      <div class="bottom-section">
+        <div class="bottom-left">
           <div>
-            <div style="font-size:19px;font-weight:800;color:${INK};letter-spacing:-0.2px;">${business.name || 'Your Company'}</div>
-            ${business.tagline ? `<div style="font-size:11.5px;color:${GOLD};font-weight:600;margin-top:1px;">${business.tagline}</div>` : ''}
-            <div style="font-size:11px;color:${SUB};margin-top:6px;max-width:300px;">
-              ${business.address ? `${business.address}` : ''}${business.city ? `, ${business.city}` : ''}${business.state ? `, ${business.state}` : ''}${business.pincode ? ` – ${business.pincode}` : ''}
-            </div>
-            <div style="font-size:11px;color:${SUB};margin-top:3px;">
-              ${business.phone ? `${business.phone}` : ''}${business.phone && business.email ? '&nbsp;&nbsp;·&nbsp;&nbsp;' : ''}${business.email ? `${business.email}` : ''}
-            </div>
-            <div style="font-size:11px;color:${INK};margin-top:5px;font-weight:600;">
-              GSTIN&nbsp; <span style="font-weight:700;letter-spacing:0.3px;">${business.gstin || '—'}</span>
-            </div>
-          </div>
-        </div>
+            <div style="font-size: 9px; font-weight: 700; text-transform: uppercase;">Total Amount (in words)</div>
+            <div style="font-size: 10.5px; font-weight: 800; margin: 2px 0 6px 0;">${grandTotalWords}</div>
 
-        <div style="text-align:right;flex-shrink:0;">
-          <div style="display:inline-block;background:${NAVY};color:#fff;font-size:12px;font-weight:700;letter-spacing:1px;padding:6px 14px;border-radius:5px;">
-            ${(doc.docTitle || 'QUOTATION').toUpperCase()}
-          </div>
-          <table style="margin-top:12px;border-collapse:collapse;font-size:11.5px;">
-            <tr>
-              <td style="padding:2px 0;color:${SUB};text-align:right;padding-right:10px;">No.</td>
-              <td style="padding:2px 0;text-align:right;font-weight:700;color:${INK};font-variant-numeric:tabular-nums;">${doc.docNumber}</td>
-            </tr>
-            <tr>
-              <td style="padding:2px 0;color:${SUB};text-align:right;padding-right:10px;">${doc.dateLabel}</td>
-              <td style="padding:2px 0;text-align:right;font-weight:600;color:${INK};">${doc.dateValue}</td>
-            </tr>
-            ${doc.expiryValue ? `
-            <tr>
-              <td style="padding:2px 0;color:${SUB};text-align:right;padding-right:10px;">${doc.expiryLabel || 'Valid until'}</td>
-              <td style="padding:2px 0;text-align:right;font-weight:600;color:${INK};">${doc.expiryValue}</td>
-            </tr>` : ''}
-          </table>
-          <div style="margin-top:10px;">
-            <span style="display:inline-block;background:${statusColor.bg};color:${statusColor.fg};font-size:10px;font-weight:700;letter-spacing:0.5px;padding:4px 10px;border-radius:20px;text-transform:uppercase;">
-              ${doc.status || 'draft'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <!-- ============ BILL TO / SHIP TO ============ -->
-      <table style="width:100%;border-collapse:collapse;margin-top:18px;border:1px solid ${LINE};">
-        <tr>
-          <td style="width:50%;padding:12px 14px;border:1px solid ${LINE};vertical-align:top;">
-            <div style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px;">${doc.partyLabel || 'Bill to'}</div>
-            <div style="font-size:13.5px;font-weight:700;color:${INK};">${doc.partyName}</div>
-            ${doc.partyAddress ? `<div style="font-size:11px;color:${SUB};margin-top:4px;">Address: ${doc.partyAddress}</div>` : ''}
-            ${doc.partyGstin ? `<div style="font-size:11px;color:${SUB};margin-top:2px;">GSTIN: ${doc.partyGstin}</div>` : ''}
-            ${doc.partyPhone ? `<div style="font-size:11px;color:${SUB};margin-top:2px;">Mobile: ${doc.partyPhone}</div>` : ''}
-          </td>
-          <td style="width:50%;padding:12px 14px;border:1px solid ${LINE};vertical-align:top;">
-            <div style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px;">Ship to</div>
-            <div style="font-size:13.5px;font-weight:700;color:${INK};">${doc.shipToName || doc.partyName}</div>
-            ${(doc.shipToAddress || doc.partyAddress) ? `<div style="font-size:11px;color:${SUB};margin-top:4px;">Address: ${doc.shipToAddress || doc.partyAddress}</div>` : ''}
-            <div style="font-size:11px;color:${SUB};margin-top:2px;">Place of supply: ${business.state || 'Uttar Pradesh'}</div>
-            ${(doc.shipToPhone || doc.partyPhone) ? `<div style="font-size:11px;color:${SUB};margin-top:2px;">Mobile: ${doc.shipToPhone || doc.partyPhone}</div>` : ''}
-          </td>
-        </tr>
-      </table>
-
-      <!-- ============ ITEMS TABLE ============ -->
-      <table style="width:100%;border-collapse:collapse;margin-top:16px;border:1px solid ${LINE};">
-        <thead>
-          <tr style="background:${NAVY};color:#fff;">
-            <th style="padding:8px 8px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:32px;border:1px solid ${NAVY};">S.No</th>
-            <th style="padding:8px 8px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border:1px solid ${NAVY};">Items</th>
-            <th style="padding:8px 8px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:56px;border:1px solid ${NAVY};">Qty</th>
-            <th style="padding:8px 8px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:88px;border:1px solid ${NAVY};">Rate</th>
-            <th style="padding:8px 8px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:78px;border:1px solid ${NAVY};">Tax</th>
-            <th style="padding:8px 8px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:96px;border:1px solid ${NAVY};">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${itemRows}
-        </tbody>
-        <tfoot>
-          <tr style="background:#F1F5F9;">
-            <td colspan="2" style="padding:8px;text-align:right;font-weight:700;color:${INK};border:1px solid ${LINE};">Total</td>
-            <td style="padding:8px;text-align:center;font-weight:700;color:${INK};border:1px solid ${LINE};">${totalQty}</td>
-            <td style="border:1px solid ${LINE};"></td>
-            <td style="padding:8px;text-align:right;font-weight:700;color:${INK};border:1px solid ${LINE};">₹${money(totalTax)}</td>
-            <td style="padding:8px;text-align:right;font-weight:800;color:${INK};border:1px solid ${LINE};">₹${money(doc.grandTotal)}</td>
-          </tr>
-        </tfoot>
-      </table>
-
-      <!-- ============ HSN/SAC TAX SUMMARY ============ -->
-      <div style="margin-top:14px;">
-        ${hsnTableHtml}
-      </div>
-
-      <!-- ============ WORDS + TOTAL DUE ============ -->
-      <div style="display:flex;gap:16px;margin-top:14px;align-items:stretch;">
-        <div style="flex:1;border:1px solid ${LINE};padding:10px 14px;background:#FBFBFC;">
-          <div style="font-size:10px;font-weight:700;color:${SUB};text-transform:uppercase;letter-spacing:0.6px;">Total amount (in words)</div>
-          <div style="font-size:12.5px;font-weight:700;color:${NAVY};margin-top:3px;">${grandTotalWords}</div>
-        </div>
-        <div style="width:230px;background:${NAVY};color:#fff;padding:11px 14px;display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-size:11.5px;font-weight:600;letter-spacing:0.3px;">Total due</span>
-          <span style="font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;">₹${money(doc.grandTotal)}</span>
-        </div>
-      </div>
-
-      <!-- ============ BANK + TERMS + SIGNATURE ============ -->
-      <table style="width:100%;border-collapse:collapse;margin-top:16px;border:1px solid ${LINE};">
-        <tr>
-          <td style="width:32%;padding:12px 14px;border:1px solid ${LINE};vertical-align:top;">
-            <div style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Bank details</div>
-            <table style="font-size:11px;color:${SUB};border-collapse:collapse;">
-              <tr><td style="padding:1.5px 10px 1.5px 0;">Name</td><td style="padding:1.5px 0;font-weight:600;color:${INK};">${business.bank_name || '—'}</td></tr>
-              <tr><td style="padding:1.5px 10px 1.5px 0;">IFSC</td><td style="padding:1.5px 0;font-weight:600;color:${INK};">${business.bank_ifsc_code || '—'}</td></tr>
-              <tr><td style="padding:1.5px 10px 1.5px 0;">A/c No.</td><td style="padding:1.5px 0;font-weight:600;color:${INK};font-variant-numeric:tabular-nums;">${business.bank_account_number || '—'}</td></tr>
-              ${business.upi_id ? `<tr><td style="padding:1.5px 10px 1.5px 0;">UPI</td><td style="padding:1.5px 0;font-weight:600;color:${INK};">${business.upi_id}</td></tr>` : ''}
+            <div style="font-size: 9.5px; font-weight: 800; border-top: 1px solid #000; padding-top: 4px; margin-top: 4px;">Bank Details</div>
+            <table class="bank-table">
+              <tr>
+                <td style="width: 60px;">Name:</td>
+                <td><strong>${accName}</strong></td>
+              </tr>
+              <tr>
+                <td>IFSC Code:</td>
+                <td><strong>${ifsc}</strong></td>
+              </tr>
+              <tr>
+                <td>Account No:</td>
+                <td><strong>${accNo}</strong></td>
+              </tr>
+              <tr>
+                <td>Bank:</td>
+                <td><strong>${bankName}, ${branchName}</strong></td>
+              </tr>
             </table>
-          </td>
-          <td style="width:38%;padding:12px 14px;border:1px solid ${LINE};vertical-align:top;">
-            <div style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Terms &amp; conditions</div>
-            <div style="font-size:10.5px;color:${SUB};line-height:1.6;white-space:pre-wrap;">
-              ${doc.terms || 'Payment 100% advance.\nQuotation valid for 15 days.\nSubject to local jurisdiction.'}
-            </div>
-          </td>
-          <td style="width:30%;padding:12px 14px;border:1px solid ${LINE};vertical-align:bottom;text-align:center;">
-            <div style="font-size:11px;font-weight:600;color:${INK};margin-bottom:40px;">For ${business.name || 'Company'}</div>
-            <div style="font-size:10px;font-weight:600;color:${SUB};">Authorised signatory</div>
-          </td>
-        </tr>
-      </table>
 
-      <div style="text-align:center;margin-top:18px;font-size:9.5px;color:#98A2B3;">
-        This is a system-generated document and is valid without a physical signature unless stated otherwise.
+            <div style="font-size: 9.5px; font-weight: 800; border-top: 1px solid #000; padding-top: 4px; margin-top: 6px;">Terms and Conditions</div>
+            <div style="font-size: 8.5px; line-height: 1.35; color: #111;">
+              Payment 100% Advance.<br/>
+              All payments to be drawn in favour of "${business?.name || 'Avadh Boring Company'}", payable at Barabanki<br/>
+              This quotation is valid for 15 Days, subject to availability with our principals<br/>
+              <strong>ALL SUBJECT TO BARABANKI JURISDICTION</strong><br/>
+              (E. & O.E.)
+            </div>
+          </div>
+        </div>
+
+        <div class="bottom-right">
+          <div style="font-size: 9.5px; font-weight: 700;">
+            Authorised Signatory For<br/>
+            <strong>${business?.name || 'AVADH BORING COMPANY'}</strong>
+          </div>
+          <div class="sign-box"></div>
+          <div style="border-top: 1px solid #000; padding-top: 3px; font-size: 8.5px;">
+            Authorised Signatory
+          </div>
+        </div>
       </div>
     </div>
+  </body>
+  </html>
   `;
-
-  return container;
 }
 
-export async function renderDocSheetToPdfBlob(business: any, doc: PrintableDocData): Promise<Blob> {
-  const container = buildHtmlTemplate(business, doc);
-  container.style.position = 'fixed';
-  container.style.top = '0';
-  container.style.left = '-99999px';
-  document.body.appendChild(container);
+// Native direct print flow with iframe (Pure vector/text, no image blur)
+export async function renderDocSheetToPdf(business: any, doc: PrintableDocData): Promise<void> {
+  const htmlContent = generateOmStyleHtml(business, doc);
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
 
-  try {
-    const canvas = await html2canvas(container, {
-      scale: 2, // High resolution crisp print
-      useCORS: true,
-      logging: false,
-      backgroundColor: '#ffffff',
-    });
+  const docFrame = iframe.contentWindow?.document;
+  if (docFrame) {
+    docFrame.open();
+    docFrame.write(htmlContent);
+    docFrame.close();
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-    return pdf.output('blob');
-  } finally {
-    document.body.removeChild(container);
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+      }, 2000);
+    }, 400);
   }
 }
 
-export async function renderDocSheetToPdf(business: any, doc: PrintableDocData): Promise<void> {
-  const blob = await renderDocSheetToPdfBlob(business, doc);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${doc.docNumber.replace(/\//g, '-')}.pdf`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+// Fallback PDF blob generator
+export async function renderDocSheetToPdfBlob(business: any, doc: PrintableDocData): Promise<Blob> {
+  const htmlContent = generateOmStyleHtml(business, doc);
+  return new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
 }
