@@ -485,7 +485,7 @@ export function LoginPage() {
                     defaultChecked
                     className="w-4 h-4 rounded-[4px] border-stone-300 text-stone-900 focus:ring-stone-900"
                   />
-                  <span className="text-[13px] font-medium text-stone-600">Remember for 30 days</span>
+                  <span className="text-[13px] font-medium text-stone-600">Remember me</span>
                 </label>
               </div>
             )}
