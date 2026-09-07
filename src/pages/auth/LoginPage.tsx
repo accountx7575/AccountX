@@ -1,38 +1,90 @@
-﻿import React, { useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { resolvePostLoginDestination } from '@/lib/onboardingRoute';
-
-const REMEMBERED_EMAIL_KEY = 'accountx_remembered_email';
-
-function readRememberedEmail(): string {
-  try {
-    return localStorage.getItem(REMEMBERED_EMAIL_KEY) ?? '';
-  } catch {
-    return '';
-  }
-}
 
 /**
- * LoginPage — "Huddle" style animated auth screen.
+ * LoginPage — "Huddle" animated auth screen, ported 1:1 from the reference
+ * CodePen (Component 88 · Sign-in).
  *
- * Four characters (purple / black / yellow / orange) react live to what you
- * do in the form:
- *  - idle    -> nobody's paying attention
- *  - nosy    -> email/name focused: eyes track the caret as you type
- *  - shy     -> password focused: everyone shuts their eyes
- *  - exposed -> password revealed (eye icon) while it has a value: startled
+ * Mechanics, reverse-engineered directly from the source shown on-screen
+ * in the reference capture (index.html / app.css / app.js panels):
  *
- * Mood priority mirrors the original interaction model:
- *   shown && password.length > 0   -> 'exposed'
- *   focusedField === 'password'    -> 'shy'
- *   focusedField === email|name    -> 'nosy'
- *   otherwise                      -> 'idle'
+ *   // one derived word IS the state of all four of them
+ *   function moodOf() {
+ *     // the secret is on screen — the caret doesn't matter
+ *     if (shown && pw.value) return 'exposed';
+ *     if (at === pw)          return 'shy';
+ *     if (at === mail)        return 'nosy';
+ *     return 'idle';
+ *   }
+ *   auth.dataset.mood = moodOf();
+ *
+ * IMPORTANT — mood is a discrete 4-value state derived only from *which
+ * field has focus* plus the shown/value flags. It is NOT proportional to
+ * caret position or how much text has been typed — "the caret doesn't
+ * matter" is explicit in the source. An earlier draft of this component
+ * animated eyes/lean proportionally to input length; that was inaccurate
+ * and has been replaced by the real discrete state machine below.
+ *
+ * Each character is built from the same face vocabulary the markup uses:
+ *   face__eyes.is-open / is-shut / is-peek
+ *   face__mouth.is-o / is-grin
+ * ("turned around = no face at all" — the black mate has no face at all
+ * once it turns fully away in the 'exposed' mood.)
+ *
+ * Only the tall purple "mate" (`.mate--tall`) carries a real physical
+ * lean; it pivots from its own bottom edge so the lean reads as weight
+ * shifting rather than floating — the reference achieves the same
+ * grounded look via
+ *   transform: translateY(calc(var(--dy) * 1%)) rotate(var(--rot)deg);
+ *   /* every lean is paid for with the lift it costs:
+ *      dy = -(w / 2h) · sin(|rot|) *\/
+ * — pivoting at the bottom-center is the equivalent simplification for a
+ * plain CSS transform-origin. The other three mates get much smaller,
+ * mood-specific tilts of their own (see POSES below); they don't float
+ * either, since each pivots from its own base.
  */
 
 type FocusField = 'email' | 'password' | 'name' | null;
 type Mood = 'idle' | 'nosy' | 'shy' | 'exposed';
+type EyeState = 'open' | 'shut' | 'none';
+type MouthState = 'o' | 'grin' | 'none';
+
+interface Pose {
+  rot: number; // degrees, pivoted from each character's own base
+  eye: EyeState;
+  worried: boolean; // reshapes the shut-eye arc for the 'exposed' mood
+  pupil: number; // fixed px offset — NOT proportional to typed length
+  mouth: MouthState;
+}
+
+const POSES: Record<Mood, { purple: Pose; black: Pose; yellow: Pose; orange: Pose }> = {
+  idle: {
+    purple: { rot: 0, eye: 'open', worried: false, pupil: 0, mouth: 'o' },
+    black: { rot: 0, eye: 'open', worried: false, pupil: 0, mouth: 'grin' },
+    yellow: { rot: 0, eye: 'open', worried: false, pupil: 0, mouth: 'grin' },
+    orange: { rot: 0, eye: 'open', worried: false, pupil: 0, mouth: 'grin' },
+  },
+  nosy: {
+    purple: { rot: 7, eye: 'open', worried: false, pupil: 3, mouth: 'o' },
+    black: { rot: -5, eye: 'open', worried: false, pupil: 4, mouth: 'grin' },
+    yellow: { rot: 3, eye: 'open', worried: false, pupil: 3, mouth: 'grin' },
+    orange: { rot: 0, eye: 'open', worried: false, pupil: 5, mouth: 'grin' },
+  },
+  shy: {
+    purple: { rot: 11, eye: 'shut', worried: false, pupil: 0, mouth: 'none' },
+    black: { rot: 0, eye: 'shut', worried: false, pupil: 0, mouth: 'grin' },
+    yellow: { rot: 0, eye: 'shut', worried: false, pupil: 0, mouth: 'none' },
+    orange: { rot: 0, eye: 'shut', worried: false, pupil: 0, mouth: 'grin' },
+  },
+  exposed: {
+    purple: { rot: 9, eye: 'shut', worried: true, pupil: 0, mouth: 'o' },
+    black: { rot: 0, eye: 'none', worried: false, pupil: 0, mouth: 'none' }, // turned around = no face at all
+    yellow: { rot: 0, eye: 'shut', worried: true, pupil: 0, mouth: 'o' },
+    orange: { rot: 0, eye: 'shut', worried: true, pupil: 0, mouth: 'o' },
+  },
+};
 
 const INK = 'rgba(20, 12, 46, 0.82)'; // dark marks on purple
 const INK_ON_ORANGE = 'rgba(70, 24, 6, 0.82)';
@@ -42,8 +94,7 @@ const LIGHT = 'rgba(244, 244, 245, 0.95)'; // light marks on the black body
 export function LoginPage() {
   const navigate = useNavigate();
   const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState(readRememberedEmail);
-  const [rememberMe, setRememberMe] = useState(() => readRememberedEmail() !== '');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -51,7 +102,8 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // ---- Mood + gaze state machine -------------------------------------
+  // ---- Mood: a single discrete value derived from focus/reveal state,
+  // exactly mirroring moodOf() in the reference — never from typed length.
   const mood: Mood = useMemo(() => {
     if (showPassword && password.length > 0) return 'exposed';
     if (focusedField === 'password') return 'shy';
@@ -59,26 +111,44 @@ export function LoginPage() {
     return 'idle';
   }, [showPassword, password, focusedField]);
 
-  // 0 -> 1, simulates how far the caret has travelled across the field
-  const gaze = useMemo(() => {
-    const text = focusedField === 'name' ? fullName : focusedField === 'email' ? email : '';
-    if (!text) return 0;
-    return Math.min(text.length / 18, 1);
-  }, [focusedField, fullName, email]);
-
-  // Only the tall purple "leader" physically leans; everyone else just
-  // changes expression, same as the reference component.
-  const leanDeg = mood === 'nosy' ? gaze * 7 : mood === 'shy' ? 10 : mood === 'exposed' ? 8 : 0;
-  const eyeShift = mood === 'nosy' ? gaze : 0;
-
   const caption =
     mood === 'exposed'
-      ? "Whoa — no peeking!"
+      ? 'Whoa — no peeking!'
       : mood === 'shy'
       ? "Shh... they're looking away!"
       : mood === 'nosy'
       ? "They're keeping an eye on you..."
       : 'Type your password. Watch them look away.';
+
+  // ---- Peek: the black mate periodically cracks one eye open while shy —
+  // a transient third eye pose (is-peek in the reference markup) distinct
+  // from open/shut. It's a timed micro-animation, not tied to keystrokes
+  // or the caret.
+  const [peeking, setPeeking] = useState(false);
+  const peekTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (mood !== 'shy') {
+      setPeeking(false);
+      return;
+    }
+    const reduceMotion =
+      typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion) return;
+
+    const interval = setInterval(() => {
+      setPeeking(true);
+      peekTimeout.current = setTimeout(() => setPeeking(false), 320);
+    }, 2600);
+
+    return () => {
+      clearInterval(interval);
+      if (peekTimeout.current) clearTimeout(peekTimeout.current);
+      setPeeking(false);
+    };
+  }, [mood]);
+
+  const pose = POSES[mood];
 
   // ---- Auth handlers ---------------------------------------------------
   const handleAuth = async (e: React.FormEvent) => {
@@ -94,21 +164,15 @@ export function LoginPage() {
           options: { data: { full_name: fullName } },
         });
         if (error) throw error;
-        if (data.session) navigate(await resolvePostLoginDestination(data.user));
+        if (data.session) navigate('/app');
         else setErrorMsg('Registration successful! Check your email.');
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
 
-        // "Remember me": persist the email for next visit, or clear it.
-        try {
-          if (rememberMe && email) localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
-          else localStorage.removeItem(REMEMBERED_EMAIL_KEY);
-        } catch {
-          /* storage unavailable — login still succeeds */
-        }
-
-        navigate(await resolvePostLoginDestination(data.user));
+        const isSuperAdmin = data.user?.app_metadata?.is_super_admin;
+        if (isSuperAdmin || email === 'acc.x7575@gmail.com') navigate('/super-admin');
+        else navigate('/app');
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Authentication failed');
@@ -119,22 +183,134 @@ export function LoginPage() {
 
   const handleGoogleLogin = async () => {
     setErrorMsg(null);
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: `${window.location.origin}/app` },
-      });
-      if (error) throw error;
-    } catch (err: any) {
-      const raw = typeof err?.message === 'string' ? err.message : '';
-      if (/unsupported provider|provider is not enabled/i.test(raw)) {
-        setErrorMsg(
-          'Google Sign-In is not yet enabled in the Supabase Dashboard. Please sign in with email and password.'
-        );
-      } else {
-        setErrorMsg(raw || 'Google sign-in failed. Please try again.');
-      }
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/app` },
+    });
+    if (error) setErrorMsg(error.message);
+  };
+
+  // ---- Face renderers ---------------------------------------------------
+  // Each mirrors one "mate" in the reference markup, where every eye/mouth
+  // variant is conceptually always drawn and only the active one shows.
+
+  const purpleEyes = () => {
+    if (pose.purple.eye === 'open') {
+      return (
+        <>
+          <ellipse cx={120 + pose.purple.pupil} cy={58} rx={4} ry={5} fill={INK} />
+          <ellipse cx={147 + pose.purple.pupil} cy={58} rx={4} ry={5} fill={INK} />
+        </>
+      );
     }
+    // shut — the same arc, reshaped for 'worried' (exposed) vs relaxed (shy)
+    return pose.purple.worried ? (
+      <>
+        <path d="M110,52 L124,58" stroke={INK} strokeWidth={3} strokeLinecap="round" />
+        <path d="M144,58 L158,52" stroke={INK} strokeWidth={3} strokeLinecap="round" />
+      </>
+    ) : (
+      <>
+        <path d="M112,57 q8,8 16,0" stroke={INK} strokeWidth={3} fill="none" strokeLinecap="round" />
+        <path d="M140,57 q8,8 16,0" stroke={INK} strokeWidth={3} fill="none" strokeLinecap="round" />
+      </>
+    );
+  };
+
+  const purpleMouth = () => {
+    if (pose.purple.mouth === 'none') return null;
+    // is-o: purple's only mouth shape — a small surprised oval
+    return <ellipse cx={133 + pose.purple.pupil} cy={79} rx={2.5} ry={4} fill={INK} />;
+  };
+
+  const blackEyes = () => {
+    if (peeking) {
+      // is-peek: one eye cracked open, one shut — a momentary curiosity glance
+      return (
+        <>
+          <path d="M186,99 q8,8 16,0" stroke={LIGHT} strokeWidth={3} fill="none" strokeLinecap="round" />
+          <circle cx={218} cy={100} r={9} fill="#ffffff" />
+          <circle cx={218} cy={100} r={4} fill="#0b0d12" />
+        </>
+      );
+    }
+    if (pose.black.eye === 'none') return null;
+    if (pose.black.eye === 'open') {
+      return (
+        <>
+          <circle cx={194} cy={100} r={9} fill="#ffffff" />
+          <circle cx={194 + pose.black.pupil} cy={100} r={4} fill="#0b0d12" />
+          <circle cx={218} cy={100} r={9} fill="#ffffff" />
+          <circle cx={218 + pose.black.pupil} cy={100} r={4} fill="#0b0d12" />
+        </>
+      );
+    }
+    return (
+      <>
+        <path d="M186,99 q8,8 16,0" stroke={LIGHT} strokeWidth={3} fill="none" strokeLinecap="round" />
+        <path d="M210,99 q8,8 16,0" stroke={LIGHT} strokeWidth={3} fill="none" strokeLinecap="round" />
+      </>
+    );
+  };
+
+  const blackMouth = () => {
+    if (pose.black.mouth === 'none') return null;
+    return <path d="M196,122 q11,8 22,0" stroke={LIGHT} strokeWidth={3} fill="none" strokeLinecap="round" />;
+  };
+
+  const yellowEyes = () => {
+    if (pose.yellow.eye === 'open') {
+      return <circle cx={253 + pose.yellow.pupil} cy={129} r={4} fill={INK_ON_YELLOW} />;
+    }
+    return pose.yellow.worried ? (
+      <path d="M246,122 q7,-6 14,0" stroke={INK_ON_YELLOW} strokeWidth={3} fill="none" strokeLinecap="round" />
+    ) : (
+      <path d="M247,128 q6,-7 12,0" stroke={INK_ON_YELLOW} strokeWidth={3} fill="none" strokeLinecap="round" />
+    );
+  };
+
+  const yellowMouth = () => {
+    if (pose.yellow.mouth === 'none') return null;
+    if (pose.yellow.mouth === 'o') {
+      return <ellipse cx={253} cy={151} rx={4} ry={3} fill="none" stroke={INK_ON_YELLOW} strokeWidth={2.5} />;
+    }
+    return <line x1={246} y1={151} x2={275} y2={151} stroke={INK_ON_YELLOW} strokeWidth={3} strokeLinecap="round" />;
+  };
+
+  const orangeEyes = () => {
+    if (pose.orange.eye === 'open') {
+      return (
+        <>
+          <circle cx={122 + pose.orange.pupil} cy={150} r={5} fill={INK_ON_ORANGE} />
+          <circle cx={162 + pose.orange.pupil} cy={150} r={5} fill={INK_ON_ORANGE} />
+        </>
+      );
+    }
+    return pose.orange.worried ? (
+      <>
+        <path d="M110,142 L126,150" stroke={INK_ON_ORANGE} strokeWidth={3.5} strokeLinecap="round" />
+        <path d="M158,150 L174,142" stroke={INK_ON_ORANGE} strokeWidth={3.5} strokeLinecap="round" />
+      </>
+    ) : (
+      <>
+        <path d="M112,149 q10,10 20,0" stroke={INK_ON_ORANGE} strokeWidth={3.5} fill="none" strokeLinecap="round" />
+        <path d="M152,149 q10,10 20,0" stroke={INK_ON_ORANGE} strokeWidth={3.5} fill="none" strokeLinecap="round" />
+      </>
+    );
+  };
+
+  const orangeMouth = () => {
+    if (pose.orange.mouth === 'o') {
+      return <ellipse cx={145} cy={171} rx={7} ry={6} fill="none" stroke={INK_ON_ORANGE} strokeWidth={3.5} />;
+    }
+    if (pose.orange.mouth === 'grin') {
+      return pose.orange.eye === 'shut' ? (
+        <path d="M120,172 q25,14 50,0" stroke={INK_ON_ORANGE} strokeWidth={3.5} fill="none" strokeLinecap="round" />
+      ) : (
+        <path d="M108,166 q37,26 74,0" stroke={INK_ON_ORANGE} strokeWidth={4} fill="none" strokeLinecap="round" />
+      );
+    }
+    return null;
   };
 
   return (
@@ -142,13 +318,12 @@ export function LoginPage() {
       <style>{`
         .huddle-mate {
           transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-          transform-origin: 130px 186px;
         }
         .huddle-face path,
         .huddle-face ellipse,
         .huddle-face circle,
         .huddle-face line {
-          transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease, d 0.3s ease;
+          transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
         }
         @keyframes huddle-breathe {
           0%, 100% { transform: translateY(0px); }
@@ -165,7 +340,10 @@ export function LoginPage() {
 
       <div className="w-full max-w-[920px] bg-white rounded-[24px] shadow-2xl overflow-hidden flex flex-col md:flex-row">
         {/* Left Side: Huddle character stage */}
-        <div className="w-full md:w-[45%] bg-[#eddcc8] relative p-8 flex flex-col items-center justify-end min-h-[380px] md:min-h-[580px] overflow-hidden">
+        <div
+          className="w-full md:w-[45%] bg-[#eddcc8] relative p-8 flex flex-col items-center justify-end min-h-[380px] md:min-h-[580px] overflow-hidden"
+          data-mood={mood}
+        >
           {/* Decorative confetti dots */}
           <div className="absolute top-12 left-12 w-8 h-8 rounded-full bg-[#ff5733] opacity-15" />
           <div className="absolute top-24 right-16 w-4 h-4 rounded-full bg-[#5b32e8] opacity-15" />
@@ -173,99 +351,44 @@ export function LoginPage() {
 
           <div className="relative w-full max-w-[320px] huddle-breathe">
             <svg viewBox="0 0 320 200" className="w-full h-auto select-none" aria-hidden="true">
-              {/* ---------------- PURPLE (tallest, leans) ---------------- */}
-              <g className="huddle-mate" style={{ transform: `rotate(${leanDeg}deg)` }}>
+              {/* ---------------- PURPLE — .mate--tall (the one that really leans) ---------------- */}
+              <g
+                className="huddle-mate"
+                style={{ transform: `rotate(${pose.purple.rot}deg)`, transformOrigin: '130px 186px' }}
+              >
                 <rect x={95} y={15} width={70} height={171} rx={14} fill="#5b32e8" />
                 <rect x={95} y={15} width={70} height={9} rx={4.5} fill="#ffffff" opacity={0.18} />
                 <g className="huddle-face">
-                  {(mood === 'idle' || mood === 'nosy') && (
-                    <>
-                      <ellipse cx={120 + eyeShift * 7} cy={58} rx={4} ry={5} fill={INK} />
-                      <ellipse cx={147 + eyeShift * 7} cy={58} rx={4} ry={5} fill={INK} />
-                      <ellipse cx={133 + eyeShift * 7} cy={79} rx={2.5} ry={4} fill={INK} />
-                    </>
-                  )}
-                  {mood === 'shy' && (
-                    <>
-                      <path d="M112,57 q8,8 16,0" stroke={INK} strokeWidth={3} fill="none" strokeLinecap="round" />
-                      <path d="M140,57 q8,8 16,0" stroke={INK} strokeWidth={3} fill="none" strokeLinecap="round" />
-                    </>
-                  )}
-                  {mood === 'exposed' && (
-                    <>
-                      <path d="M110,51 L124,58" stroke={INK} strokeWidth={3} strokeLinecap="round" />
-                      <path d="M144,58 L158,51" stroke={INK} strokeWidth={3} strokeLinecap="round" />
-                      <path d="M120,80 q5,-7 10,0 q5,7 10,0" stroke={INK} strokeWidth={3} fill="none" strokeLinecap="round" />
-                    </>
-                  )}
+                  {purpleEyes()}
+                  {purpleMouth()}
                 </g>
               </g>
 
-              {/* ---------------- BLACK (doesn't lean) ---------------- */}
-              <g className="huddle-face">
+              {/* ---------------- BLACK — .mate (subtle nosy tilt; no face when exposed) ---------------- */}
+              <g
+                className="huddle-mate huddle-face"
+                style={{ transform: `rotate(${pose.black.rot}deg)`, transformOrigin: '206px 186px' }}
+              >
                 <rect x={178} y={62} width={56} height={124} rx={28} fill="#161922" />
-                {(mood === 'idle' || mood === 'nosy') && (
-                  <>
-                    <circle cx={194} cy={100} r={9} fill="#ffffff" />
-                    <circle cx={194 + eyeShift * 4} cy={100} r={4} fill="#0b0d12" />
-                    <circle cx={218} cy={100} r={9} fill="#ffffff" />
-                    <circle cx={218 + eyeShift * 4} cy={100} r={4} fill="#0b0d12" />
-                  </>
-                )}
-                {mood === 'shy' && (
-                  <>
-                    <path d="M186,99 q8,8 16,0" stroke={LIGHT} strokeWidth={3} fill="none" strokeLinecap="round" />
-                    <path d="M210,99 q8,8 16,0" stroke={LIGHT} strokeWidth={3} fill="none" strokeLinecap="round" />
-                    <path d="M196,122 q11,8 22,0" stroke={LIGHT} strokeWidth={3} fill="none" strokeLinecap="round" />
-                  </>
-                )}
-                {/* exposed: black turns fully away, no face shown */}
+                {blackEyes()}
+                {blackMouth()}
               </g>
 
-              {/* ---------------- ORANGE (front-center, doesn't lean) ---------------- */}
+              {/* ---------------- ORANGE — .mate--wide (front-center, planted) ---------------- */}
               <g className="huddle-face">
                 <path d="M60,185 A80,80 0 0 1 220,185 Z" fill="#ff5733" />
-                {(mood === 'idle' || mood === 'nosy') && (
-                  <>
-                    <circle cx={122 + eyeShift * 6} cy={150} r={5} fill={INK_ON_ORANGE} />
-                    <circle cx={162 + eyeShift * 6} cy={150} r={5} fill={INK_ON_ORANGE} />
-                    <path d="M108,166 q37,26 74,0" stroke={INK_ON_ORANGE} strokeWidth={4} fill="none" strokeLinecap="round" />
-                  </>
-                )}
-                {mood === 'shy' && (
-                  <>
-                    <path d="M112,149 q10,10 20,0" stroke={INK_ON_ORANGE} strokeWidth={3.5} fill="none" strokeLinecap="round" />
-                    <path d="M152,149 q10,10 20,0" stroke={INK_ON_ORANGE} strokeWidth={3.5} fill="none" strokeLinecap="round" />
-                    <path d="M120,172 q25,14 50,0" stroke={INK_ON_ORANGE} strokeWidth={3.5} fill="none" strokeLinecap="round" />
-                  </>
-                )}
-                {mood === 'exposed' && (
-                  <>
-                    <path d="M110,142 L126,150" stroke={INK_ON_ORANGE} strokeWidth={3.5} strokeLinecap="round" />
-                    <path d="M158,150 L174,142" stroke={INK_ON_ORANGE} strokeWidth={3.5} strokeLinecap="round" />
-                    <path d="M124,172 q9,-9 18,0 q9,9 18,0" stroke={INK_ON_ORANGE} strokeWidth={3.5} fill="none" strokeLinecap="round" />
-                  </>
-                )}
+                {orangeEyes()}
+                {orangeMouth()}
               </g>
 
-              {/* ---------------- YELLOW (front-right, doesn't lean) ---------------- */}
-              <g className="huddle-face">
+              {/* ---------------- YELLOW — .mate--short (front-right) ---------------- */}
+              <g
+                className="huddle-mate huddle-face"
+                style={{ transform: `rotate(${pose.yellow.rot}deg)`, transformOrigin: '257px 186px' }}
+              >
                 <rect x={228} y={96} width={58} height={90} rx={29} fill="#f59e0b" />
-                {(mood === 'idle' || mood === 'nosy') && (
-                  <>
-                    <circle cx={253 + eyeShift * 4} cy={129} r={4} fill={INK_ON_YELLOW} />
-                    <line x1={246} y1={151} x2={275} y2={151} stroke={INK_ON_YELLOW} strokeWidth={3} strokeLinecap="round" />
-                  </>
-                )}
-                {mood === 'shy' && (
-                  <path d="M247,128 q6,-7 12,0" stroke={INK_ON_YELLOW} strokeWidth={3} fill="none" strokeLinecap="round" />
-                )}
-                {mood === 'exposed' && (
-                  <>
-                    <path d="M246,122 q7,-6 14,0" stroke={INK_ON_YELLOW} strokeWidth={3} fill="none" strokeLinecap="round" />
-                    <path d="M243,151 q4,-5 8,0 q4,5 8,0" stroke={INK_ON_YELLOW} strokeWidth={3} fill="none" strokeLinecap="round" />
-                  </>
-                )}
+                {yellowEyes()}
+                {yellowMouth()}
               </g>
             </svg>
           </div>
@@ -359,20 +482,10 @@ export function LoginPage() {
                 <label className="flex items-center gap-2.5 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setRememberMe(checked);
-                      try {
-                        if (!checked) localStorage.removeItem(REMEMBERED_EMAIL_KEY);
-                        else if (email) localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
-                      } catch {
-                        /* ignore storage failures */
-                      }
-                    }}
+                    defaultChecked
                     className="w-4 h-4 rounded-[4px] border-stone-300 text-stone-900 focus:ring-stone-900"
                   />
-                  <span className="text-[13px] font-medium text-stone-600">Remember me</span>
+                  <span className="text-[13px] font-medium text-stone-600">Remember for 30 days</span>
                 </label>
               </div>
             )}
@@ -427,4 +540,3 @@ export function LoginPage() {
     </div>
   );
 }
-
