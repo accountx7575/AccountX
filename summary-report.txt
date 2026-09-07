@@ -1,0 +1,243 @@
+PDF DOCUMENT GENERATION, PRINTING, AND DOWNLOAD FUNCTIONALITY - COMPREHENSIVE REPORT
+================================================================================
+
+PROJECT STRUCTURE
+-----------------
+Working directory: C:\Users\Saad\Downloads\project-bolt-sb1-AccountXbolt\project
+Total entries: 35 (at project root level)
+
+Key directories:
+- src/ - Main source code
+  - components/ - React components (admin, ai, auth, cashbank, common, comms, errorBoundary, gst, invoice, landing, layout, ui, reports)
+  - pages/ - Page components (auth, dashboard, gst, invoice, payables, products, purchases, quotations, reports, sales, tally, etc.)
+  - lib/ - Utility libraries
+  - context/ - React context (AuthContext, ThemeContext, ToastContext)
+  - hooks/ - Custom React hooks
+  - types/ - TypeScript type definitions
+
+PACKAGE.JSON DEPENDENCIES (PDF/Print Related)
+---------------------------------------------
+"html2canvas": "^1.4.1"
+"jspdf": "^4.2.1"
+
+SEARCH PATTERNS - FILES CONTAINING pdf, print, download, blob, html2canvas, jsPDF
+================================================================================
+
+1. CORE PDF GENERATION LIBRARIES
+   a) src/lib/pdfCapture.ts (40 lines)
+      - captureElementToPdf(el, filename): Promise<void> - captures HTML element to PDF and saves
+      - captureElementToPdfBlob(el): Promise<Blob> - captures HTML element to PDF Blob
+      - buildTiledA4Pdf(el): builds PDF with tiling for tall sheets
+      - Uses html2canvas (scale: 3) and jsPDF to create A4 portrait PDFs
+      - Mirrors 8mm margins for print layout consistency
+
+   b) src/lib/invoiceExport.tsx (129 lines)
+      - printInvoice(): void - browser print of #invoice-print-area
+      - exportPdfFromElement(el, invoiceNumber, partyName): Promise<void> - exports invoice element to PDF
+      - renderInvoiceSheetToPdf(business, invoice, items, partyName): Promise<void> - renders full invoice sheet to PDF
+      - exportInvoiceExcel(business, invoice, items): exports to CSV format
+      - Uses captureElementToPdf from pdfCapture
+      - Creates CSV with UTF-8 BOM for Excel compatibility
+      - Uses Blob with type 'text/csv;charset=utf-8;'
+
+   c) src/lib/docPrint.tsx (939 lines - CORE PRINT GENERATION)
+      - PrintableDocData interface - defines data structure for printable documents
+      - generateOmStyleHtml(business, doc): generates Om-style HTML for invoices/quotations/POs
+      - renderDocSheetToPdf(business, doc): Promise<void> - renders PDF and triggers browser print
+      - renderDocSheetToPdfBlob(business, doc): Promise<Blob> - renders PDF as Blob for downloads/attachments
+      - Generates comprehensive HTML with print CSS for A4 layout
+      - Handles inter-state (IGST) vs intra-state (CGST/SGST) tax scenarios
+      - Includes bank details, terms, signatures, stamps
+      - Has @media print rules for page breaks
+
+2. SHARED PRINTABLE COMPONENTS
+   a) src/components/invoice/InvoiceSheet.tsx (295 lines)
+      - Shared printable A4 GST tax-invoice document
+      - Light-only styling for theme-independent print/PDF capture
+      - Reused by: SalesInvoiceViewPage (print/PDF source) and SalesInvoiceCreatePage (live preview)
+      - Includes: business header, bill-to, line items, totals, UPI QR, bank details, signature/stamp
+
+3. QUOTATION-RELATED PAGES (PDF generation/print/download)
+   a) src/pages/QuotationsPage.tsx
+      - handleDirectPrint(q): renders PDF blob and prints via hidden iframe
+      - handleDownloadPdf(q): renders PDF blob and triggers download as .pdf
+      - Uses renderDocSheetToPdfBlob from docPrint
+      - Print/PDF buttons in table rows
+      - Download PDF button: <Download className="h-3 w-3" /> PDF
+
+   b) src/pages/QuotationViewPage.tsx
+      - handlePrint(): calls renderDocSheetToPdf for PDF export
+      - "Download PDF" button in header: <Download PDF>
+      - Uses renderDocSheetToPdf and renderDocSheetToPdfBlob
+      - PDF attachment in SendDialog email modal
+
+   c) src/pages/QuotationSendPage.tsx
+      - Builds PDF blob before sending email
+      - Uses renderDocSheetToPdfBlob
+      - PDF attachment in email sending flow
+      - "Include PDF" toggle switch
+
+   d) src/pages/QuotationCreatePage.tsx - Live preview with print/Save as PDF buttons
+
+4. SALES INVOICE-RELATED PAGES
+   a) src/pages/SalesInvoiceViewPage.tsx
+      - exportPdf(): calls exportPdfFromElement on #invoice-print-area
+      - "Save as PDF" button: <FileDown className="h-4 w-4" /> Save as PDF
+      - Uses captureElementToPdfBlob from pdfCapture
+      - PDF attachment in SendDialog
+
+   b) src/pages/SalesInvoicesPage.tsx
+      - handleRowExport(inv, 'pdf': renders PDF from invoice sheet
+      - handleRowExport(inv, 'excel': exports CSV
+      - Print button with printer icon
+      - Save as PDF button: <FileDown className="h-4 w-4" />
+
+   c) src/pages/SalesInvoiceCreatePage.tsx
+      - "Print Invoice" button: <Printer className="h-4 w-4" /> Print Invoice
+      - "Save as PDF" button: <FileText className="h-4 w-4" /> Save as PDF
+      - Uses exportPdfFromElement from invoiceExport
+      - Live A4 preview updates as you type
+
+5. PURCHASE ORDER/Bill PAGES
+   a) src/pages/PurchaseOrdersPage.tsx
+      - printOrder(o): calls renderDocSheetToPdf with PrintableDocData payload
+      - "Download this purchase order as PDF" button
+      - PDF generation for purchase orders
+
+   b) src/pages/PurchaseBillsPage.tsx
+      - printBill(b): calls renderDocSheetToPdf with PrintableDocData payload
+      - "Download this bill as PDF" button
+      - PDF generation for purchase bills
+
+6. SALES ORDERS PAGE
+   a) src/pages/SalesOrdersPage.tsx
+      - printOrder(o): calls renderDocSheetToPdf with PrintableDocData payload
+      - "Download this sales order as PDF" button
+      - PDF generation for sales orders
+
+7. GST RETURNS PAGES
+   a) src/pages/gst/Gstr1Page.tsx
+      - GSTR-1 PDF attachment in SendDialog
+      - Uses captureElementToPdfBlob from pdfCapture
+      - Targets #report-print-area element
+
+   b) src/pages/gst/Gstr3bPage.tsx
+      - GSTR-3B PDF attachment in SendDialog
+      - Uses captureElementToPdfBlob from pdfCapture
+      - Targets #report-print-area element
+
+8. REPORTS PAGE
+   a) src/pages/ReportDetailPage.tsx
+      - Uses captureElementToPdfBlob from pdfCapture
+      - PDF generation for various report types
+      - Found at line 17 import and line 1212 usage
+
+9. SETTINGS PAGE (DUAL FUNCTIONS)
+   a) src/pages/SettingsPage.tsx
+      - renderDocSheetToPdf (lines 879-917): identical to docPrint.tsx version
+      - renderDocSheetToPdfBlob (lines 919-925): identical to docPrint.tsx version
+      - These appear to be duplicated from src/lib/docPrint.tsx
+
+PDF WORKFLOW PATTERNS IDENTIFIED
+=================================
+
+Pattern 1: Direct Browser Print
+- Window.print() calls in: invoiceExport.tsx, SalesInvoiceViewPage, SalesInvoicesPage, SalesInvoiceCreatePage, docPrint.tsx
+- Triggered from: print buttons, page headers, row actions
+
+Pattern 2: PDF Download as Blob
+- renderDocSheetToPdfBlob() generates Blob
+- URL.createObjectURL(blob) creates temporary URL
+- <a href={blobUrl} download="filename.pdf">.click()
+- URL.revokeObjectURL() for cleanup
+- Used in: QuotationsPage handleDownloadPdf, QuotationViewPage, QuotationSendPage, SalesInvoicesPage, ReportDetailPage, Gstr1/Gstr3b pages
+
+Pattern 3: PDF Blob for Email Attachments
+- renderDocSheetToPdfBlob() generates Blob
+- Passed to SendDialog attachments array
+- filename and build: async () => { return renderDocSheetToPdfBlob(...) }
+- Used in: QuotationSendPage, SalesInvoiceViewPage SendDialog, QuotationViewPage SendDialog
+
+Pattern 4: Element Capture to PDF
+- captureElementToPdfBlob(el) - captures specific DOM element
+- Used for: GSTR-1, GSTR-3B PDF attachments, SalesInvoiceViewPage PDF export
+- Targets specific element by ID (e.g., #invoice-print-area, #report-print-area)
+
+Pattern 5: Print CSS + A4 Layout
+- All PDF generation uses Om-style print CSS with 8mm margins
+- @page { size: A4 portrait; margin: 8mm }
+- print-color-adjust: exact !important for color accuracy
+- break-inside: avoid for table rows and items
+- Designed for theme-independent printing
+
+INVOICE/QUOTATION-RELATED COMPONENTS
+=====================================
+
+1. src/components/invoice/InvoiceSheet.tsx - Shared printable invoice component
+   - Used by: SalesInvoiceViewPage, SalesInvoiceCreatePage
+   - A4 GST tax invoice with full layout
+
+2. Quotation system pages:
+   - QuotationsPage: list with PDF download/print
+   - QuotationViewPage: view with PDF download
+   - QuotationSendPage: send via email with PDF attachment
+   - QuotationCreatePage: create with live preview
+
+3. Sales Invoice system pages:
+   - SalesInvoicesPage: list with PDF/Excel export
+   - SalesInvoiceViewPage: view with PDF export
+   - SalesInvoiceCreatePage: create with live A4 preview
+
+4. Purchase Order system pages:
+   - PurchaseOrdersPage: list with PDF download
+   - PurchaseBillsPage: list with PDF download
+
+5. Sales Order system pages:
+   - SalesOrdersPage: list with PDF download
+
+BLOB AND PDF MIME TYPE USAGE
+============================
+
+- application/pdf: referenced in supabase functions send-notification/index.ts line 222
+- text/html;charset=utf-8: used for renderDocSheetToPdfBlob return type
+- text/csv;charset=utf-8: used for CSV exports
+- application/json;charset=utf-8: used for backup downloads
+- image/*,application/pdf: accept attribute in file inputs
+
+KEY FILES REFERENCING BLOB/appLICATION/pdf/html2canvas/jsPDF
+============================================================
+
+1. src/lib/pdfCapture.ts - imports html2canvas and jsPDF
+2. src/lib/invoiceExport.ts - uses captureElementToPdf which uses html2canvas/jsPDF
+3. src/lib/docPrint.ts - uses html2canvas and jsPDF internally
+4. supabase/functions/send-notification/index.ts - line 222: new Blob([bytes.buffer as ArrayBuffer], { type: "application/pdf" })
+5. Multiple page components create Blobs with various MIME types for downloads
+
+SUMMARY
+=======
+
+The project has a comprehensive PDF/print/download functionality built around:
+- html2canvas for rasterizing HTML elements to canvas
+- jsPDF for creating PDF documents with A4 portrait layout (8mm margins)
+- A shared Om-style print CSS for consistent formatting across document types
+
+Key document types supporting PDF generation/printing/download:
+- Tax invoices (sales invoices)
+- Quotations
+- Purchase orders
+- Purchase bills
+- Sales orders
+- GST returns (GSTR-1, GSTR-3B)
+
+The core PDF generation logic is in src/lib/docPrint.tsx (939 lines) which is the most
+important file, with src/lib/pdfCapture.ts (40 lines) and src/lib/invoiceExport.tsx (129 lines)
+providing supporting functionality. Multiple page components use these libraries to
+provide PDF export, printing, and download capabilities throughout the application.
+
+The src/components/invoice/InvoiceSheet.tsx (295 lines) is the shared printable component
+reused across invoice-related pages. Quotation and invoice systems have separate but
+similar implementations using the same underlying libraries.
+
+Duplication noted: src/pages/SettingsPage.tsx contains renderDocSheetToPdf and
+renderDocSheetToPdfBlob functions that are identical to those in src/lib/docPrint.tsx,
+suggesting either historical copying or separate development paths.

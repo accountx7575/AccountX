@@ -1,0 +1,101 @@
+PDF Document Generation, Printing, and Download Functionality - Key Findings Summary
+
+PROJECT: C:\Users\Saad\Downloads\project-bolt-sb1-AccountXbolt\project
+
+KEY PDF/PRINT/DOWNLOAD FILES (Full Paths):
+
+1. src/lib/pdfCapture.ts - Core PDF generation using html2canvas + jsPDF
+   - captureElementToPdf(el, filename): Promise<void>
+   - captureElementToPdfBlob(el): Promise<Blob>
+
+2. src/lib/invoiceExport.tsx - Invoice PDF export, CSV export, print functionality
+   - printInvoice(): void - browser print
+   - exportPdfFromElement(el, invoiceNumber, partyName): Promise<void>
+   - renderInvoiceSheetToPdf(business, invoice, items, partyName): Promise<void>
+   - exportInvoiceExcel(business, invoice, items): CSV export
+
+3. src/lib/docPrint.tsx (939 lines) - Core print document generation
+   - PrintableDocData interface
+   - generateOmStyleHtml(business, doc): generates Om-style HTML
+   - renderDocSheetToPdf(business, doc): Promise<void> - renders PDF and triggers print
+   - renderDocSheetToPdfBlob(business, doc): Promise<Blob> - renders PDF as Blob
+
+4. src/components/invoice/InvoiceSheet.tsx (295 lines) - Shared printable A4 GST invoice
+   - Reused by SalesInvoiceViewPage and SalesInvoiceCreatePage
+
+5. src/pages/QuotationsPage.tsx - Quotation list with PDF download/print
+   - handleDownloadPdf(q): downloads PDF
+   - handleDirectPrint(q): prints PDF preview
+
+6. src/pages/QuotationViewPage.tsx - Quotation view with PDF download
+   - handlePrint(): exports PDF
+   - Send dialog with PDF attachment
+
+7. src/pages/QuotationSendPage.tsx - Quotation send with PDF attachment
+   - Builds PDF blob before email sending
+
+8. src/pages/SalesInvoiceViewPage.tsx - Invoice view with PDF export
+   - exportPdf(): calls exportPdfFromElement
+   - PDF attachment in SendDialog
+
+9. src/pages/SalesInvoicesPage.tsx - Invoice list with PDF/Excel export
+   - handleRowExport(inv, 'pdf')
+   - handleRowExport(inv, 'excel')
+
+10. src/pages/SalesInvoiceCreatePage.tsx - Invoice create with preview/print
+    - Live A4 preview with print/Save as PDF buttons
+
+11. src/pages/PurchaseOrdersPage.tsx - PO list with PDF download
+    - printOrder(o): downloads PDF
+
+12. src/pages/PurchaseBillsPage.tsx - PB list with PDF download
+    - printBill(b): downloads PDF
+
+13. src/pages/SalesOrdersPage.tsx - SO list with PDF download
+    - printOrder(o): downloads PDF
+
+14. src/pages/gst/Gstr1Page.tsx - GSTR-1 with PDF attachment
+    - Uses captureElementToPdfBlob
+
+15. src/pages/gst/Gstr3bPage.tsx - GSTR-3B with PDF attachment
+    - Uses captureElementToPdfBlob
+
+16. src/pages/ReportDetailPage.tsx - Report detail with PDF capture
+    - Uses captureElementToPdfBlob
+
+17. src/pages/SettingsPage.tsx - renderDocSheetToPdf & renderDocSheetToPdfBlob
+    - Lines 879-925 (duplicated from docPrint.tsx)
+
+PACKAGE.JSON DEPENDENCIES:
+- "html2canvas": "^1.4.1"
+- "jspdf": "^4.2.1"
+
+PDF WORKFLOW PATTERNS:
+
+Pattern 1: Direct Browser Print (window.print())
+- Used in: invoiceExport.tsx, SalesInvoiceViewPage, SalesInvoicesPage, SalesInvoiceCreatePage, docPrint.tsx
+
+Pattern 2: PDF Download as Blob
+- renderDocSheetToPdfBlob() → URL.createObjectURL(blob) → <a download>.click() → URL.revokeObjectURL()
+- Used in: QuotationsPage, QuotationViewPage, QuotationSendPage, SalesInvoicesPage, ReportDetailPage, GSTR pages
+
+Pattern 3: PDF Blob for Email Attachments
+- renderDocSheetToPdfBlob() in SendDialog attachments array
+- Used in: QuotationSendPage, SalesInvoiceViewPage SendDialog, QuotationViewPage SendDialog
+
+Pattern 4: Element Capture to Specific DOM
+- captureElementToPdfBlob(el) targeting #invoice-print-area, #report-print-area
+- Used in: GSTR-1, GSTR-3B, SalesInvoiceViewPage
+
+Pattern 5: Print CSS + A4 Layout (8mm margins, theme-independent)
+- All PDF generation uses consistent Om-style print CSS
+- @page { size: A4 portrait; margin: 8mm }
+- break-inside: avoid for table rows
+
+INVOICE/QUOTATION COMPONENTS:
+
+1. Quotation system: QuotationsPage, QuotationViewPage, QuotationCreatePage, QuotationSendPage
+2. Sales Invoice system: SalesInvoicesPage, SalesInvoiceViewPage, SalesInvoiceCreatePage
+3. Purchase Order: PurchaseOrdersPage, PurchaseBillsPage
+4. Sales Order: SalesOrdersPage
+5. Shared component: src/components/invoice/InvoiceSheet.tsx

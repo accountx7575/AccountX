@@ -12,6 +12,7 @@ export type Role =
   | 'admin'
   | 'manager'
   | 'accountant'
+  | 'auditor'
   | 'sales_staff'
   | 'purchase_staff'
   | 'inventory_staff'
@@ -22,6 +23,7 @@ export const ALL_ROLES: Role[] = [
   'admin',
   'manager',
   'accountant',
+  'auditor',
   'sales_staff',
   'purchase_staff',
   'inventory_staff',
@@ -48,6 +50,7 @@ const ROLE_LABELS: Record<Role, string> = {
   admin: 'Admin',
   manager: 'Manager',
   accountant: 'Accountant',
+  auditor: 'Auditor',
   sales_staff: 'Sales Staff',
   purchase_staff: 'Purchase Staff',
   inventory_staff: 'Inventory Staff',
