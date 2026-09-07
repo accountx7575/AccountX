@@ -875,7 +875,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION
                 : `<svg width="180" height="70" viewBox="0 0 200 80" style="display:block; margin:auto;">
                     <text x="100" y="18" font-family="Arial, sans-serif" font-size="13.5" font-weight="bold" fill="#0b4da2" text-anchor="middle">For ${esc(businessName)}</text>
                     <path d="M 45 60 C 60 35, 80 25, 95 38 C 105 48, 88 72, 75 60 C 68 50, 90 34, 115 44 C 132 50, 110 68, 130 58 C 145 50, 168 52, 178 50 M 100 55 L 188 52" fill="none" stroke="#0b4da2" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <text x="180" y="66" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#0b4da2">Prop.</text>
+                    <text x="180" y="66" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#0b4da2" text-anchor="end">Proprietor</text>
                   </svg>`
             }
           </div>
@@ -935,41 +935,23 @@ export async function renderDocSheetToPdfBlob(
   doc: PrintableDocData,
 ): Promise<Blob> {
   const htmlContent = generateOmStyleHtml(business, doc);
-  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-    import('html2canvas'),
-    import('jspdf'),
-  ]);
 
-  const tempDiv = document.createElement('div');
-  tempDiv.style.position = 'fixed';
-  tempDiv.style.left = '-9999px';
-  tempDiv.style.top = '-9999px';
-  tempDiv.style.width = '210mm';
-  tempDiv.style.minHeight = '297mm';
-  tempDiv.style.padding = '8mm';
-  tempDiv.style.boxSizing = 'border-box';
-  tempDiv.style.fontFamily = 'Arial, Helvetica, sans-serif';
-  tempDiv.style.fontSize = '10px';
-  tempDiv.style.lineHeight = '1.25';
-  tempDiv.style.background = '#fff';
-  tempDiv.innerHTML = htmlContent;
-  document.body.appendChild(tempDiv);
-
-  const canvas = await html2canvas(tempDiv, {
-    scale: 3,
-    backgroundColor: '#fff',
-    logging: false,
-  });
-
-  document.body.removeChild(tempDiv);
+  const html2pdfModule = await import('html2pdf.js');
+  const { jsPDF } = await import('jspdf');
+  const html2pdf = html2pdfModule.default;
 
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const pageW = pdf.internal.pageSize.getWidth();
-  const pageH = pdf.internal.pageSize.getHeight();
-  const imgW = pageW - 16;
-  const imgH = (canvas.height * imgW) / canvas.width;
-  pdf.addImage(canvas.toDataURL('image/PNG'), 'PNG', 8, 8, imgW, imgH);
 
-  const blob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
+  const blob = await html2pdf()
+    .from(htmlContent)
+    .set({
+      margin: [8, 8, 8, 8],
+      filename: 'document.pdf',
+      image: { type: 'png', quality: 0.98 },
+      html2canvas: { scale: 3, letterRendering: true, background: '#fff' },
+      jsPDF: { unit: 'mm', format: 'a4' },
+    })
+    .output('blob');
+
   return blob;
 }
