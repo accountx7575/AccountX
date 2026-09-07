@@ -482,3 +482,38 @@ const DocPrint: React.FC<DocPrintProps> = ({ data = mockData }) => {
 };
 
 export default DocPrint;
+export async function renderDocSheetToPdfBlob(business: any, doc: PrintableDocData): Promise<Blob> {
+  const container = buildHtmlTemplate(business, doc);
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+    return pdf.output('blob');
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+
+// Yeh function missing tha jiski wajah se build fail hui:
+export async function renderDocSheetToPdf(business: any, doc: PrintableDocData): Promise<void> {
+  const blob = await renderDocSheetToPdfBlob(business, doc);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${doc.docNumber.replace(/\//g, '-')}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
