@@ -1,496 +1,352 @@
-import React from "react";
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
-/* ------------------------------------------------------------------------
- * Types
- * ---------------------------------------------------------------------- */
-
-export interface CompanyInfo {
-  name: string;
-  tagline?: string;
-  address: string;
-  mobile: string;
-  email: string;
-  gstin: string;
-  panNumber?: string;
-  logoUrl?: string;
+export interface PrintableDocData {
+  docTitle: string;
+  docNumber: string;
+  dateLabel: string;
+  dateValue: string;
+  expiryLabel?: string;
+  expiryValue?: string | null;
+  partyLabel: string;
+  partyName: string;
+  partyAddress?: string;
+  partyGstin?: string;
+  partyPhone?: string;
+  status: string;
+  items: Array<{
+    product_name: string;
+    hsn_sac?: string;
+    quantity: number;
+    unit?: string;
+    rate: number;
+    tax_rate: number;
+    taxable_amount?: number;
+    total_amount: number;
+  }>;
+  subtotal: number;
+  taxableAmount: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+  roundOff?: number;
+  grandTotal: number;
+  notes?: string | null;
+  terms?: string | null;
 }
 
-export interface PartyInfo {
-  name: string;
-  address: string;
-  placeOfSupply?: string;
-  mobile: string;
+// Helper to convert number to Indian Currency Words
+function numberToWordsINR(num: number): string {
+  const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+  function inWords(n: number): string {
+    let str = '';
+    if (n > 99) {
+      str += a[Math.floor(n / 100)] + 'Hundred ';
+      n %= 100;
+    }
+    if (n > 19) {
+      str += b[Math.floor(n / 10)] + (n % 10 ? ' ' + a[n % 10] : ' ');
+    } else if (n > 0) {
+      str += a[n];
+    }
+    return str;
+  }
+
+  const rounded = Math.round(num);
+  if (rounded === 0) return 'Zero Rupees Only';
+
+  const crore = Math.floor(rounded / 10000000);
+  const lakh = Math.floor((rounded % 10000000) / 100000);
+  const thousand = Math.floor((rounded % 100000) / 1000);
+  const hundred = rounded % 1000;
+
+  let out = '';
+  if (crore) out += inWords(crore) + 'Crore ';
+  if (lakh) out += inWords(lakh) + 'Lakh ';
+  if (thousand) out += inWords(thousand) + 'Thousand ';
+  if (hundred) out += inWords(hundred);
+
+  return out.trim() + ' Rupees Only';
 }
 
-export interface BankDetails {
-  bankName: string;
-  accountName: string;
-  accountNumber: string;
-  ifsc: string;
-  branch: string;
+function money(n: number): string {
+  return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export interface QuotationItem {
-  sno: number;
-  title: string;
-  description: string[];
-  qty: number;
-  unit: string;
-  rate: number;
-  taxRate: number; // percentage, e.g. 18
-  amount: number; // qty * rate, pre-tax line amount shown in AMOUNT column
+function initials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
 }
 
-export interface HsnRow {
-  hsnSac: string;
-  taxableValue: number;
-  cgstRate: number;
-  cgstAmount: number;
-  sgstRate: number;
-  sgstAmount: number;
-  totalTax: number;
-}
-
-export interface QuotationData {
-  seller: CompanyInfo;
-  billTo: PartyInfo;
-  shipTo: PartyInfo;
-  quotationNo: string;
-  quotationDate: string;
-  expiryDate: string;
-  items: QuotationItem[];
-  hsnRows: HsnRow[];
-  totalAmountWords: string;
-  bank: BankDetails;
-  terms: string[];
-  jurisdictionNote?: string;
-}
-
-/* ------------------------------------------------------------------------
- * Mock data (swap for real data via props)
- * ---------------------------------------------------------------------- */
-
-const mockData: QuotationData = {
-  seller: {
-    name: "Avadh Boring Company",
-    tagline: "Borewell, Pumps & Solar Energy Solutions",
-    address: "An-25, Lauta Bagh, Azad Nagar, Barabanki, Uttar Pradesh, 225001",
-    mobile: "+91 9450942418",
-    email: "abc.solar7575@gmail.com",
-    gstin: "09AABPQ3096M1Z5",
-  },
-  billTo: {
-    name: "Mohd Shoeb",
-    address:
-      "Daxin Tola Banki, Banki, Barabanki, Nawabganj (Barabanki), Up-225001, Barabanki, Uttar Pradesh, 225001",
-    placeOfSupply: "Uttar Pradesh",
-    mobile: "7985032002",
-  },
-  shipTo: {
-    name: "Mohd Shoeb",
-    address:
-      "Daxin Tola Banki, Banki, Barabanki, Nawabganj (Barabanki), Up-225001, Barabanki, Uttar Pradesh, 225001",
-    mobile: "7985032002",
-  },
-  quotationNo: "ABC/QO/26-27/21",
-  quotationDate: "29/06/2026",
-  expiryDate: "29/07/2026",
-  items: [
-    {
-      sno: 1,
-      title: "3kW Microtake 3480 Microtake Topcon Panel",
-      description: [
-        "With Appolo JIE installation",
-        "Havells ACDB/DCDB 600V with SPD",
-        "3 set copper bonded earthing, 1 set LA",
-        "DC/AC wire Polycab/Microtake/Havells",
-        "Net metering",
-        "PVC pipe 16kg",
-      ],
-      qty: 1,
-      unit: "PCS",
-      rate: 193220.34,
-      taxRate: 18,
-      amount: 228000,
-    },
-  ],
-  hsnRows: [
-    {
-      hsnSac: "85414011",
-      taxableValue: 193220.34,
-      cgstRate: 9,
-      cgstAmount: 17389.83,
-      sgstRate: 9,
-      sgstAmount: 17389.83,
-      totalTax: 34779.66,
-    },
-  ],
-  totalAmountWords: "Two Lakh Twenty Eight Thousand Rupees",
-  bank: {
-    bankName: "Canara Bank",
-    accountName: "Avadh Boring Company",
-    accountNumber: "120034396413",
-    ifsc: "CNRB0018631",
-    branch: "Barabanki",
-  },
-  terms: [
-    "Payment 100% advance.",
-    'All payments to be drawn in favour of "Avadh Boring Company", payable at Barabanki.',
-    "This quotation is valid for 15 days, subject to availability with our principals.",
-    "All subject to Barabanki jurisdiction (E.&O.E.).",
-  ],
+const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
+  draft: { bg: '#f1f5f9', fg: '#475569' },
+  sent: { bg: '#e0f2fe', fg: '#0369a1' },
+  accepted: { bg: '#dcfce7', fg: '#15803d' },
+  rejected: { bg: '#fee2e2', fg: '#b91c1c' },
+  paid: { bg: '#dcfce7', fg: '#15803d' },
+  overdue: { bg: '#fee2e2', fg: '#b91c1c' },
 };
 
-/* ------------------------------------------------------------------------
- * Helpers
- * ---------------------------------------------------------------------- */
+function buildHtmlTemplate(business: any, doc: PrintableDocData): HTMLElement {
+  const PAGE_W = 794; // A4 @ 96dpi
+  const INK = '#101828';
+  const SUB = '#667085';
+  const LINE = '#e4e7ec';
+  const NAVY = '#0F2947';
+  const GOLD = '#B4790F';
 
-const formatINR = (value: number): string =>
-  value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const container = document.createElement('div');
+  container.style.width = `${PAGE_W}px`;
+  container.style.backgroundColor = '#ffffff';
+  container.style.color = INK;
+  container.style.fontFamily = '"Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif';
+  container.style.fontSize = '12.5px';
+  container.style.lineHeight = '1.5';
+  container.style.boxSizing = 'border-box';
+  container.style.WebkitFontSmoothing = 'antialiased';
 
-const totals = (items: QuotationItem[], hsnRows: HsnRow[]) => {
-  const qty = items.reduce((s, i) => s + i.qty, 0);
-  const tax = hsnRows.reduce((s, r) => s + r.totalTax, 0);
-  const grandTotal = items.reduce((s, i) => s + i.amount, 0);
-  return { qty, tax, grandTotal };
-};
+  const isInterState = doc.igst > 0;
+  const grandTotalWords = numberToWordsINR(doc.grandTotal);
+  const statusKey = (doc.status || '').toLowerCase();
+  const statusColor = STATUS_COLORS[statusKey] || { bg: '#f1f5f9', fg: '#475569' };
 
-/* ------------------------------------------------------------------------
- * Component
- * ---------------------------------------------------------------------- */
+  const itemRows = doc.items
+    .map((it, idx) => {
+      const zebra = idx % 2 === 1 ? 'background-color:#F8FAFC;' : '';
+      return `
+        <tr style="${zebra}">
+          <td style="padding:10px 10px;text-align:center;color:${SUB};border-bottom:1px solid ${LINE};vertical-align:top;">${idx + 1}</td>
+          <td style="padding:10px 10px;border-bottom:1px solid ${LINE};vertical-align:top;">
+            <div style="font-weight:600;color:${INK};font-size:12.5px;">${it.product_name}</div>
+          </td>
+          <td style="padding:10px 10px;text-align:center;color:${SUB};border-bottom:1px solid ${LINE};vertical-align:top;">${it.hsn_sac || '—'}</td>
+          <td style="padding:10px 10px;text-align:right;color:${INK};border-bottom:1px solid ${LINE};vertical-align:top;white-space:nowrap;">${it.quantity} ${it.unit || 'PCS'}</td>
+          <td style="padding:10px 10px;text-align:right;color:${INK};border-bottom:1px solid ${LINE};vertical-align:top;font-variant-numeric:tabular-nums;">${money(it.rate)}</td>
+          <td style="padding:10px 10px;text-align:right;color:${SUB};border-bottom:1px solid ${LINE};vertical-align:top;">${it.tax_rate}%</td>
+          <td style="padding:10px 10px;text-align:right;color:${INK};font-weight:700;border-bottom:1px solid ${LINE};vertical-align:top;font-variant-numeric:tabular-nums;">${money(it.total_amount)}</td>
+        </tr>`;
+    })
+    .join('');
 
-interface DocPrintProps {
-  data?: QuotationData;
-}
+  const taxRowsHtml = isInterState
+    ? `
+      <tr>
+        <td style="padding:6px 10px;color:${SUB};">Integrated Tax (IGST)</td>
+        <td style="padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.taxableAmount)}</td>
+        <td style="padding:6px 10px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">₹${money(doc.igst)}</td>
+      </tr>`
+    : `
+      <tr>
+        <td style="padding:6px 10px;color:${SUB};border-bottom:1px solid ${LINE};">Central Tax (CGST)</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid ${LINE};font-variant-numeric:tabular-nums;">₹${money(doc.taxableAmount / 2)}</td>
+        <td style="padding:6px 10px;text-align:right;font-weight:600;border-bottom:1px solid ${LINE};font-variant-numeric:tabular-nums;">₹${money(doc.cgst)}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 10px;color:${SUB};">State Tax (SGST)</td>
+        <td style="padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.taxableAmount / 2)}</td>
+        <td style="padding:6px 10px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">₹${money(doc.sgst)}</td>
+      </tr>`;
 
-const DocPrint: React.FC<DocPrintProps> = ({ data = mockData }) => {
-  const { seller, billTo, shipTo, items, hsnRows, bank, terms } = data;
-  const { qty, tax, grandTotal } = totals(items, hsnRows);
+  container.innerHTML = `
+    <div style="padding:36px 40px 30px 40px;">
 
-  const handlePrint = () => window.print();
-
-  return (
-    <div className="min-h-screen bg-slate-100 print:bg-white">
-      {/* Print-only page rules */}
-      <style>{`
-        @media print {
-          @page {
-            size: A4;
-            margin: 12mm 10mm;
-          }
-          html, body {
-            background: #ffffff !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-          .print-sheet {
-            box-shadow: none !important;
-            border: none !important;
-            width: 100% !important;
-            margin: 0 !important;
-          }
-          .avoid-break {
-            break-inside: avoid;
-          }
-          table {
-            page-break-inside: auto;
-          }
-          tr {
-            page-break-inside: avoid;
-          }
-          thead {
-            display: table-header-group;
-          }
-        }
-      `}</style>
-
-      {/* Floating action bar (screen only) */}
-      <div className="no-print sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/90 px-6 py-3 backdrop-blur">
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <span className="font-medium text-slate-700">Quotation</span>
-          <span>·</span>
-          <span>{data.quotationNo}</span>
+      <!-- ============ HEADER ============ -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:20px;border-bottom:2px solid ${NAVY};">
+        <div style="display:flex;gap:14px;">
+          <div style="width:52px;height:52px;flex-shrink:0;border-radius:10px;background:${NAVY};color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;letter-spacing:0.5px;">
+            ${initials(business.name || 'CO')}
+          </div>
+          <div>
+            <div style="font-size:19px;font-weight:800;color:${INK};letter-spacing:-0.2px;">${business.name || 'Your Company'}</div>
+            ${business.tagline ? `<div style="font-size:11.5px;color:${GOLD};font-weight:600;margin-top:1px;">${business.tagline}</div>` : ''}
+            <div style="font-size:11px;color:${SUB};margin-top:6px;max-width:300px;">
+              ${business.address ? `${business.address}` : ''}${business.city ? `, ${business.city}` : ''}${business.state ? `, ${business.state}` : ''}${business.pincode ? ` – ${business.pincode}` : ''}
+            </div>
+            <div style="font-size:11px;color:${SUB};margin-top:3px;">
+              ${business.phone ? `${business.phone}` : ''}${business.phone && business.email ? '&nbsp;&nbsp;·&nbsp;&nbsp;' : ''}${business.email ? `${business.email}` : ''}
+            </div>
+            <div style="font-size:11px;color:${INK};margin-top:5px;font-weight:600;">
+              GSTIN&nbsp; <span style="font-weight:700;letter-spacing:0.3px;">${business.gstin || '—'}</span>
+            </div>
+          </div>
         </div>
-        <button
-          onClick={handlePrint}
-          className="rounded-md bg-[#0F2942] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#16385A] focus:outline-none focus:ring-2 focus:ring-[#0F2942] focus:ring-offset-2"
-        >
-          Print / Download PDF
-        </button>
+
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="display:inline-block;background:${NAVY};color:#fff;font-size:12px;font-weight:700;letter-spacing:1px;padding:6px 14px;border-radius:5px;">
+            ${(doc.docTitle || 'QUOTATION').toUpperCase()}
+          </div>
+          <table style="margin-top:12px;border-collapse:collapse;font-size:11.5px;">
+            <tr>
+              <td style="padding:2px 0;color:${SUB};text-align:right;padding-right:10px;">No.</td>
+              <td style="padding:2px 0;text-align:right;font-weight:700;color:${INK};font-variant-numeric:tabular-nums;">${doc.docNumber}</td>
+            </tr>
+            <tr>
+              <td style="padding:2px 0;color:${SUB};text-align:right;padding-right:10px;">${doc.dateLabel}</td>
+              <td style="padding:2px 0;text-align:right;font-weight:600;color:${INK};">${doc.dateValue}</td>
+            </tr>
+            ${doc.expiryValue ? `
+            <tr>
+              <td style="padding:2px 0;color:${SUB};text-align:right;padding-right:10px;">${doc.expiryLabel || 'Valid until'}</td>
+              <td style="padding:2px 0;text-align:right;font-weight:600;color:${INK};">${doc.expiryValue}</td>
+            </tr>` : ''}
+          </table>
+          <div style="margin-top:10px;">
+            <span style="display:inline-block;background:${statusColor.bg};color:${statusColor.fg};font-size:10px;font-weight:700;letter-spacing:0.5px;padding:4px 10px;border-radius:20px;text-transform:uppercase;">
+              ${doc.status || 'draft'}
+            </span>
+          </div>
+        </div>
       </div>
 
-      {/* Printable sheet */}
-      <div className="print-sheet mx-auto my-8 max-w-3xl bg-white p-8 shadow-lg print:my-0 print:p-0 sm:p-10">
-        {/* ---------------- Header ---------------- */}
-        <div className="flex items-start justify-between gap-6 border-b-2 border-[#0F2942] pb-5">
-          <div className="flex gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-[#0F2942] text-lg font-semibold text-white">
-              {seller.name
-                .split(" ")
-                .map((w) => w[0])
-                .slice(0, 2)
-                .join("")}
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-                {seller.name}
-              </h1>
-              {seller.tagline && (
-                <p className="text-sm text-[#B4790F]">{seller.tagline}</p>
-              )}
-              <p className="mt-1 max-w-xs text-xs leading-relaxed text-slate-500">
-                {seller.address}
-              </p>
-              <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-500">
-                <span>{seller.mobile}</span>
-                <span>{seller.email}</span>
-              </div>
-              <p className="mt-1 text-xs font-medium text-slate-600">
-                GSTIN: <span className="font-mono">{seller.gstin}</span>
-              </p>
-            </div>
-          </div>
-
-          <div className="shrink-0 text-right">
-            <span className="inline-block rounded bg-[#0F2942] px-3 py-1 text-xs font-semibold tracking-wide text-white">
-              QUOTATION
-            </span>
-            <dl className="mt-3 space-y-1 text-xs text-slate-600">
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-400">Quotation No.</dt>
-                <dd className="font-mono font-medium text-slate-800">
-                  {data.quotationNo}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-400">Date</dt>
-                <dd className="font-medium text-slate-800">{data.quotationDate}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-400">Valid until</dt>
-                <dd className="font-medium text-slate-800">{data.expiryDate}</dd>
-              </div>
-            </dl>
+      <!-- ============ BILL TO ============ -->
+      <div style="margin-top:20px;display:flex;justify-content:space-between;gap:16px;">
+        <div style="flex:1;background:#F8FAFC;border:1px solid ${LINE};border-radius:8px;padding:14px 16px;">
+          <div style="font-size:10px;font-weight:700;color:${SUB};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">${doc.partyLabel || 'Billed to'}</div>
+          <div style="font-size:14px;font-weight:700;color:${INK};">${doc.partyName}</div>
+          ${doc.partyAddress ? `<div style="font-size:11.5px;color:${SUB};margin-top:4px;max-width:420px;">${doc.partyAddress}</div>` : ''}
+          <div style="display:flex;gap:22px;font-size:11.5px;color:${SUB};margin-top:6px;">
+            ${doc.partyGstin ? `<div><span style="color:${INK};font-weight:600;">GSTIN</span> ${doc.partyGstin}</div>` : ''}
+            ${doc.partyPhone ? `<div><span style="color:${INK};font-weight:600;">Phone</span> ${doc.partyPhone}</div>` : ''}
           </div>
         </div>
-
-        {/* ---------------- Bill To / Ship To ---------------- */}
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="avoid-break rounded-md border border-slate-200 p-4">
-            <p className="text-xs font-semibold text-slate-400">Bill to</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">{billTo.name}</p>
-            <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-              {billTo.address}
-            </p>
-            {billTo.placeOfSupply && (
-              <p className="mt-1 text-xs text-slate-500">
-                Place of supply: {billTo.placeOfSupply}
-              </p>
-            )}
-            <p className="text-xs text-slate-500">Mobile: {billTo.mobile}</p>
-          </div>
-          <div className="avoid-break rounded-md border border-slate-200 p-4">
-            <p className="text-xs font-semibold text-slate-400">Ship to</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">{shipTo.name}</p>
-            <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-              {shipTo.address}
-            </p>
-            <p className="text-xs text-slate-500">Mobile: {shipTo.mobile}</p>
-          </div>
+        <div style="width:200px;background:#F8FAFC;border:1px solid ${LINE};border-radius:8px;padding:14px 16px;">
+          <div style="font-size:10px;font-weight:700;color:${SUB};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Place of supply</div>
+          <div style="font-size:13px;font-weight:600;color:${INK};">${business.state || 'Uttar Pradesh'}</div>
         </div>
+      </div>
 
-        {/* ---------------- Items table ---------------- */}
-        <div className="mt-6 overflow-hidden rounded-md border border-slate-200">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="bg-[#0F2942] text-left text-xs font-medium uppercase tracking-wide text-white">
-                <th className="w-10 px-3 py-2 text-center">#</th>
-                <th className="px-3 py-2">Item / Description</th>
-                <th className="w-14 px-3 py-2 text-center">Qty</th>
-                <th className="w-24 px-3 py-2 text-right">Rate (₹)</th>
-                <th className="w-16 px-3 py-2 text-right">Tax</th>
-                <th className="w-28 px-3 py-2 text-right">Amount (₹)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, idx) => (
-                <tr
-                  key={item.sno}
-                  className={`avoid-break align-top ${
-                    idx % 2 === 1 ? "bg-slate-50" : "bg-white"
-                  }`}
-                >
-                  <td className="px-3 py-3 text-center text-slate-500">{item.sno}</td>
-                  <td className="px-3 py-3">
-                    <p className="font-medium text-slate-900">{item.title}</p>
-                    {item.description.length > 0 && (
-                      <ul className="mt-1 space-y-0.5 text-xs text-slate-500">
-                        {item.description.map((line, i) => (
-                          <li key={i}>{line}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </td>
-                  <td className="px-3 py-3 text-center text-slate-700">
-                    {item.qty} {item.unit}
-                  </td>
-                  <td className="px-3 py-3 text-right font-mono text-slate-700">
-                    {formatINR(item.rate)}
-                  </td>
-                  <td className="px-3 py-3 text-right text-slate-500">
-                    {item.taxRate}%
-                  </td>
-                  <td className="px-3 py-3 text-right font-mono font-semibold text-slate-900">
-                    {formatINR(item.amount)}
-                  </td>
+      <!-- ============ ITEMS TABLE ============ -->
+      <table style="width:100%;border-collapse:collapse;margin-top:20px;border:1px solid ${LINE};border-radius:8px;overflow:hidden;">
+        <thead>
+          <tr style="background:${NAVY};color:#fff;">
+            <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:34px;">#</th>
+            <th style="padding:9px 10px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">Item &amp; description</th>
+            <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:68px;">HSN</th>
+            <th style="padding:9px 10px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:64px;">Qty</th>
+            <th style="padding:9px 10px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:90px;">Rate (₹)</th>
+            <th style="padding:9px 10px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:52px;">Tax</th>
+            <th style="padding:9px 10px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:100px;">Amount (₹)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemRows}
+        </tbody>
+      </table>
+
+      <!-- ============ WORDS + TAX + TOTAL ============ -->
+      <div style="display:flex;gap:16px;margin-top:16px;align-items:stretch;">
+        <div style="flex:1.35;display:flex;flex-direction:column;gap:12px;">
+          <div style="border:1px solid ${LINE};border-radius:8px;padding:12px 14px;background:#FBFBFC;">
+            <div style="font-size:10px;font-weight:700;color:${SUB};text-transform:uppercase;letter-spacing:0.6px;">Amount in words</div>
+            <div style="font-size:12.5px;font-weight:700;color:${NAVY};margin-top:3px;">${grandTotalWords}</div>
+          </div>
+
+          <div style="border:1px solid ${LINE};border-radius:8px;overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;font-size:11px;">
+              <thead>
+                <tr style="background:#F1F5F9;color:${SUB};">
+                  <th style="padding:6px 10px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.4px;">Tax component</th>
+                  <th style="padding:6px 10px;text-align:right;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.4px;">Taxable value</th>
+                  <th style="padding:6px 10px;text-align:right;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.4px;">Amount</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-[#0F2942] bg-slate-50 text-sm font-semibold text-slate-900">
-                <td className="px-3 py-2.5" colSpan={2}>
-                  Total
-                </td>
-                <td className="px-3 py-2.5 text-center">{qty}</td>
-                <td className="px-3 py-2.5"></td>
-                <td className="px-3 py-2.5 text-right font-mono">
-                  {formatINR(tax)}
-                </td>
-                <td className="px-3 py-2.5 text-right font-mono">
-                  {formatINR(grandTotal)}
-                </td>
-              </tr>
-            </tfoot>
+              </thead>
+              <tbody>
+                ${taxRowsHtml}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Totals summary -->
+        <div style="width:230px;border:1px solid ${LINE};border-radius:8px;overflow:hidden;display:flex;flex-direction:column;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <tr>
+              <td style="padding:7px 12px;color:${SUB};">Subtotal</td>
+              <td style="padding:7px 12px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">₹${money(doc.subtotal)}</td>
+            </tr>
+            <tr>
+              <td style="padding:7px 12px;color:${SUB};border-top:1px solid ${LINE};">Taxable amount</td>
+              <td style="padding:7px 12px;text-align:right;font-weight:600;border-top:1px solid ${LINE};font-variant-numeric:tabular-nums;">₹${money(doc.taxableAmount)}</td>
+            </tr>
+            ${isInterState ? `
+            <tr>
+              <td style="padding:7px 12px;color:${SUB};border-top:1px solid ${LINE};">IGST</td>
+              <td style="padding:7px 12px;text-align:right;font-weight:600;border-top:1px solid ${LINE};font-variant-numeric:tabular-nums;">₹${money(doc.igst)}</td>
+            </tr>` : `
+            <tr>
+              <td style="padding:7px 12px;color:${SUB};border-top:1px solid ${LINE};">CGST</td>
+              <td style="padding:7px 12px;text-align:right;font-weight:600;border-top:1px solid ${LINE};font-variant-numeric:tabular-nums;">₹${money(doc.cgst)}</td>
+            </tr>
+            <tr>
+              <td style="padding:7px 12px;color:${SUB};">SGST</td>
+              <td style="padding:7px 12px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">₹${money(doc.sgst)}</td>
+            </tr>`}
+            ${doc.roundOff ? `
+            <tr>
+              <td style="padding:7px 12px;color:${SUB};border-top:1px solid ${LINE};">Round off</td>
+              <td style="padding:7px 12px;text-align:right;font-weight:600;border-top:1px solid ${LINE};font-variant-numeric:tabular-nums;">₹${money(doc.roundOff)}</td>
+            </tr>` : ''}
+          </table>
+          <div style="margin-top:auto;background:${NAVY};color:#fff;padding:11px 14px;display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-size:11.5px;font-weight:600;letter-spacing:0.3px;">Total due</span>
+            <span style="font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;">₹${money(doc.grandTotal)}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ BANK + TERMS + SIGNATURE ============ -->
+      <div style="display:flex;gap:16px;margin-top:20px;padding-top:16px;border-top:1px solid ${LINE};">
+        <div style="flex:1;">
+          <div style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Bank details</div>
+          <table style="font-size:11px;color:${SUB};border-collapse:collapse;">
+            <tr><td style="padding:1.5px 10px 1.5px 0;">Bank</td><td style="padding:1.5px 0;font-weight:600;color:${INK};">${business.bank_name || '—'}</td></tr>
+            <tr><td style="padding:1.5px 10px 1.5px 0;">Account no.</td><td style="padding:1.5px 0;font-weight:600;color:${INK};font-variant-numeric:tabular-nums;">${business.bank_account_number || '—'}</td></tr>
+            <tr><td style="padding:1.5px 10px 1.5px 0;">IFSC</td><td style="padding:1.5px 0;font-weight:600;color:${INK};">${business.bank_ifsc_code || '—'}</td></tr>
+            ${business.upi_id ? `<tr><td style="padding:1.5px 10px 1.5px 0;">UPI</td><td style="padding:1.5px 0;font-weight:600;color:${INK};">${business.upi_id}</td></tr>` : ''}
           </table>
         </div>
 
-        {/* ---------------- HSN/SAC tax summary ---------------- */}
-        <div className="avoid-break mt-6 overflow-hidden rounded-md border border-slate-200">
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-100 text-left uppercase tracking-wide text-slate-500">
-                <th className="px-3 py-2">HSN/SAC</th>
-                <th className="px-3 py-2 text-right">Taxable value</th>
-                <th className="px-3 py-2 text-right">CGST rate</th>
-                <th className="px-3 py-2 text-right">CGST amt</th>
-                <th className="px-3 py-2 text-right">SGST rate</th>
-                <th className="px-3 py-2 text-right">SGST amt</th>
-                <th className="px-3 py-2 text-right">Total tax</th>
-              </tr>
-            </thead>
-            <tbody>
-              {hsnRows.map((row, i) => (
-                <tr key={i} className="border-t border-slate-100">
-                  <td className="px-3 py-2 font-mono text-slate-700">{row.hsnSac || "—"}</td>
-                  <td className="px-3 py-2 text-right font-mono text-slate-700">
-                    {formatINR(row.taxableValue)}
-                  </td>
-                  <td className="px-3 py-2 text-right text-slate-500">
-                    {row.cgstRate}%
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-slate-700">
-                    {formatINR(row.cgstAmount)}
-                  </td>
-                  <td className="px-3 py-2 text-right text-slate-500">
-                    {row.sgstRate}%
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-slate-700">
-                    {formatINR(row.sgstAmount)}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono font-semibold text-slate-900">
-                    {formatINR(row.totalTax)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* ---------------- Amount in words ---------------- */}
-        <div className="avoid-break mt-4 rounded-md border border-[#0F2942]/20 bg-[#0F2942]/5 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Total amount in words
-          </p>
-          <p className="mt-0.5 text-sm font-medium text-slate-800">
-            {data.totalAmountWords} Only
-          </p>
-        </div>
-
-        {/* ---------------- Footer: Bank / Terms / Signatory ---------------- */}
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="avoid-break rounded-md border border-slate-200 p-4">
-            <p className="text-xs font-semibold text-slate-400">Bank details</p>
-            <dl className="mt-2 space-y-1 text-xs text-slate-600">
-              <div className="flex justify-between gap-2">
-                <dt className="text-slate-400">Bank</dt>
-                <dd className="text-right font-medium">{bank.bankName}</dd>
-              </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-slate-400">Account name</dt>
-                <dd className="text-right font-medium">{bank.accountName}</dd>
-              </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-slate-400">Account no.</dt>
-                <dd className="text-right font-mono font-medium">
-                  {bank.accountNumber}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-slate-400">IFSC</dt>
-                <dd className="text-right font-mono font-medium">{bank.ifsc}</dd>
-              </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-slate-400">Branch</dt>
-                <dd className="text-right font-medium">{bank.branch}</dd>
-              </div>
-            </dl>
-          </div>
-
-          <div className="avoid-break rounded-md border border-slate-200 p-4">
-            <p className="text-xs font-semibold text-slate-400">
-              Terms &amp; conditions
-            </p>
-            <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-slate-600">
-              {terms.map((t, i) => (
-                <li key={i} className="flex gap-1.5">
-                  <span className="text-[#B4790F]">•</span>
-                  <span>{t}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="avoid-break flex flex-col items-center justify-between rounded-md border border-slate-200 p-4 text-center">
-            <p className="text-xs font-semibold text-slate-400">
-              Authorised signatory for
-            </p>
-            <p className="mt-1 text-sm font-medium text-slate-800">{seller.name}</p>
-            <div className="mt-8 w-full border-t border-dashed border-slate-300 pt-2 text-xs text-slate-400">
-              Signature &amp; stamp
-            </div>
+        <div style="flex:1.2;">
+          <div style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Terms &amp; conditions</div>
+          <div style="font-size:10.5px;color:${SUB};line-height:1.55;white-space:pre-wrap;">
+            ${doc.terms || 'Payment 100% advance.\nQuotation valid for 15 days.\nSubject to local jurisdiction.'}
           </div>
         </div>
 
-        <p className="mt-6 text-center text-[10px] text-slate-400">
-          This is a computer-generated quotation and does not require a physical
-          signature to be valid unless otherwise specified.
-        </p>
+        <div style="width:190px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;text-align:center;">
+          <div style="font-size:11px;font-weight:600;color:${INK};margin-bottom:44px;">For ${business.name || 'Company'}</div>
+          <div style="width:100%;border-top:1px dashed #98A2B3;padding-top:5px;font-size:10px;font-weight:600;color:${SUB};">Authorised signatory</div>
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-top:22px;font-size:9.5px;color:#98A2B3;">
+        This is a system-generated document and is valid without a physical signature unless stated otherwise.
       </div>
     </div>
-  );
-};
+  `;
 
-export default DocPrint;
+  return container;
+}
+
 export async function renderDocSheetToPdfBlob(business: any, doc: PrintableDocData): Promise<Blob> {
   const container = buildHtmlTemplate(business, doc);
+  container.style.position = 'fixed';
+  container.style.top = '0';
+  container.style.left = '-99999px';
   document.body.appendChild(container);
 
   try {
     const canvas = await html2canvas(container, {
-      scale: 2,
+      scale: 2, // High resolution crisp print
       useCORS: true,
       logging: false,
+      backgroundColor: '#ffffff',
     });
 
     const imgData = canvas.toDataURL('image/jpeg', 0.95);
@@ -505,7 +361,6 @@ export async function renderDocSheetToPdfBlob(business: any, doc: PrintableDocDa
   }
 }
 
-// Yeh function missing tha jiski wajah se build fail hui:
 export async function renderDocSheetToPdf(business: any, doc: PrintableDocData): Promise<void> {
   const blob = await renderDocSheetToPdfBlob(business, doc);
   const url = URL.createObjectURL(blob);
