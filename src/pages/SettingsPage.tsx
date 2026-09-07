@@ -104,7 +104,7 @@ function StampSignatureSlot({
         <input
           id={inputId}
           type="file"
-          accept="image/png,image/jpeg"
+          accept="image/*"
           className="hidden"
           disabled={disabled}
           onChange={(e) => {
@@ -136,7 +136,8 @@ type BusinessMemberRow = {
   role: Role | string;
   is_active: boolean | null;
   invited_at: string | null;
-  joined_at: string | null;};
+  joined_at: string | null;
+};
 
 export function SettingsPage() {
   const { activeBusiness, activeRole, user, refreshBusinesses } = useAuth();
@@ -192,20 +193,39 @@ export function SettingsPage() {
     }
   }, [activeBusiness]);
 
-  /* ------------------------------ members ------------------------------- */
+  /* ------------------------------ image reader ------------------------------- */
 
   const readImageFile = (file: File, field: 'stamp_url' | 'signature_url') => {
-    if (!/^image\/(png|jpe?g)$/i.test(file.type)) {
-      toast('Use a PNG or JPG image', 'error');
+    if (!file.type.startsWith('image/')) {
+      toast('Please upload an image file (PNG, JPG, or SVG)', 'error');
       return;
     }
-    if (file.size > 500 * 1024) {
-      toast('Image must be under 500 KB', 'error');
-      return;
-    }
+
     const reader = new FileReader();
-    reader.onload = () => setForm((prev) => ({ ...prev, [field]: String(reader.result) }));
-    reader.onerror = () => toast('Could not read that image', 'error');
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (file.type === 'image/svg+xml' || file.size < 600 * 1024) {
+        setForm((prev) => ({ ...prev, [field]: result }));
+        toast('Image selected successfully! Click "Save All Settings" below.', 'info');
+        return;
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800;
+        const scaleSize = MAX_WIDTH / img.width;
+        canvas.width = Math.min(img.width, MAX_WIDTH);
+        canvas.height = img.width > MAX_WIDTH ? img.height * scaleSize : img.height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/png', 0.9);
+        setForm((prev) => ({ ...prev, [field]: dataUrl }));
+        toast('Image selected and optimized! Click "Save All Settings" below.', 'info');
+      };
+      img.src = result;
+    };
+    reader.onerror = () => toast('Could not read the selected image', 'error');
     reader.readAsDataURL(file);
   };
 
@@ -271,9 +291,6 @@ export function SettingsPage() {
   }
 
   function confirmRemove(m: BusinessMemberRow) {
-    // Impersonation guard: a super-admin viewing a tenant dashboard must not
-    // accidentally mutate mission-critical tenant settings (member removal,
-    // business deletion). Block with an audit event instead.
     let impersonating = false;
     try {
       impersonating =
@@ -809,13 +826,13 @@ export function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">Signature &amp; Stamp</h3>
-              <p className="text-xs text-secondary-500 dark:text-secondary-400">Auto-rendered on every tax invoice (PNG/JPG up to 500 KB)</p>
+              <p className="text-xs text-secondary-500 dark:text-secondary-400">Auto-rendered on every quotation &amp; invoice (PNG, JPG or SVG)</p>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <StampSignatureSlot
-              title="Company Stamp / Seal"
-              hint="Square seal renders top-right of the signatory block"
+              title="Company Stamp / Logo"
+              hint="Rendered top-left on quotation and sales invoice header"
               value={form.stamp_url}
               disabled={!canEditSettings}
               onPick={(f) => readImageFile(f, 'stamp_url')}
@@ -846,14 +863,14 @@ export function SettingsPage() {
                 value={form.invoice_footer_text}
                 disabled={!canEditSettings}
                 rows={2}
-                placeholder="e.g. Goods once sold will not be taken back. Subject to Mumbai jurisdiction."
+                placeholder="e.g. Goods once sold will not be taken back. Subject to Barabanki jurisdiction."
                 onChange={(e) => setForm((prev) => ({ ...prev, invoice_footer_text: e.target.value }))}
               />
               <p className="text-xs text-secondary-400 mt-1">Rendered as a centred line under invoice totals when set</p>
             </FormField>
           </div>
           <p className="mt-3 text-xs text-secondary-400">
-            Saved with Business Settings below. Invoices render these automatically - no per-invoice action needed.
+            Saved with Business Settings below. Quotations and Invoices render these automatically.
           </p>
         </div>
 
