@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/common/DatePicker';
 import { Input } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
-import { Plus, Trash2, Search, Save, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Search, Save, ArrowLeft, Sparkles, Upload } from 'lucide-react';
 import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
 import { computeDocLine } from '@/lib/payloads';
 import type { Supplier, Product } from '@/types/db';
@@ -41,6 +41,9 @@ export function PurchaseBillCreatePage() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [scanning, setScanning] = useState(false);
 
   const [supplierId, setSupplierId] = useState('');
   const [billNumber, setBillNumber] = useState('');
@@ -135,6 +138,143 @@ export function PurchaseBillCreatePage() {
   const addItem = () => setItems((prev) => [...prev, { ...emptyItem }]);
   const removeItem = (idx: number) => setItems((prev) => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
 
+  // AI Scan & Auto Fill Handler
+  const handleScanBill = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('gemini_api_key');
+    if (!apiKey) {
+      toast('Please set your Gemini API key in .env (VITE_GEMINI_API_KEY)', 'error');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    setScanning(true);
+    try {
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const mimeType = file.type || 'image/jpeg';
+      const prompt = `Extract structured purchase bill/invoice details from this document.
+Return ONLY a valid JSON object matching this schema without markdown fences:
+{
+  "supplier_name": "Supplier or Vendor Name",
+  "bill_number": "Invoice or Bill Number",
+  "bill_date": "YYYY-MM-DD",
+  "due_date": "YYYY-MM-DD",
+  "items": [
+    {
+      "name": "Product or item description",
+      "quantity": 1,
+      "rate": 100,
+      "tax_rate": 18
+    }
+  ],
+  "notes": "Any payment terms or notes"
+}
+If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: prompt },
+                  {
+                    inline_data: {
+                      mime_type: mimeType,
+                      data: base64Data,
+                    },
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              response_mime_type: 'application/json',
+            },
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errJson = await response.json();
+        throw new Error(errJson.error?.message || 'Failed to analyze bill document');
+      }
+
+      const resData = await response.json();
+      const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) throw new Error('No readable data detected in the uploaded file');
+
+      const extracted = JSON.parse(rawText);
+
+      // 1. Match & set Supplier
+      if (extracted.supplier_name && suppliers?.length) {
+        const cleanName = extracted.supplier_name.toLowerCase().trim();
+        const matched = suppliers.find((s) => s.name.toLowerCase().includes(cleanName) || cleanName.includes(s.name.toLowerCase()));
+        if (matched) {
+          setSupplierId(matched.id);
+        }
+      }
+
+      // 2. Set Bill Details
+      if (extracted.bill_number) setBillNumber(String(extracted.bill_number));
+      if (extracted.bill_date && /^\d{4}-\d{2}-\d{2}$/.test(extracted.bill_date)) setBillDate(extracted.bill_date);
+      if (extracted.due_date && /^\d{4}-\d{2}-\d{2}$/.test(extracted.due_date)) setDueDate(extracted.due_date);
+      if (extracted.notes) setNotes(String(extracted.notes));
+
+      // 3. Populate Items with full calculation
+      if (Array.isArray(extracted.items) && extracted.items.length > 0) {
+        const parsedItems: LineItem[] = extracted.items.map((it: any) => {
+          const qty = Number(it.quantity) || 1;
+          const r = Number(it.rate) || 0;
+          const tax = Number(it.tax_rate) || 0;
+          const line = computeDocLine({
+            quantity: qty,
+            rate: r,
+            discount_amount: 0,
+            tax_rate: tax,
+            isInterState,
+          });
+          return {
+            product_id: null,
+            product_name: String(it.name || 'Item'),
+            hsn_sac: '',
+            quantity: qty,
+            unit: 'PCS',
+            rate: r,
+            discount_amount: 0,
+            tax_rate: tax,
+            taxable_amount: line.taxable_amount,
+            cgst_amount: line.cgst_amount,
+            sgst_amount: line.sgst_amount,
+            igst_amount: line.igst_amount,
+            total_amount: line.total_amount,
+          };
+        });
+        setItems(parsedItems);
+      }
+
+      toast('Bill scanned & data auto-filled successfully!', 'success');
+    } catch (err: any) {
+      toast(err.message || 'Failed to scan bill', 'error');
+    } finally {
+      setScanning(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const saveMutation = useMutation({
     mutationFn: async (status: 'confirmed' | 'draft' = 'confirmed') => {
       if (!activeBusiness) throw new Error('No active business');
@@ -209,7 +349,34 @@ export function PurchaseBillCreatePage() {
 
   return (
     <div>
-      <PageHeader title="New Purchase Bill" actions={<Button variant="secondary" onClick={() => navigate('/app/purchase-bills')}><ArrowLeft className="h-4 w-4" /> Back</Button>} />
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={handleScanBill}
+      />
+
+      <PageHeader
+        title="New Purchase Bill"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              loading={scanning}
+              onClick={() => fileInputRef.current?.click()}
+              className="border-primary-300 text-primary-700 dark:text-primary-300 bg-primary-50/70 dark:bg-primary-950/40"
+            >
+              <Sparkles className="h-4 w-4 text-primary-600" />
+              {scanning ? 'Scanning Bill...' : 'Scan & Auto-fill Bill'}
+            </Button>
+            <Button variant="secondary" onClick={() => navigate('/app/purchase-bills')}>
+              <ArrowLeft className="h-4 w-4" /> Back
+            </Button>
+          </div>
+        }
+      />
 
       <div className="card p-6">
         <FormSection title="Party & Dates" description="Who you're buying from and when payment is due">
@@ -338,7 +505,7 @@ export function PurchaseBillCreatePage() {
         </FormSection>
       </div>
 
-      {/* Sticky action footer — secondary left, primary right */}
+      {/* Sticky action footer */}
       <div className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 mt-5 border-t border-secondary-200/80 dark:border-zinc-800 bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md">
         <div className="flex items-center justify-between gap-3">
           <Button variant="secondary" onClick={() => navigate('/app/purchase-bills')}>Cancel</Button>
