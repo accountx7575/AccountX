@@ -37,7 +37,7 @@ export interface PrintableDocData {
   terms?: string | null;
 }
 
-// Crisp Vector SVG Logo for Solar Home (Zero network/base64 broken box issues)
+// Fallback Crisp Vector SVG Logo for Solar Home
 const SOLAR_HOME_LOGO = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="95" height="75" viewBox="0 0 110 85">
   <circle cx="55" cy="30" r="22" fill="%23f59e0b"/>
   <polygon points="55,10 18,38 24,42 55,17 86,42 92,38" fill="%231e3a8a"/>
@@ -161,6 +161,10 @@ export function generateOmStyleHtml(
   const accountNo = business?.bank_account_number || '120034396413';
   const ifsc = business?.bank_ifsc_code || 'CNRB0018631';
 
+  // Dynamic Logo & Stamp/Signature from SettingsPage (with fallback)
+  const dynamicLogo = business?.stamp_url || business?.logo_url || SOLAR_HOME_LOGO;
+  const dynamicSignature = business?.signature_url || null;
+
   const title = doc.docTitle || 'QUOTATION';
   const shipName = doc.shipToName || doc.partyName;
   const shipAddress = doc.shipToAddress || doc.partyAddress || '';
@@ -207,7 +211,6 @@ export function generateOmStyleHtml(
     margin: 0 auto;
   }
 
-  /* 1. Title with Underline */
   .top-title {
     height: 8.5mm;
     display: flex;
@@ -221,14 +224,13 @@ export function generateOmStyleHtml(
     text-underline-offset: 4px;
   }
 
-  /* 3. Strict 1px single border outline */
   .sheet {
     border: 1px solid #000;
     width: 100%;
     border-collapse: collapse;
   }
 
-  /* Header Box: Exact 50% split for vertical center continuity */
+  /* Exact 50% split for vertical center continuity */
   .company-row {
     display: flex;
     min-height: 38mm;
@@ -253,8 +255,9 @@ export function generateOmStyleHtml(
   }
 
   .logo {
-    width: 95px;
-    height: 75px;
+    max-width: 95px;
+    max-height: 75px;
+    object-fit: contain;
     display: block;
   }
 
@@ -281,7 +284,6 @@ export function generateOmStyleHtml(
     line-height: 1.45;
   }
 
-  /* Meta Grid: Exact font size & normal values */
   .company-cell-right {
     width: 50%;
     display: flex;
@@ -323,7 +325,6 @@ export function generateOmStyleHtml(
     white-space: nowrap;
   }
 
-  /* Party Row: Exact 50% split */
   .party-row {
     display: flex;
     border-bottom: 1px solid #000;
@@ -362,7 +363,7 @@ export function generateOmStyleHtml(
     color: #000;
   }
 
-  /* Items Table: Exactly 50.0% split (8% + 42% = 50%) */
+  /* Items Table: Exactly 50.0% split on 2nd column (8% + 42% = 50%) */
   .items-table-wrap {
     width: 100%;
     border-bottom: 1px solid #000;
@@ -395,7 +396,6 @@ export function generateOmStyleHtml(
     letter-spacing: 0.3px;
   }
 
-  /* 2. SS 2: Horizontally 1 level, font-weight: normal (400), same 10px font size */
   .item-row td {
     padding: 8px 8px;
     vertical-align: top;
@@ -452,7 +452,7 @@ export function generateOmStyleHtml(
     font-size: 10.5px;
   }
 
-  /* 1 & 2. Standalone GST Box with 6px gap and vertical divider after SGST Amount */
+  /* Standalone GST Box with 6px top margin */
   .gst-box-wrap {
     margin-top: 6px;
     border-top: 1px solid #000;
@@ -514,7 +514,7 @@ export function generateOmStyleHtml(
     color: #111;
   }
 
-  /* Bottom: Bank Details, Terms & Conditions, and Vector Signature */
+  /* Bottom: Bank Details, Terms & Conditions, and Dynamic Signature */
   .bottom {
     display: flex;
     min-height: 34mm;
@@ -582,6 +582,13 @@ export function generateOmStyleHtml(
     padding: 4px 0;
   }
 
+  .stamp-wrap img {
+    max-width: 170px;
+    max-height: 65px;
+    object-fit: contain;
+    margin: auto;
+  }
+
   .sign-line {
     border-top: 1px solid #000;
     padding-top: 3px;
@@ -618,7 +625,7 @@ export function generateOmStyleHtml(
     <div class="company-row">
       <div class="company-cell-left">
         <div class="logo-wrap">
-          <img class="logo" src="${SOLAR_HOME_LOGO}" alt="Solar Home Logo"/>
+          <img class="logo" src="${dynamicLogo}" alt="${esc(businessName)} Logo"/>
         </div>
 
         <div class="company-info">
@@ -643,7 +650,7 @@ export function generateOmStyleHtml(
         </div>
       </div>
 
-      <!-- Meta Grid: Exact font sizing and normal data values -->
+      <!-- Meta Grid -->
       <div class="company-cell-right">
         <div class="meta-grid">
           <div class="meta-cell">
@@ -752,7 +759,7 @@ export function generateOmStyleHtml(
       </table>
     </div>
 
-    <!-- GST Box: Fully closed vertical partition between SGST Amount and Total Tax Amount -->
+    <!-- GST Box: Closed vertical partition between SGST Amount and Total Tax Amount -->
     <div class="gst-box-wrap">
       ${
         isInterState
@@ -800,7 +807,7 @@ export function generateOmStyleHtml(
             <th rowspan="2">HSN/SAC</th>
             <th rowspan="2">Taxable Value</th>
             <th colspan="2">CGST</th>
-            <th colspan="2" style="border-right: 1px solid #000;">SGST</th>
+            <th colspan="2">SGST</th>
             <th rowspan="2">Total Tax Amount</th>
           </tr>
           <tr>
@@ -833,7 +840,7 @@ export function generateOmStyleHtml(
       </div>
     </div>
 
-    <!-- Bottom Section: Bank Details, Terms, and Native SVG Signature -->
+    <!-- Bottom Section: Bank Details, Terms, and Dynamic Signature / Stamp -->
     <div class="bottom">
       <div class="bottom-cell-1">
         <div class="section-title">Bank Details</div>
@@ -859,15 +866,18 @@ ALL SUBJECT TO BARABANKI JURISDICTION
         </div>
       </div>
 
-      <!-- Vector Stamp/Signature for Avadh Boring Company -->
       <div class="bottom-cell-3">
         <div class="signature">
           <div class="stamp-wrap">
-            <svg width="180" height="70" viewBox="0 0 200 80" style="display:block; margin:auto;">
-              <text x="100" y="18" font-family="Arial, sans-serif" font-size="13.5" font-weight="bold" fill="#0b4da2" text-anchor="middle">For Avadh Boring Company</text>
-              <path d="M 45 60 C 60 35, 80 25, 95 38 C 105 48, 88 72, 75 60 C 68 50, 90 34, 115 44 C 132 50, 110 68, 130 58 C 145 50, 168 52, 178 50 M 100 55 L 188 52" fill="none" stroke="#0b4da2" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-              <text x="180" y="66" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#0b4da2">Prop.</text>
-            </svg>
+            ${
+              dynamicSignature
+                ? `<img src="${dynamicSignature}" alt="Authorized Signature"/>`
+                : `<svg width="180" height="70" viewBox="0 0 200 80" style="display:block; margin:auto;">
+                    <text x="100" y="18" font-family="Arial, sans-serif" font-size="13.5" font-weight="bold" fill="#0b4da2" text-anchor="middle">For ${esc(businessName)}</text>
+                    <path d="M 45 60 C 60 35, 80 25, 95 38 C 105 48, 88 72, 75 60 C 68 50, 90 34, 115 44 C 132 50, 110 68, 130 58 C 145 50, 168 52, 178 50 M 100 55 L 188 52" fill="none" stroke="#0b4da2" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <text x="180" y="66" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#0b4da2">Prop.</text>
+                  </svg>`
+            }
           </div>
           <div class="sign-line">Authorised Signatory</div>
         </div>
