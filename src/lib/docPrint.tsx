@@ -37,8 +37,18 @@ export interface PrintableDocData {
   terms?: string | null;
 }
 
-const REF_LOGO =
-  'data:image/jpeg;base64,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';
+// Crisp Vector SVG Logo for Solar Home (Zero network/base64 broken box issues)
+const SOLAR_HOME_LOGO = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="95" height="75" viewBox="0 0 110 85">
+  <circle cx="55" cy="30" r="22" fill="%23f59e0b"/>
+  <polygon points="55,10 18,38 24,42 55,17 86,42 92,38" fill="%231e3a8a"/>
+  <polygon points="26,42 55,20 84,42 78,58 32,58" fill="%230284c7"/>
+  <line x1="55" y1="20" x2="55" y2="58" stroke="%23ffffff" stroke-width="2"/>
+  <line x1="38" y1="32" x2="72" y2="32" stroke="%23ffffff" stroke-width="1.5"/>
+  <line x1="34" y1="44" x2="76" y2="44" stroke="%23ffffff" stroke-width="1.5"/>
+  <path d="M 22 55 Q 55 70 88 55" fill="none" stroke="%2316a34a" stroke-width="4" stroke-linecap="round"/>
+  <text x="55" y="70" font-family="Arial, sans-serif" font-size="11" font-weight="900" fill="%230f172a" text-anchor="middle" letter-spacing="0.5">SOLAR HOME</text>
+  <text x="55" y="80" font-family="Arial, sans-serif" font-size="6.5" font-weight="700" fill="%23475569" text-anchor="middle" letter-spacing="0.4">RENEWABLE ENERGY</text>
+</svg>`;
 
 const esc = (value: unknown): string =>
   String(value ?? '')
@@ -197,7 +207,7 @@ export function generateOmStyleHtml(
     margin: 0 auto;
   }
 
-  /* 1. Title with solid Underline */
+  /* 1. Title with Underline */
   .top-title {
     height: 8.5mm;
     display: flex;
@@ -211,13 +221,14 @@ export function generateOmStyleHtml(
     text-underline-offset: 4px;
   }
 
-  /* Strict uniform 1px solid black border across all sections */
+  /* 3. Strict 1px single border outline */
   .sheet {
     border: 1px solid #000;
     width: 100%;
+    border-collapse: collapse;
   }
 
-  /* Header Box: Exact 50% split for vertical line alignment */
+  /* Header Box: Exact 50% split for vertical center continuity */
   .company-row {
     display: flex;
     min-height: 38mm;
@@ -234,17 +245,17 @@ export function generateOmStyleHtml(
   }
 
   .logo-wrap {
-    width: 102px;
-    min-width: 102px;
+    width: 100px;
+    min-width: 100px;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   .logo {
-    width: 98px;
-    max-height: 86px;
-    object-fit: contain;
+    width: 95px;
+    height: 75px;
+    display: block;
   }
 
   .company-info {
@@ -270,7 +281,7 @@ export function generateOmStyleHtml(
     line-height: 1.45;
   }
 
-  /* Meta Box: Equal 11px font, normal data, same height */
+  /* Meta Grid: Exact font size & normal values */
   .company-cell-right {
     width: 50%;
     display: flex;
@@ -351,7 +362,7 @@ export function generateOmStyleHtml(
     color: #000;
   }
 
-  /* Items Table: Exact 50% split on 2nd column (8% + 42% = 50%) for perfect vertical continuity */
+  /* Items Table: Exactly 50.0% split (8% + 42% = 50%) */
   .items-table-wrap {
     width: 100%;
     border-bottom: 1px solid #000;
@@ -384,22 +395,25 @@ export function generateOmStyleHtml(
     letter-spacing: 0.3px;
   }
 
-  .items tbody td {
-    padding: 6px 8px;
+  /* 2. SS 2: Horizontally 1 level, font-weight: normal (400), same 10px font size */
+  .item-row td {
+    padding: 8px 8px;
     vertical-align: top;
-    font-size: 9.5px;
+    font-size: 10px;
+    font-weight: 400;
+    line-height: 1.35;
+  }
+
+  .item-name {
+    font-size: 10px;
+    font-weight: 400;
+    white-space: pre-line;
+    line-height: 1.35;
   }
 
   .item-area {
     min-height: 115mm;
     height: 118mm;
-  }
-
-  .item-name {
-    font-size: 10.5px;
-    font-weight: 600;
-    white-space: pre-line;
-    line-height: 1.4;
   }
 
   .qty,
@@ -413,7 +427,6 @@ export function generateOmStyleHtml(
 
   .qty {
     text-align: center;
-    font-weight: 600;
     padding-right: 0 !important;
   }
 
@@ -439,7 +452,7 @@ export function generateOmStyleHtml(
     font-size: 10.5px;
   }
 
-  /* Task 1 & 2: Standalone GST Box with 6px gap and full closed grid borders */
+  /* 1 & 2. Standalone GST Box with 6px gap and vertical divider after SGST Amount */
   .gst-box-wrap {
     margin-top: 6px;
     border-top: 1px solid #000;
@@ -478,7 +491,7 @@ export function generateOmStyleHtml(
     font-weight: 600;
   }
 
-  /* Task 1: 6px gap before Total Amount (in words) */
+  /* 6px gap before words box */
   .words-box-wrap {
     margin-top: 6px;
     border-top: 1px solid #000;
@@ -495,7 +508,6 @@ export function generateOmStyleHtml(
     margin-bottom: 2px;
   }
 
-  /* Task 3: Normal weight (400) for currency words */
   .words-value {
     font-size: 10px;
     font-weight: 400;
@@ -554,7 +566,6 @@ export function generateOmStyleHtml(
     white-space: pre-line;
   }
 
-  /* Task 4: Completely self-contained, rock-solid SVG Signature (Zero image loading failure) */
   .signature {
     display: flex;
     flex-direction: column;
@@ -598,7 +609,7 @@ export function generateOmStyleHtml(
 
 <body>
 <div class="page">
-  <!-- 1. QUOTATION Title with Underline -->
+  <!-- Title with Underline -->
   <div class="top-title">${esc(title)}</div>
 
   <div class="sheet">
@@ -607,7 +618,7 @@ export function generateOmStyleHtml(
     <div class="company-row">
       <div class="company-cell-left">
         <div class="logo-wrap">
-          <img class="logo" src="${REF_LOGO}" alt="Solar Home"/>
+          <img class="logo" src="${SOLAR_HOME_LOGO}" alt="Solar Home Logo"/>
         </div>
 
         <div class="company-info">
@@ -632,7 +643,7 @@ export function generateOmStyleHtml(
         </div>
       </div>
 
-      <!-- Meta Grid: Exact font size, normal data values, aligned height -->
+      <!-- Meta Grid: Exact font sizing and normal data values -->
       <div class="company-cell-right">
         <div class="meta-grid">
           <div class="meta-cell">
@@ -677,7 +688,7 @@ export function generateOmStyleHtml(
       </div>
     </div>
 
-    <!-- 5. Items Table: 8% + 42% = 50.0% for single straight continuous center line -->
+    <!-- Items Table: Exactly 50% split on 2nd column (8% + 42% = 50%) -->
     <div class="items-table-wrap">
       <table class="items">
         <colgroup>
@@ -713,7 +724,7 @@ export function generateOmStyleHtml(
               );
 
               return `
-            <tr>
+            <tr class="item-row">
               <td class="qty item-area">${index + 1}</td>
               <td class="item-area">
                 <div class="item-name">${esc(item.product_name)}</div>
@@ -724,7 +735,7 @@ export function generateOmStyleHtml(
                 ₹ ${money(taxAmount)}
                 <div class="tax-rate">(${esc(item.tax_rate)}%)</div>
               </td>
-              <td class="amount item-area"><strong>₹ ${money(item.total_amount)}</strong></td>
+              <td class="amount item-area">₹ ${money(item.total_amount)}</td>
             </tr>`;
             })
             .join('')}
@@ -741,7 +752,7 @@ export function generateOmStyleHtml(
       </table>
     </div>
 
-    <!-- 1 & 2. GST Summary Box: 6px top margin + Proper right partition line for Total Tax Amount -->
+    <!-- GST Box: Fully closed vertical partition between SGST Amount and Total Tax Amount -->
     <div class="gst-box-wrap">
       ${
         isInterState
@@ -768,7 +779,7 @@ export function generateOmStyleHtml(
             <td>${esc(doc.items[0]?.hsn_sac || '—')}</td>
             <td>₹ ${money(doc.taxableAmount)}</td>
             <td>${esc(firstTaxRate)}%</td>
-            <td>₹ ${money(doc.igst)}</td>
+            <td style="border-right: 1px solid #000;">₹ ${money(doc.igst)}</td>
             <td>₹ ${money(totalTax)}</td>
           </tr>
         </tbody>
@@ -789,14 +800,14 @@ export function generateOmStyleHtml(
             <th rowspan="2">HSN/SAC</th>
             <th rowspan="2">Taxable Value</th>
             <th colspan="2">CGST</th>
-            <th colspan="2">SGST</th>
+            <th colspan="2" style="border-right: 1px solid #000;">SGST</th>
             <th rowspan="2">Total Tax Amount</th>
           </tr>
           <tr>
             <th>Rate</th>
             <th>Amount</th>
             <th>Rate</th>
-            <th>Amount</th>
+            <th style="border-right: 1px solid #000;">Amount</th>
           </tr>
         </thead>
         <tbody>
@@ -814,7 +825,7 @@ export function generateOmStyleHtml(
       }
     </div>
 
-    <!-- 1 & 3. 6px gap before words + Normal non-bold font for words value -->
+    <!-- Total Amount in words: 6px gap + Normal weight -->
     <div class="words-box-wrap">
       <div class="words">
         <div class="words-label">Total Amount (in words)</div>
@@ -822,7 +833,7 @@ export function generateOmStyleHtml(
       </div>
     </div>
 
-    <!-- Bottom: Bank Details, Terms, and Native Vector Signature -->
+    <!-- Bottom Section: Bank Details, Terms, and Native SVG Signature -->
     <div class="bottom">
       <div class="bottom-cell-1">
         <div class="section-title">Bank Details</div>
@@ -848,7 +859,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION
         </div>
       </div>
 
-      <!-- 4. Clean Vector SVG Stamp/Signature: Zero broken image / alt-text issue -->
+      <!-- Vector Stamp/Signature for Avadh Boring Company -->
       <div class="bottom-cell-3">
         <div class="signature">
           <div class="stamp-wrap">
