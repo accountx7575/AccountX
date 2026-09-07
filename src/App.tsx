@@ -99,7 +99,6 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   const { session, loading, businessesReady, businesses, user, activeBusiness } = useAuth();
   const location = useLocation();
 
-  // Agar user already logged in hai aur active business set hai, toh tab switch background check par screen reload/unmount nahi hogi
   const hasExistingAuth = Boolean(session && (activeBusiness || businesses.length > 0));
 
   if ((loading || (session && !businessesReady)) && !hasExistingAuth) {
@@ -144,11 +143,15 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 function AppRoutes() {
   return (
     <Routes>
+      {/* Root redirect: 404 fix */}
+      <Route path="/" element={<Navigate to="/app" replace />} />
+
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/setup-business" element={<ProtectedRoute><BusinessSetupPage /></ProtectedRoute>} />
       <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminPage /></SuperAdminRoute>} />
+      
       <Route
         path="/app"
         element={
@@ -202,8 +205,14 @@ function AppRoutes() {
         <Route path="tally" element={<TallyWizardPage />} />
         <Route path="tally/mapping" element={<TallyMappingPage />} />
         <Route path="tally/history" element={<TallyHistoryPage />} />
+        
+        {/* Quotation Routes (Clean & Single) */}
         <Route path="quotations" element={<QuotationsPage />} />
         <Route path="quotations/new" element={<QuotationCreatePage />} />
+        <Route path="quotations/:id" element={<QuotationViewPage />} />
+        <Route path="quotations/:id/edit" element={<QuotationCreatePage />} />
+        <Route path="quotations/:id/send" element={<QuotationSendPage />} />
+
         <Route path="sales-orders" element={<SalesOrdersPage />} />
         <Route path="sales-orders/new" element={<SalesOrderCreatePage />} />
         <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
@@ -215,19 +224,9 @@ function AppRoutes() {
         <Route path="payables" element={<PayablesPage />} />
         <Route path="cash-bank" element={<CashBankPage />} />
         <Route path="*" element={<SleuthNotFoundPage />} />
-	<Route path="quotations" element={<QuotationsPage />} />
-	<Route path="quotations/new" element={<QuotationCreatePage />} />
-	<Route path="quotations/:id/edit" element={<QuotationCreatePage />} />
-	<Route path="quotations" element={<QuotationsPage />} />
-	<Route path="quotations/new" element={<QuotationCreatePage />} />
-	<Route path="quotations/:id" element={<QuotationViewPage />} />
-	<Route path="quotations/:id/edit" element={<QuotationCreatePage />} />
-	<Route path="quotations" element={<QuotationsPage />} />
-	<Route path="quotations/new" element={<QuotationCreatePage />} />
-	<Route path="quotations/:id" element={<QuotationViewPage />} />
-	<Route path="quotations/:id/edit" element={<QuotationCreatePage />} />
-	<Route path="quotations/:id/send" element={<QuotationSendPage />} />
       </Route>
+
+      {/* Global Fallback Route */}
       <Route path="*" element={<SleuthNotFoundPage />} />
     </Routes>
   );
