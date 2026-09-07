@@ -13,9 +13,13 @@ export interface PrintableDocData {
   partyAddress?: string;
   partyGstin?: string;
   partyPhone?: string;
+  shipToName?: string;
+  shipToAddress?: string;
+  shipToPhone?: string;
   status: string;
   items: Array<{
     product_name: string;
+    description?: string;
     hsn_sac?: string;
     quantity: number;
     unit?: string;
@@ -118,40 +122,83 @@ function buildHtmlTemplate(business: any, doc: PrintableDocData): HTMLElement {
 
   const itemRows = doc.items
     .map((it, idx) => {
-      const zebra = idx % 2 === 1 ? 'background-color:#F8FAFC;' : '';
+      const descLines = (it.description || '')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((l) => `<div style="font-size:10.5px;color:${SUB};margin-top:2px;">${l}</div>`)
+        .join('');
+      const taxAmount = it.total_amount - (it.taxable_amount ?? it.rate * it.quantity);
       return `
-        <tr style="${zebra}">
-          <td style="padding:10px 10px;text-align:center;color:${SUB};border-bottom:1px solid ${LINE};vertical-align:top;">${idx + 1}</td>
-          <td style="padding:10px 10px;border-bottom:1px solid ${LINE};vertical-align:top;">
-            <div style="font-weight:600;color:${INK};font-size:12.5px;">${it.product_name}</div>
+        <tr>
+          <td style="padding:10px 8px;text-align:center;color:${INK};border:1px solid ${LINE};vertical-align:top;">${idx + 1}</td>
+          <td style="padding:10px 8px;border:1px solid ${LINE};vertical-align:top;">
+            <div style="font-weight:700;color:${INK};font-size:12px;">${it.product_name}</div>
+            ${descLines}
           </td>
-          <td style="padding:10px 10px;text-align:center;color:${SUB};border-bottom:1px solid ${LINE};vertical-align:top;">${it.hsn_sac || '—'}</td>
-          <td style="padding:10px 10px;text-align:right;color:${INK};border-bottom:1px solid ${LINE};vertical-align:top;white-space:nowrap;">${it.quantity} ${it.unit || 'PCS'}</td>
-          <td style="padding:10px 10px;text-align:right;color:${INK};border-bottom:1px solid ${LINE};vertical-align:top;font-variant-numeric:tabular-nums;">${money(it.rate)}</td>
-          <td style="padding:10px 10px;text-align:right;color:${SUB};border-bottom:1px solid ${LINE};vertical-align:top;">${it.tax_rate}%</td>
-          <td style="padding:10px 10px;text-align:right;color:${INK};font-weight:700;border-bottom:1px solid ${LINE};vertical-align:top;font-variant-numeric:tabular-nums;">${money(it.total_amount)}</td>
+          <td style="padding:10px 8px;text-align:center;color:${INK};border:1px solid ${LINE};vertical-align:top;white-space:nowrap;">${it.quantity} ${it.unit || 'PCS'}</td>
+          <td style="padding:10px 8px;text-align:right;color:${INK};border:1px solid ${LINE};vertical-align:top;font-variant-numeric:tabular-nums;">${money(it.rate)}</td>
+          <td style="padding:10px 8px;text-align:right;color:${INK};border:1px solid ${LINE};vertical-align:top;font-variant-numeric:tabular-nums;">
+            ${money(taxAmount)}<div style="font-size:9.5px;color:${SUB};">(${it.tax_rate}%)</div>
+          </td>
+          <td style="padding:10px 8px;text-align:right;color:${INK};font-weight:700;border:1px solid ${LINE};vertical-align:top;font-variant-numeric:tabular-nums;">${money(it.total_amount)}</td>
         </tr>`;
     })
     .join('');
 
-  const taxRowsHtml = isInterState
+  const totalQty = doc.items.reduce((s, it) => s + (Number(it.quantity) || 0), 0);
+  const totalTax = doc.igst > 0 ? doc.igst : doc.cgst + doc.sgst;
+
+  const cgstRate = doc.taxableAmount ? ((doc.cgst / doc.taxableAmount) * 100) : 0;
+  const sgstRate = doc.taxableAmount ? ((doc.sgst / doc.taxableAmount) * 100) : 0;
+  const igstRate = doc.taxableAmount ? ((doc.igst / doc.taxableAmount) * 100) : 0;
+
+  const hsnSacSet = Array.from(new Set(doc.items.map((it) => it.hsn_sac).filter(Boolean))).join(', ');
+
+  const hsnTableHtml = isInterState
     ? `
-      <tr>
-        <td style="padding:6px 10px;color:${SUB};">Integrated Tax (IGST)</td>
-        <td style="padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.taxableAmount)}</td>
-        <td style="padding:6px 10px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">₹${money(doc.igst)}</td>
-      </tr>`
+      <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid ${LINE};">
+        <thead>
+          <tr style="background:#F1F5F9;color:${SUB};">
+            <th style="padding:6px 8px;text-align:left;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};">HSN/SAC</th>
+            <th style="padding:6px 8px;text-align:right;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};">Taxable value</th>
+            <th style="padding:6px 8px;text-align:center;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};" colspan="2">IGST</th>
+            <th style="padding:6px 8px;text-align:right;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};">Total tax</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:7px 8px;border:1px solid ${LINE};color:${SUB};">${hsnSacSet || '—'}</td>
+            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.taxableAmount)}</td>
+            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:center;color:${SUB};">${igstRate.toFixed(0)}%</td>
+            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.igst)}</td>
+            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">₹${money(doc.igst)}</td>
+          </tr>
+        </tbody>
+      </table>`
     : `
-      <tr>
-        <td style="padding:6px 10px;color:${SUB};border-bottom:1px solid ${LINE};">Central Tax (CGST)</td>
-        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid ${LINE};font-variant-numeric:tabular-nums;">₹${money(doc.taxableAmount / 2)}</td>
-        <td style="padding:6px 10px;text-align:right;font-weight:600;border-bottom:1px solid ${LINE};font-variant-numeric:tabular-nums;">₹${money(doc.cgst)}</td>
-      </tr>
-      <tr>
-        <td style="padding:6px 10px;color:${SUB};">State Tax (SGST)</td>
-        <td style="padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.taxableAmount / 2)}</td>
-        <td style="padding:6px 10px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">₹${money(doc.sgst)}</td>
-      </tr>`;
+      <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid ${LINE};">
+        <thead>
+          <tr style="background:#F1F5F9;color:${SUB};">
+            <th style="padding:6px 8px;text-align:left;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};">HSN/SAC</th>
+            <th style="padding:6px 8px;text-align:right;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};">Taxable value</th>
+            <th style="padding:6px 8px;text-align:center;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};" colspan="2">CGST</th>
+            <th style="padding:6px 8px;text-align:center;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};" colspan="2">SGST</th>
+            <th style="padding:6px 8px;text-align:right;font-weight:700;font-size:9.5px;text-transform:uppercase;border:1px solid ${LINE};">Total tax</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:7px 8px;border:1px solid ${LINE};color:${SUB};">${hsnSacSet || '—'}</td>
+            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.taxableAmount)}</td>
+            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:center;color:${SUB};">${cgstRate.toFixed(0)}%</td>
+            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.cgst)}</td>
+            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:center;color:${SUB};">${sgstRate.toFixed(0)}%</td>
+            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-variant-numeric:tabular-nums;">₹${money(doc.sgst)}</td>
+            <td style="padding:7px 8px;border:1px solid ${LINE};text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">₹${money(totalTax)}</td>
+          </tr>
+        </tbody>
+      </table>`;
 
   container.innerHTML = `
     <div style="padding:36px 40px 30px 40px;">
@@ -204,128 +251,95 @@ function buildHtmlTemplate(business: any, doc: PrintableDocData): HTMLElement {
         </div>
       </div>
 
-      <!-- ============ BILL TO ============ -->
-      <div style="margin-top:20px;display:flex;justify-content:space-between;gap:16px;">
-        <div style="flex:1;background:#F8FAFC;border:1px solid ${LINE};border-radius:8px;padding:14px 16px;">
-          <div style="font-size:10px;font-weight:700;color:${SUB};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">${doc.partyLabel || 'Billed to'}</div>
-          <div style="font-size:14px;font-weight:700;color:${INK};">${doc.partyName}</div>
-          ${doc.partyAddress ? `<div style="font-size:11.5px;color:${SUB};margin-top:4px;max-width:420px;">${doc.partyAddress}</div>` : ''}
-          <div style="display:flex;gap:22px;font-size:11.5px;color:${SUB};margin-top:6px;">
-            ${doc.partyGstin ? `<div><span style="color:${INK};font-weight:600;">GSTIN</span> ${doc.partyGstin}</div>` : ''}
-            ${doc.partyPhone ? `<div><span style="color:${INK};font-weight:600;">Phone</span> ${doc.partyPhone}</div>` : ''}
-          </div>
-        </div>
-        <div style="width:200px;background:#F8FAFC;border:1px solid ${LINE};border-radius:8px;padding:14px 16px;">
-          <div style="font-size:10px;font-weight:700;color:${SUB};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Place of supply</div>
-          <div style="font-size:13px;font-weight:600;color:${INK};">${business.state || 'Uttar Pradesh'}</div>
-        </div>
-      </div>
+      <!-- ============ BILL TO / SHIP TO ============ -->
+      <table style="width:100%;border-collapse:collapse;margin-top:18px;border:1px solid ${LINE};">
+        <tr>
+          <td style="width:50%;padding:12px 14px;border:1px solid ${LINE};vertical-align:top;">
+            <div style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px;">${doc.partyLabel || 'Bill to'}</div>
+            <div style="font-size:13.5px;font-weight:700;color:${INK};">${doc.partyName}</div>
+            ${doc.partyAddress ? `<div style="font-size:11px;color:${SUB};margin-top:4px;">Address: ${doc.partyAddress}</div>` : ''}
+            ${doc.partyGstin ? `<div style="font-size:11px;color:${SUB};margin-top:2px;">GSTIN: ${doc.partyGstin}</div>` : ''}
+            ${doc.partyPhone ? `<div style="font-size:11px;color:${SUB};margin-top:2px;">Mobile: ${doc.partyPhone}</div>` : ''}
+          </td>
+          <td style="width:50%;padding:12px 14px;border:1px solid ${LINE};vertical-align:top;">
+            <div style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px;">Ship to</div>
+            <div style="font-size:13.5px;font-weight:700;color:${INK};">${doc.shipToName || doc.partyName}</div>
+            ${(doc.shipToAddress || doc.partyAddress) ? `<div style="font-size:11px;color:${SUB};margin-top:4px;">Address: ${doc.shipToAddress || doc.partyAddress}</div>` : ''}
+            <div style="font-size:11px;color:${SUB};margin-top:2px;">Place of supply: ${business.state || 'Uttar Pradesh'}</div>
+            ${(doc.shipToPhone || doc.partyPhone) ? `<div style="font-size:11px;color:${SUB};margin-top:2px;">Mobile: ${doc.shipToPhone || doc.partyPhone}</div>` : ''}
+          </td>
+        </tr>
+      </table>
 
       <!-- ============ ITEMS TABLE ============ -->
-      <table style="width:100%;border-collapse:collapse;margin-top:20px;border:1px solid ${LINE};border-radius:8px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;margin-top:16px;border:1px solid ${LINE};">
         <thead>
           <tr style="background:${NAVY};color:#fff;">
-            <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:34px;">#</th>
-            <th style="padding:9px 10px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">Item &amp; description</th>
-            <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:68px;">HSN</th>
-            <th style="padding:9px 10px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:64px;">Qty</th>
-            <th style="padding:9px 10px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:90px;">Rate (₹)</th>
-            <th style="padding:9px 10px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:52px;">Tax</th>
-            <th style="padding:9px 10px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:100px;">Amount (₹)</th>
+            <th style="padding:8px 8px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:32px;border:1px solid ${NAVY};">S.No</th>
+            <th style="padding:8px 8px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border:1px solid ${NAVY};">Items</th>
+            <th style="padding:8px 8px;text-align:center;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:56px;border:1px solid ${NAVY};">Qty</th>
+            <th style="padding:8px 8px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:88px;border:1px solid ${NAVY};">Rate</th>
+            <th style="padding:8px 8px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:78px;border:1px solid ${NAVY};">Tax</th>
+            <th style="padding:8px 8px;text-align:right;font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;width:96px;border:1px solid ${NAVY};">Amount</th>
           </tr>
         </thead>
         <tbody>
           ${itemRows}
         </tbody>
+        <tfoot>
+          <tr style="background:#F1F5F9;">
+            <td colspan="2" style="padding:8px;text-align:right;font-weight:700;color:${INK};border:1px solid ${LINE};">Total</td>
+            <td style="padding:8px;text-align:center;font-weight:700;color:${INK};border:1px solid ${LINE};">${totalQty}</td>
+            <td style="border:1px solid ${LINE};"></td>
+            <td style="padding:8px;text-align:right;font-weight:700;color:${INK};border:1px solid ${LINE};">₹${money(totalTax)}</td>
+            <td style="padding:8px;text-align:right;font-weight:800;color:${INK};border:1px solid ${LINE};">₹${money(doc.grandTotal)}</td>
+          </tr>
+        </tfoot>
       </table>
 
-      <!-- ============ WORDS + TAX + TOTAL ============ -->
-      <div style="display:flex;gap:16px;margin-top:16px;align-items:stretch;">
-        <div style="flex:1.35;display:flex;flex-direction:column;gap:12px;">
-          <div style="border:1px solid ${LINE};border-radius:8px;padding:12px 14px;background:#FBFBFC;">
-            <div style="font-size:10px;font-weight:700;color:${SUB};text-transform:uppercase;letter-spacing:0.6px;">Amount in words</div>
-            <div style="font-size:12.5px;font-weight:700;color:${NAVY};margin-top:3px;">${grandTotalWords}</div>
-          </div>
+      <!-- ============ HSN/SAC TAX SUMMARY ============ -->
+      <div style="margin-top:14px;">
+        ${hsnTableHtml}
+      </div>
 
-          <div style="border:1px solid ${LINE};border-radius:8px;overflow:hidden;">
-            <table style="width:100%;border-collapse:collapse;font-size:11px;">
-              <thead>
-                <tr style="background:#F1F5F9;color:${SUB};">
-                  <th style="padding:6px 10px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.4px;">Tax component</th>
-                  <th style="padding:6px 10px;text-align:right;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.4px;">Taxable value</th>
-                  <th style="padding:6px 10px;text-align:right;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.4px;">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${taxRowsHtml}
-              </tbody>
-            </table>
-          </div>
+      <!-- ============ WORDS + TOTAL DUE ============ -->
+      <div style="display:flex;gap:16px;margin-top:14px;align-items:stretch;">
+        <div style="flex:1;border:1px solid ${LINE};padding:10px 14px;background:#FBFBFC;">
+          <div style="font-size:10px;font-weight:700;color:${SUB};text-transform:uppercase;letter-spacing:0.6px;">Total amount (in words)</div>
+          <div style="font-size:12.5px;font-weight:700;color:${NAVY};margin-top:3px;">${grandTotalWords}</div>
         </div>
-
-        <!-- Totals summary -->
-        <div style="width:230px;border:1px solid ${LINE};border-radius:8px;overflow:hidden;display:flex;flex-direction:column;">
-          <table style="width:100%;border-collapse:collapse;font-size:12px;">
-            <tr>
-              <td style="padding:7px 12px;color:${SUB};">Subtotal</td>
-              <td style="padding:7px 12px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">₹${money(doc.subtotal)}</td>
-            </tr>
-            <tr>
-              <td style="padding:7px 12px;color:${SUB};border-top:1px solid ${LINE};">Taxable amount</td>
-              <td style="padding:7px 12px;text-align:right;font-weight:600;border-top:1px solid ${LINE};font-variant-numeric:tabular-nums;">₹${money(doc.taxableAmount)}</td>
-            </tr>
-            ${isInterState ? `
-            <tr>
-              <td style="padding:7px 12px;color:${SUB};border-top:1px solid ${LINE};">IGST</td>
-              <td style="padding:7px 12px;text-align:right;font-weight:600;border-top:1px solid ${LINE};font-variant-numeric:tabular-nums;">₹${money(doc.igst)}</td>
-            </tr>` : `
-            <tr>
-              <td style="padding:7px 12px;color:${SUB};border-top:1px solid ${LINE};">CGST</td>
-              <td style="padding:7px 12px;text-align:right;font-weight:600;border-top:1px solid ${LINE};font-variant-numeric:tabular-nums;">₹${money(doc.cgst)}</td>
-            </tr>
-            <tr>
-              <td style="padding:7px 12px;color:${SUB};">SGST</td>
-              <td style="padding:7px 12px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">₹${money(doc.sgst)}</td>
-            </tr>`}
-            ${doc.roundOff ? `
-            <tr>
-              <td style="padding:7px 12px;color:${SUB};border-top:1px solid ${LINE};">Round off</td>
-              <td style="padding:7px 12px;text-align:right;font-weight:600;border-top:1px solid ${LINE};font-variant-numeric:tabular-nums;">₹${money(doc.roundOff)}</td>
-            </tr>` : ''}
-          </table>
-          <div style="margin-top:auto;background:${NAVY};color:#fff;padding:11px 14px;display:flex;justify-content:space-between;align-items:baseline;">
-            <span style="font-size:11.5px;font-weight:600;letter-spacing:0.3px;">Total due</span>
-            <span style="font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;">₹${money(doc.grandTotal)}</span>
-          </div>
+        <div style="width:230px;background:${NAVY};color:#fff;padding:11px 14px;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:11.5px;font-weight:600;letter-spacing:0.3px;">Total due</span>
+          <span style="font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;">₹${money(doc.grandTotal)}</span>
         </div>
       </div>
 
       <!-- ============ BANK + TERMS + SIGNATURE ============ -->
-      <div style="display:flex;gap:16px;margin-top:20px;padding-top:16px;border-top:1px solid ${LINE};">
-        <div style="flex:1;">
-          <div style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Bank details</div>
-          <table style="font-size:11px;color:${SUB};border-collapse:collapse;">
-            <tr><td style="padding:1.5px 10px 1.5px 0;">Bank</td><td style="padding:1.5px 0;font-weight:600;color:${INK};">${business.bank_name || '—'}</td></tr>
-            <tr><td style="padding:1.5px 10px 1.5px 0;">Account no.</td><td style="padding:1.5px 0;font-weight:600;color:${INK};font-variant-numeric:tabular-nums;">${business.bank_account_number || '—'}</td></tr>
-            <tr><td style="padding:1.5px 10px 1.5px 0;">IFSC</td><td style="padding:1.5px 0;font-weight:600;color:${INK};">${business.bank_ifsc_code || '—'}</td></tr>
-            ${business.upi_id ? `<tr><td style="padding:1.5px 10px 1.5px 0;">UPI</td><td style="padding:1.5px 0;font-weight:600;color:${INK};">${business.upi_id}</td></tr>` : ''}
-          </table>
-        </div>
+      <table style="width:100%;border-collapse:collapse;margin-top:16px;border:1px solid ${LINE};">
+        <tr>
+          <td style="width:32%;padding:12px 14px;border:1px solid ${LINE};vertical-align:top;">
+            <div style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Bank details</div>
+            <table style="font-size:11px;color:${SUB};border-collapse:collapse;">
+              <tr><td style="padding:1.5px 10px 1.5px 0;">Name</td><td style="padding:1.5px 0;font-weight:600;color:${INK};">${business.bank_name || '—'}</td></tr>
+              <tr><td style="padding:1.5px 10px 1.5px 0;">IFSC</td><td style="padding:1.5px 0;font-weight:600;color:${INK};">${business.bank_ifsc_code || '—'}</td></tr>
+              <tr><td style="padding:1.5px 10px 1.5px 0;">A/c No.</td><td style="padding:1.5px 0;font-weight:600;color:${INK};font-variant-numeric:tabular-nums;">${business.bank_account_number || '—'}</td></tr>
+              ${business.upi_id ? `<tr><td style="padding:1.5px 10px 1.5px 0;">UPI</td><td style="padding:1.5px 0;font-weight:600;color:${INK};">${business.upi_id}</td></tr>` : ''}
+            </table>
+          </td>
+          <td style="width:38%;padding:12px 14px;border:1px solid ${LINE};vertical-align:top;">
+            <div style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Terms &amp; conditions</div>
+            <div style="font-size:10.5px;color:${SUB};line-height:1.6;white-space:pre-wrap;">
+              ${doc.terms || 'Payment 100% advance.\nQuotation valid for 15 days.\nSubject to local jurisdiction.'}
+            </div>
+          </td>
+          <td style="width:30%;padding:12px 14px;border:1px solid ${LINE};vertical-align:bottom;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:${INK};margin-bottom:40px;">For ${business.name || 'Company'}</div>
+            <div style="font-size:10px;font-weight:600;color:${SUB};">Authorised signatory</div>
+          </td>
+        </tr>
+      </table>
 
-        <div style="flex:1.2;">
-          <div style="font-size:10px;font-weight:700;color:${NAVY};text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;">Terms &amp; conditions</div>
-          <div style="font-size:10.5px;color:${SUB};line-height:1.55;white-space:pre-wrap;">
-            ${doc.terms || 'Payment 100% advance.\nQuotation valid for 15 days.\nSubject to local jurisdiction.'}
-          </div>
-        </div>
-
-        <div style="width:190px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;text-align:center;">
-          <div style="font-size:11px;font-weight:600;color:${INK};margin-bottom:44px;">For ${business.name || 'Company'}</div>
-          <div style="width:100%;border-top:1px dashed #98A2B3;padding-top:5px;font-size:10px;font-weight:600;color:${SUB};">Authorised signatory</div>
-        </div>
-      </div>
-
-      <div style="text-align:center;margin-top:22px;font-size:9.5px;color:#98A2B3;">
+      <div style="text-align:center;margin-top:18px;font-size:9.5px;color:#98A2B3;">
         This is a system-generated document and is valid without a physical signature unless stated otherwise.
       </div>
     </div>
