@@ -129,6 +129,200 @@ function numberToWordsINR(num: number): string {
   return `${out.trim()} Rupees Only`;
 }
 
+export function generateOmStyleHtml(
+  business: any,
+  doc: PrintableDocData,
+): string {
+  const isInterState = Number(doc.igst || 0) > 0;
+  const totalQty = doc.items.reduce(
+    (sum, item) => sum + Number(item.quantity || 0),
+    0,
+  );
+  const totalTax =
+    Number(doc.cgst || 0) + Number(doc.sgst || 0) + Number(doc.igst || 0);
+  const totalAmountWords = numberToWordsINR(doc.grandTotal);
+
+  const businessName = business?.name || 'AVADH BORING COMPANY';
+  const businessAddress =
+    business?.address ||
+    'AN-25, LAUTA BAGH, AZAD NAGR, NAWABGANJ, Barabanki, Uttar Pradesh, 225001';
+  const gstin = business?.gstin || '09AABPQ3096M1Z5';
+  const pan =
+    business?.pan || (gstin.length >= 12 ? gstin.slice(2, 12) : 'AABPQ3096M');
+  const phone = business?.phone || '+91 9450942418';
+  const email = business?.email || 'abc.solar7575@gmail.com';
+  const state = business?.state || 'Uttar Pradesh';
+
+  const bankName = business?.bank_name || 'Canara Bank';
+  const branchName = business?.bank_branch || 'Barabanki';
+  const accountName = business?.bank_account_name || 'Avadh Boring Company';
+  const accountNo = business?.bank_account_number || '120034396413';
+  const ifsc = business?.bank_ifsc_code || 'CNRB0018631';
+
+  const title = doc.docTitle || 'QUOTATION';
+  const shipName = doc.shipToName || doc.partyName;
+  const shipAddress = doc.shipToAddress || doc.partyAddress || '';
+  const shipPhone = doc.shipToPhone || doc.partyPhone || '';
+  const shipPlace = doc.shipToPlaceOfSupply || doc.partyPlaceOfSupply || state;
+
+  const firstTaxRate = Number(doc.items[0]?.tax_rate || 0);
+  const halfRate = firstTaxRate / 2;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${title}</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #1e293b;
+      --muted: #64748b;
+      --primary: #1e293b;
+      --accent: #f59e0b;
+      --border: #e2e8f0;
+      --white: #ffffff;
+    }
+    @media print {
+      :root {
+        --bg: #ffffff;
+      }
+    }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10px;
+      line-height: 1.25;
+      color: var(--text);
+      background: var(--bg);
+      margin: 0;
+      padding: 8mm;
+      box-sizing: border-box;
+    }
+    h1, h2, h3 {
+      font-weight: 700;
+      margin: 4px 0;
+      color: var(--primary);
+    }
+    h1 { font-size: 14px; }
+    h2 { font-size: 12px; }
+    h3 { font-size: 11px; }
+    .header-bar {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 4mm;
+      margin-bottom: 4mm;
+    }
+    .company-info {
+      margin-bottom: 4mm;
+    }
+    .company-info p {
+      margin: 2px 0;
+      font-size: 10px;
+    }
+    .gstin, .pan {
+      font-size: 9px;
+      color: var(--muted);
+    }
+    .party-details {
+      margin-top: 4mm;
+    }
+    .party-details p {
+      margin: 2px 0;
+      font-size: 10px;
+    }
+    .table-responsive {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 4px 0;
+    }
+    .table-responsive th,
+    .table-responsive td {
+      border: 1px solid var(--border);
+      padding: 4px 3px;
+      font-size: 10px;
+      line-height: 1.2;
+    }
+    .table-responsive th {
+      background: #f8f9fa;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .total-row {
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    .notes, .terms {
+      margin-top: 4px;
+      font-size: 10px;
+      line-height: 1.3;
+    }
+    @page {
+      size: A4 portrait;
+      margin: 8mm 8mm 8mm 8mm;
+    }
+    @media print {
+      body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1 style="text-align: center; margin-bottom: 4mm;">${title}</h1>
+  <div class="header-bar">
+    <div class="company-info">
+      <p>${businessName}</p>
+      <p>${businessAddress}</p>
+      ${gstin ? `<p>GSTIN: ${gstin}</p>` : ''}
+      ${phone ? `<p>Phone: ${phone}</p>` : ''}
+      ${email ? `<p>Email: ${email}</p>` : ''}
+    </div>
+  </div>
+  ${shipName ? `<p><strong>Ship To:</strong> ${shipName}</p>` : ''}
+  ${shipAddress ? `<p>${shipAddress}</p>` : ''}
+  ${shipPhone ? `<p>Phone: ${shipPhone}</p>` : ''}
+  ${shipPlace ? `<p>Place: ${shipPlace}</p>` : ''}
+  
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>HSN/SAC</th>
+          <th>Qty</th>
+          <th>Rate</th>
+          <th>Tax</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${doc.items.map((item, idx) => `
+          <tr>
+            <td>${item.product_name || ''}</td>
+            ${item.hsn_sac ? `<td>${item.hsn_sac}</td>` : ''}
+            <td style="text-align: center;">${item.quantity || 0}</td>
+            <td style="text-align: right;">${money(item.rate || 0)}</td>
+            <td style="text-align: center;">${Number(item.tax_rate || 0)}%</td>
+            <td style="text-align: right;">${money(item.total_amount || 0)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>
+  
+  ${doc.notes ? `<div class="notes"><strong>Notes:</strong> ${doc.notes}</div>` : ''}
+  ${doc.terms ? `<div class="terms"><strong>Terms:</strong> ${doc.terms}</div>` : ''}
+  
+  <div style="margin-top: 12mm; font-size: 9px; color: var(--muted); text-align: center;">
+    Generated ${new Date().toLocaleString()} | Solar Home Boring Company
+  </div>
+</body>
+</html>
+`;
+}
+
 export async function renderDocSheetToPdf(
   business: any,
   doc: PrintableDocData,
@@ -173,43 +367,20 @@ export async function renderDocSheetToPdfBlob(
   business: any,
   doc: PrintableDocData,
 ): Promise<Blob> {
-  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-    import('html2canvas'),
-    import('jspdf'),
-  ]);
-
   const htmlContent = generateOmStyleHtml(business, doc);
 
-  const tempDiv = document.createElement('div');
-  tempDiv.style.position = 'fixed';
-  tempDiv.style.left = '-9999px';
-  tempDiv.style.top = '-9999px';
-  tempDiv.style.width = '210mm';
-  tempDiv.style.minHeight = '297mm';
-  tempDiv.style.padding = '8mm';
-  tempDiv.style.boxSizing = 'border-box';
-  tempDiv.style.fontFamily = 'Arial, Helvetica, sans-serif';
-  tempDiv.style.fontSize = '10px';
-  tempDiv.style.lineHeight = '1.25';
-  tempDiv.style.background = '#fff';
-  tempDiv.innerHTML = htmlContent;
-  document.body.appendChild(tempDiv);
-
-  const canvas = await html2canvas(tempDiv, {
-    scale: 3,
-    backgroundColor: '#fff',
-    logging: false,
-  });
-
-  document.body.removeChild(tempDiv);
-
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const pageW = pdf.internal.pageSize.getWidth();
-  const pageH = pdf.internal.pageSize.getHeight();
-  const imgW = pageW - 16;
-  const imgH = (canvas.height * imgW) / canvas.width;
-  pdf.addImage(canvas.toDataURL('image/PNG'), 'PNG', 8, 8, imgW, imgH);
 
-  const blob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
+  const blob = await html2pdf()
+    .from(htmlContent)
+    .set({
+      margin: [8, 8, 8, 8],
+      filename: 'document.pdf',
+      image: { type: 'png', quality: 0.98 },
+      html2canvas: { enabled: false, scale: 1, letterRendering: false, background: '#fff' },
+      jsPDF: { unit: 'mm', format: 'a4' },
+    })
+    .output('blob');
+
   return blob;
 }
