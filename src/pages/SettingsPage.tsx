@@ -1,3 +1,7 @@
+import { Link } from 'react-router-dom';
+import { PageHeader } from '@/components/PageHeader';
+import { useAuth } from '@/context/AuthContext';
+
 export interface PrintableDocData {
   docTitle: string;
   docNumber: string;
@@ -926,4 +930,77 @@ export async function renderDocSheetToPdfBlob(
     '@/lib/docPrint'
   );
   return renderVectorPdfBlob(business, doc);
+}
+
+export function SettingsPage() {
+  const { activeBusiness } = useAuth() as { activeBusiness?: any };
+  const biz = (activeBusiness || {}) as Record<string, any>;
+  const profileRows: Array<[string, string]> = [
+    ['Business name', biz.name || '—'],
+    ['GSTIN', biz.gstin || '—'],
+    ['Phone', biz.phone || '—'],
+    ['Email', biz.email || '—'],
+    ['Invoice prefix', biz.invoice_prefix || '—'],
+    ['Financial year', biz.financial_year || '—'],
+  ];
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Settings"
+        subtitle="Business profile, document preferences and data tools."
+      />
+
+      <section className="rounded-xl border border-secondary-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+        <h2 className="text-base font-semibold">Business profile</h2>
+        <p className="mt-1 text-[13px] text-secondary-500 dark:text-secondary-400">
+          Active business used across quotations, invoices and the Om PDF
+          header.
+        </p>
+        <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
+          {profileRows.map(([label, value]) => (
+            <div key={label} className="flex justify-between gap-4 text-sm">
+              <dt className="text-secondary-500 dark:text-secondary-400">
+                {label}
+              </dt>
+              <dd className="text-right font-medium">{String(value)}</dd>
+            </div>
+          ))}
+        </dl>
+        <Link
+          to="/setup-business"
+          className="mt-4 inline-block text-sm font-semibold text-primary-600 underline underline-offset-2 dark:text-primary-400"
+        >
+          Manage businesses
+        </Link>
+      </section>
+
+      <section className="rounded-xl border border-secondary-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+        <h2 className="text-base font-semibold">Data &amp; backups</h2>
+        <p className="mt-1 text-[13px] text-secondary-500 dark:text-secondary-400">
+          Tally XML export lives here.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold">
+          <Link
+            to="/app/tally"
+            className="text-primary-600 underline underline-offset-2 dark:text-primary-400"
+          >
+            Tally export wizard
+          </Link>
+          <Link
+            to="/app/tally/mapping"
+            className="text-primary-600 underline underline-offset-2 dark:text-primary-400"
+          >
+            Tally mapping
+          </Link>
+          <Link
+            to="/app/tally/history"
+            className="text-primary-600 underline underline-offset-2 dark:text-primary-400"
+          >
+            Export history
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
 }
