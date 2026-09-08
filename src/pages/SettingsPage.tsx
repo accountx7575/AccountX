@@ -18,7 +18,7 @@ export interface PrintableDocData {
   status: string;
   items: Array<{
     product_name: string;
-    hsn_sac?: string;
+    hsn_sac?: string | null;
     quantity: number;
     unit?: string;
     rate: number;
@@ -920,42 +920,10 @@ export async function renderDocSheetToPdfBlob(
   business: any,
   doc: PrintableDocData,
 ): Promise<Blob> {
-  const htmlContent = generateOmStyleHtml(business, doc);
-  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-    import('html2canvas'),
-    import('jspdf'),
-  ]);
-
-  const tempDiv = document.createElement('div');
-  tempDiv.style.position = 'fixed';
-  tempDiv.style.left = '-9999px';
-  tempDiv.style.top = '-9999px';
-  tempDiv.style.width = '210mm';
-  tempDiv.style.minHeight = '297mm';
-  tempDiv.style.padding = '8mm';
-  tempDiv.style.boxSizing = 'border-box';
-  tempDiv.style.fontFamily = 'Arial, Helvetica, sans-serif';
-  tempDiv.style.fontSize = '10px';
-  tempDiv.style.lineHeight = '1.25';
-  tempDiv.style.background = '#fff';
-  tempDiv.innerHTML = htmlContent;
-  document.body.appendChild(tempDiv);
-
-  const canvas = await html2canvas(tempDiv, {
-    scale: 3,
-    backgroundColor: '#fff',
-    logging: false,
-  });
-
-  document.body.removeChild(tempDiv);
-
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const pageW = pdf.internal.pageSize.getWidth();
-  const pageH = pdf.internal.pageSize.getHeight();
-  const imgW = pageW - 16;
-  const imgH = (canvas.height * imgW) / canvas.width;
-  pdf.addImage(canvas.toDataURL('image/PNG'), 'PNG', 8, 8, imgW, imgH);
-
-  const blob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
-  return blob;
+  // Canonical native-vector engine lives in @/lib/docPrint — delegate so
+  // every download path produces identical selectable-text PDFs.
+  const { renderDocSheetToPdfBlob: renderVectorPdfBlob } = await import(
+    '@/lib/docPrint'
+  );
+  return renderVectorPdfBlob(business, doc);
 }
