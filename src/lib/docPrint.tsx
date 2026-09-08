@@ -593,9 +593,7 @@ export function buildOmVectorDoc(
   assets?: OmVectorAssets,
 ): unknown {
   const ACCENT = '#EA580C';
-  const TINT = '#FFF7ED';
-  const CARD_BORDER = '#FFEDD5';
-  const GRID = '#FED7AA';
+  const TINT = '#FFF5EE';
   const INK = '#1E293B';
   const DARK = '#0F172A';
   const MUTED = '#64748B';
@@ -652,25 +650,23 @@ export function buildOmVectorDoc(
     paddingTop: () => 0,
     paddingBottom: () => 0,
   };
-  const cardBox = (borderColor: string) => ({
-    hLineWidth: () => 1,
-    vLineWidth: () => 1,
-    hLineColor: () => borderColor,
-    vLineColor: () => borderColor,
+  // Soft containers: peach fill, zero border lines.
+  const cardPad = {
+    hLineWidth: () => 0,
+    vLineWidth: () => 0,
+    paddingLeft: () => 7,
+    paddingRight: () => 7,
+    paddingTop: () => 7,
+    paddingBottom: () => 7,
+  };
+  // Items grid: orange header bar only — borderless rows, generous padding.
+  const itemGrid = {
+    hLineWidth: () => 0,
+    vLineWidth: () => 0,
     paddingLeft: () => 6,
     paddingRight: () => 6,
-    paddingTop: () => 6,
-    paddingBottom: () => 6,
-  });
-  const itemGrid = {
-    hLineWidth: () => 1,
-    vLineWidth: () => 1,
-    hLineColor: () => GRID,
-    vLineColor: () => GRID,
-    paddingLeft: () => 5,
-    paddingRight: () => 5,
-    paddingTop: () => 3,
-    paddingBottom: () => 3,
+    paddingTop: () => 4,
+    paddingBottom: () => 4,
   };
 
   const cardCell = (stack: unknown[]) => ({
@@ -726,7 +722,7 @@ export function buildOmVectorDoc(
     ],
     fontSize: 11,
     alignment: 'right',
-    lineHeight: 1.8,
+    lineHeight: 1.6,
   });
 
   const billedByCard = {
@@ -751,7 +747,7 @@ export function buildOmVectorDoc(
         ],
       ],
     },
-    layout: cardBox(CARD_BORDER),
+    layout: cardPad,
   };
 
   const billedToLines: unknown[] = [
@@ -783,34 +779,26 @@ export function buildOmVectorDoc(
 
   const billedToCard = {
     table: { widths: ['*'], body: [[cardCell(billedToLines)]] },
-    layout: cardBox(CARD_BORDER),
+    layout: cardPad,
   };
 
   const supplyBar = {
-    table: {
-      widths: ['*', '*'],
-      body: [
-        [
-          {
-            text: [
-              { text: 'Place of Supply: ', bold: true, color: MUTED },
-              { text: em(doc.partyPlaceOfSupply || state), color: INK },
-            ],
-            fontSize: 10.5,
-            margin: [6, 5, 6, 5],
-          },
-          {
-            text: [
-              { text: 'Country of Supply: ', bold: true, color: MUTED },
-              { text: 'India', color: INK },
-            ],
-            fontSize: 10.5,
-            margin: [6, 5, 6, 5],
-          },
+    columns: [
+      {
+        text: [
+          { text: 'Place of Supply: ', bold: true, color: MUTED },
+          { text: em(doc.partyPlaceOfSupply || state), color: INK },
         ],
-      ],
-    },
-    layout: cardBox(CARD_BORDER),
+        fontSize: 10.5,
+      },
+      {
+        text: [
+          { text: 'Country of Supply: ', bold: true, color: MUTED },
+          { text: 'India', color: INK },
+        ],
+        fontSize: 10.5,
+      },
+    ],
   };
 
   const bodyCell = (text: string, alignment: string, alt: boolean) => ({
@@ -863,8 +851,8 @@ export function buildOmVectorDoc(
   const itemsTable = {
     table: {
       widths: isInterState
-        ? [24, '*', 46, 32, 30, 64, 60, 66]
-        : [24, '*', 44, 32, 30, 64, 54, 54, 64],
+        ? [20, '*', 36, 30, 22, 60, 60, 64]
+        : [18, '*', 34, 30, 22, 60, 54, 54, 62],
       body: [
         isInterState
           ? [
@@ -926,7 +914,7 @@ export function buildOmVectorDoc(
         ],
       ],
     },
-    layout: cardBox(CARD_BORDER),
+    layout: cardPad,
   };
 
   const termsItems = (
@@ -943,7 +931,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
 
   const signatureStack = {
     stack: [
-      { text: '', margin: [0, 6, 0, 0] },
+      { text: '', margin: [0, 4, 0, 0] },
       signatureUrl
         ? {
             image: signatureUrl,
@@ -984,7 +972,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
           },
         ],
         alignment: 'center',
-        margin: [0, 8, 0, 3],
+        margin: [0, 6, 0, 3],
       },
       {
         text: 'Authorised Signatory',
@@ -999,7 +987,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
 
   return {
     pageSize: 'A4',
-    pageMargins: [28, 28, 28, 28],
+    pageMargins: [26, 26, 26, 26],
     defaultStyle: {
       font: 'Roboto',
       fontSize: 10,
@@ -1013,7 +1001,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
         fontSize: 24,
         color: ACCENT,
         alignment: 'center',
-        margin: [0, 0, 0, 8],
+        margin: [0, 0, 0, 6],
       },
       {
         columns: [brandBlock, (
@@ -1026,15 +1014,15 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
           }
         )],
         columnGap: 12,
-        margin: [0, 0, 0, 8],
+        margin: [0, 0, 0, 6],
       },
       {
         columns: [billedByCard, billedToCard],
         columnGap: 8,
         margin: [0, 0, 0, 6],
       },
-      { stack: [supplyBar], margin: [0, 0, 0, 8] },
-      { stack: [itemsTable], margin: [0, 0, 0, 8] },
+      { stack: [supplyBar], margin: [0, 0, 0, 6] },
+      { stack: [itemsTable], margin: [0, 0, 0, 6] },
       {
         columns: [
           {
@@ -1047,13 +1035,13 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
                 color: ACCENT,
                 margin: [0, 2, 0, 4],
               },
-              ...termsItems.map((t) => ({
+              ...termsItems.map((t, idx) => ({
                 text: [
-                  { text: '•  ', bold: true, color: ACCENT },
+                  { text: `${idx + 1}.  `, bold: true, color: ACCENT },
                   { text: String(t), color: INK },
                 ],
-                fontSize: 9.5,
-                margin: [0, 0, 0, 2],
+                fontSize: 9,
+                margin: [0, 0, 0, 1.5],
               })),
               signatureStack,
             ],
@@ -1067,8 +1055,8 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
                 },
                 layout: {
                   ...noBox,
-                  paddingTop: () => 3,
-                  paddingBottom: () => 3,
+                  paddingTop: () => 2,
+                  paddingBottom: () => 2,
                 },
               },
               {
@@ -1083,7 +1071,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
                     lineColor: ACCENT,
                   },
                 ],
-                margin: [0, 4, 0, 6],
+                margin: [0, 3, 0, 4],
               },
               {
                 columns: [
@@ -1103,7 +1091,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
                 fontSize: 10,
                 color: MUTED,
                 alignment: 'right',
-                margin: [0, 4, 0, 0],
+                margin: [0, 2, 0, 0],
               },
             ],
           },
