@@ -136,10 +136,6 @@ export function generateOmStyleHtml(
   doc: PrintableDocData,
 ): string {
   const isInterState = Number(doc.igst || 0) > 0;
-  const totalQty = doc.items.reduce(
-    (sum, item) => sum + Number(item.quantity || 0),
-    0,
-  );
   const totalTax =
     Number(doc.cgst || 0) + Number(doc.sgst || 0) + Number(doc.igst || 0);
   const totalAmountWords = numberToWordsINR(doc.grandTotal);
@@ -150,7 +146,8 @@ export function generateOmStyleHtml(
     'AN-25, LAUTA BAGH, AZAD NAGR, NAWABGANJ, Barabanki, Uttar Pradesh, 225001';
   const gstin = business?.gstin || '09AABPQ3096M1Z5';
   const pan =
-    business?.pan || (gstin.length >= 12 ? gstin.slice(2, 12) : 'AABPQ3096M');
+    business?.pan ||
+    (String(gstin).length >= 12 ? String(gstin).slice(2, 12) : 'AABPQ3096M');
   const phone = business?.phone || '+91 9450942418';
   const email = business?.email || 'abc.solar7575@gmail.com';
   const state = business?.state || 'Uttar Pradesh';
@@ -161,7 +158,6 @@ export function generateOmStyleHtml(
   const accountNo = business?.bank_account_number || '120034396413';
   const ifsc = business?.bank_ifsc_code || 'CNRB0018631';
 
-  // Dynamic Logo & Stamp/Signature from Settings
   const dynamicLogo = business?.stamp_url || business?.logo_url || SOLAR_HOME_LOGO;
   const dynamicSignature = business?.signature_url || null;
 
@@ -169,707 +165,197 @@ export function generateOmStyleHtml(
   const shipName = doc.shipToName || doc.partyName;
   const shipAddress = doc.shipToAddress || doc.partyAddress || '';
   const shipPhone = doc.shipToPhone || doc.partyPhone || '';
-  const shipPlace = doc.shipToPlaceOfSupply || doc.partyPlaceOfSupply || state;
 
-  const firstTaxRate = Number(doc.items[0]?.tax_rate || 0);
-  const halfRate = firstTaxRate / 2;
+  const itemRows = doc.items
+    .map((item, index) => {
+      const taxable = Number(
+        item.taxable_amount ??
+          Number(item.rate || 0) * Number(item.quantity || 0),
+      );
+      const taxAmount = Math.max(
+        0,
+        Number(item.total_amount || 0) - taxable,
+      );
+      const half = taxAmount / 2;
+      const taxCells = isInterState
+        ? `<td class="num">₹ ${money(taxAmount)}</td>`
+        : `<td class="num">₹ ${money(half)}</td><td class="num">₹ ${money(half)}</td>`;
+      return `
+          <tr class="${index % 2 === 1 ? 'alt' : ''}">
+            <td class="ctr">${index + 1}</td>
+            <td>${esc(item.product_name)}</td>
+            <td class="ctr">${esc(item.hsn_sac || '—')}</td>
+            <td class="ctr">${esc(item.quantity)} ${esc(item.unit || 'PCS')}</td>
+            <td class="ctr">${esc(item.tax_rate)}%</td>
+            <td class="num">₹ ${money(taxable)}</td>
+            ${taxCells}
+            <td class="num"><strong>₹ ${money(item.total_amount)}</strong></td>
+          </tr>`;
+    })
+    .join('');
+
+  const termsList = (
+    doc.terms ||
+    `Payment 100% Advance.
+All payments to be drawn in favour of "${businessName}", payable at Barabanki.
+This quotation is valid for 15 Days, subject to availability with our principals.
+ALL SUBJECT TO BARABANKI JURISDICTION.
+(E. & O.E.)`
+  )
+    .split('\n')
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => `<li>${esc(t)}</li>`)
+    .join('');
+
+  const taxBreakRows = isInterState
+    ? `<tr><td class="t-lbl">IGST (${esc(doc.items[0]?.tax_rate || 0)}%)</td><td class="t-val">₹ ${money(doc.igst)}</td></tr>`
+    : `<tr><td class="t-lbl">CGST</td><td class="t-val">₹ ${money(doc.cgst)}</td></tr>
+       <tr><td class="t-lbl">SGST</td><td class="t-val">₹ ${money(doc.sgst)}</td></tr>`;
 
   return `
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8"/>
+<meta charset="utf-8" />
 <title>${esc(doc.docNumber)} - ${esc(title)}</title>
 <style>
-  @page {
-    size: A4 portrait;
-    margin: 8mm;
-  }
-
-  * {
-    box-sizing: border-box;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  html, body {
-    margin: 0;
-    padding: 0;
-    background: #fff;
-    color: #000;
-  }
-
-  body {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 10px;
-    line-height: 1.25;
-  }
-
-  .page {
-    width: 100%;
-    max-width: 194mm;
-    margin: 0 auto;
-  }
-
-  .top-title {
-    height: 8.5mm;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 15px;
-    font-weight: 800;
-    letter-spacing: 0.8px;
-    text-transform: uppercase;
-    text-decoration: underline;
-    text-underline-offset: 4px;
-  }
-
-  .sheet {
-    border: 1px solid #000;
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .company-row {
-    display: flex;
-    min-height: 38mm;
-    border-bottom: 1px solid #000;
-  }
-
-  .company-cell-left {
-    width: 50%;
-    padding: 7px 9px;
-    border-right: 1px solid #000;
-    display: flex;
-    align-items: center;
-    gap: 9px;
-  }
-
-  .logo-wrap {
-    width: 100px;
-    min-width: 100px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .logo {
-    max-width: 95px;
-    max-height: 75px;
-    object-fit: contain;
-    display: block;
-  }
-
-  .company-info {
-    min-width: 0;
-  }
-
-  .company-name {
-    font-size: 15px;
-    line-height: 1.1;
-    font-weight: 800;
-    margin-bottom: 3px;
-    text-transform: uppercase;
-  }
-
-  .company-address {
-    font-size: 9.5px;
-    line-height: 1.25;
-    margin-bottom: 4px;
-  }
-
-  .company-line {
-    font-size: 9.5px;
-    line-height: 1.45;
-  }
-
-  .company-cell-right {
-    width: 50%;
-    display: flex;
-    align-items: stretch;
-  }
-
-  .meta-grid {
-    width: 100%;
-    display: flex;
-    align-items: stretch;
-  }
-
-  .meta-cell {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    padding: 6px 4px;
-  }
-
-  .meta-cell:not(:last-child) {
-    border-right: 1px solid #000;
-  }
-
-  .meta-label {
-    font-size: 11px;
-    font-weight: 800;
-    color: #000;
-    white-space: nowrap;
-    margin-bottom: 6px;
-  }
-
-  .meta-value {
-    font-size: 11px;
-    font-weight: 400;
-    color: #111;
-    white-space: nowrap;
-  }
-
-  .party-row {
-    display: flex;
-    border-bottom: 1px solid #000;
-  }
-
-  .party-cell {
-    width: 50%;
-    min-height: 27mm;
-    padding: 7px 9px;
-  }
-
-  .party-cell:first-child {
-    border-right: 1px solid #000;
-  }
-
-  .party-heading {
-    font-size: 10.5px;
-    font-weight: 800;
-    margin-bottom: 4px;
-  }
-
-  .party-name {
-    font-size: 11px;
-    font-weight: 800;
-    margin-bottom: 3px;
-    text-transform: uppercase;
-  }
-
-  .party-text {
-    font-size: 9.5px;
-    line-height: 1.4;
-  }
-
-  .field-label {
-    font-weight: 800;
-    color: #000;
-  }
-
-  .items-table-wrap {
-    width: 100%;
-    border-bottom: 1px solid #000;
-  }
-
-  .items {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-  }
-
-  .items th,
-  .items td {
-    border-right: 1px solid #000;
-  }
-
-  .items th:last-child,
-  .items td:last-child {
-    border-right: none;
-  }
-
-  .items thead th {
-    height: 8.5mm;
-    padding: 4px 6px;
-    border-bottom: 1px solid #000;
-    background: #e5e5e5;
-    font-size: 10px;
-    font-weight: 800;
-    text-align: center;
-    letter-spacing: 0.3px;
-  }
-
-  .item-row td {
-    padding: 8px 8px;
-    vertical-align: top;
-    font-size: 10px;
-    font-weight: 400;
-    line-height: 1.35;
-  }
-
-  .item-name {
-    font-size: 10px;
-    font-weight: 400;
-    white-space: pre-line;
-    line-height: 1.35;
-  }
-
-  .item-area {
-    min-height: 115mm;
-    height: 118mm;
-  }
-
-  .qty,
-  .rate,
-  .tax,
-  .amount {
-    text-align: right;
-    white-space: nowrap;
-    padding-right: 8px !important;
-  }
-
-  .qty {
-    text-align: center;
-    padding-right: 0 !important;
-  }
-
-  .tax-rate {
-    color: #333;
-    font-size: 9px;
-    margin-top: 1px;
-  }
-
-  .total-row td {
-    height: 8.5mm;
-    padding: 4px 8px;
-    background: #e5e5e5;
-    border-top: 1px solid #000;
-    font-size: 10.5px;
-    font-weight: 800;
-    vertical-align: middle;
-  }
-
-  .total-label {
-    text-align: right;
-    padding-right: 12px !important;
-    font-size: 10.5px;
-  }
-
-  .gst-box-wrap {
-    margin-top: 6px;
-    border-top: 1px solid #000;
-    border-bottom: 1px solid #000;
-  }
-
-  .gst {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-    font-size: 9.5px;
-  }
-
-  .gst th,
-  .gst td {
-    border-right: 1px solid #000;
-    border-bottom: 1px solid #000;
-    padding: 4px 6px;
-    text-align: center;
-  }
-
-  .gst th:last-child,
-  .gst td:last-child {
-    border-right: none;
-  }
-
-  .gst thead th {
-    height: 6mm;
-    background: #e5e5e5;
-    font-weight: 800;
-    font-size: 9.5px;
-  }
-
-  .gst tbody td {
-    height: 6.5mm;
-    font-weight: 600;
-  }
-
-  .words-box-wrap {
-    margin-top: 6px;
-    border-top: 1px solid #000;
-    border-bottom: 1px solid #000;
-  }
-
-  .words {
-    padding: 5px 8px;
-  }
-
-  .words-label {
-    font-size: 9px;
-    font-weight: 800;
-    margin-bottom: 2px;
-  }
-
-  .words-value {
-    font-size: 10px;
-    font-weight: 400;
-    color: #111;
-  }
-
-  .bottom {
-    display: flex;
-    min-height: 34mm;
-  }
-
-  .bottom-cell-1 {
-    width: 35%;
-    padding: 6px 8px;
-    border-right: 1px solid #000;
-  }
-
-  .bottom-cell-2 {
-    width: 35%;
-    padding: 6px 8px;
-    border-right: 1px solid #000;
-  }
-
-  .bottom-cell-3 {
-    width: 30%;
-    padding: 6px 8px;
-  }
-
-  .section-title {
-    font-size: 10px;
-    font-weight: 800;
-    margin-bottom: 5px;
-  }
-
-  .bank-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 9px;
-  }
-
-  .bank-table td {
-    padding: 2px 0;
-    vertical-align: top;
-  }
-
-  .bank-label {
-    width: 72px;
-    white-space: nowrap;
-    color: #111;
-  }
-
-  .terms {
-    font-size: 8.8px;
-    line-height: 1.35;
-    white-space: pre-line;
-  }
-
-  .signature {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    text-align: center;
-    justify-content: space-between;
-  }
-
-  .stamp-wrap {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    flex: 1;
-    padding: 4px 0;
-  }
-
-  .stamp-wrap img {
-    max-width: 170px;
-    max-height: 65px;
-    object-fit: contain;
-    margin: auto;
-  }
-
-  .sign-line {
-    border-top: 1px solid #000;
-    padding-top: 3px;
-    font-size: 9px;
-    font-weight: 700;
-  }
-
-  @media print {
-    .page {
-      max-width: none;
-    }
-
-    .sheet {
-      break-inside: avoid;
-    }
-
-    .items,
-    .gst,
-    .bottom {
-      break-inside: avoid;
-    }
-  }
+  @page { size: A4 portrait; margin: 10mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #1e293b; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5px; line-height: 1.5; }
+  .doc { width: 100%; max-width: 190mm; margin: 0 auto; }
+  .doc-title { text-align: center; color: #ea580c; font-size: 26px; font-weight: 800; letter-spacing: 1.5px; margin: 0 0 6mm; text-transform: uppercase; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6mm; margin-bottom: 6mm; }
+  .brand { display: flex; align-items: center; gap: 4mm; }
+  .brand img { max-width: 95px; max-height: 75px; object-fit: contain; }
+  .brand-name { font-size: 16px; font-weight: 800; color: #0f172a; }
+  .meta { text-align: right; font-size: 11px; line-height: 1.8; white-space: nowrap; }
+  .meta .k { color: #64748b; }
+  .meta .v { font-weight: 800; color: #0f172a; }
+  .cards { display: flex; gap: 4mm; margin-bottom: 3mm; }
+  .card { flex: 1; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 3mm; padding: 4mm; }
+  .card h3 { margin: 0 0 2mm; font-size: 11.5px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: #ea580c; }
+  .card p { margin: 1px 0; font-size: 10.5px; }
+  .card .nm { font-size: 12px; font-weight: 800; color: #0f172a; margin-bottom: 1mm; }
+  .card .lbl { color: #64748b; font-weight: 700; }
+  .supply-bar { display: flex; gap: 10mm; font-size: 10.5px; margin: 0 0 5mm; padding: 2.5mm 4mm; border: 1px solid #ffedd5; border-radius: 2mm; }
+  .supply-bar .lbl { color: #64748b; font-weight: 700; }
+  table.items { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+  .items th { background: #ea580c; color: #fff; font-size: 10.5px; font-weight: 800; padding: 2.5mm 2mm; border: 1px solid #ea580c; }
+  .items td { border: 1px solid #fed7aa; padding: 2mm; font-size: 10px; vertical-align: top; }
+  .items tr.alt td { background: #fffaf5; }
+  .num { text-align: right; white-space: nowrap; }
+  .ctr { text-align: center; }
+  .bottom { display: flex; gap: 5mm; align-items: flex-start; }
+  .left-col { width: 55%; }
+  .right-col { width: 45%; }
+  .bank-card { background: #fff7ed; border: 1px solid #ffedd5; border-radius: 2mm; padding: 3.5mm; margin-bottom: 4mm; }
+  .bank-card h4, .terms h4 { margin: 0 0 2mm; font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: #ea580c; }
+  .bank-card p { margin: 1px 0; font-size: 10px; }
+  .bank-card .lbl { color: #64748b; font-weight: 700; }
+  .terms ul { margin: 1mm 0 0; padding-left: 5mm; font-size: 10px; line-height: 1.55; }
+  .sign { margin-top: 6mm; text-align: center; }
+  .sign img { max-width: 170px; max-height: 65px; object-fit: contain; }
+  .sign .for { font-size: 11px; font-weight: 800; color: #0b4da2; }
+  .sign .prop { font-size: 12px; font-weight: 800; color: #0b4da2; text-align: right; padding-right: 8mm; }
+  .sign-line { border-top: 1px solid #0f172a; padding-top: 2mm; margin-top: 2mm; font-size: 10px; font-weight: 700; }
+  .tot-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .tot-table td { padding: 1.2mm 0; }
+  .tot-table .t-lbl { color: #64748b; }
+  .tot-table .t-val { text-align: right; font-weight: 700; color: #0f172a; white-space: nowrap; }
+  .grand td { border-top: 2px solid #ea580c; padding-top: 2.5mm; font-size: 15px; font-weight: 800; color: #0f172a; }
+  .words { font-style: italic; color: #64748b; font-size: 10px; margin-top: 2mm; text-align: right; }
+  @media print { .doc { max-width: none; } }
 </style>
 </head>
-
 <body>
-<div class="page">
-  <div class="top-title">${esc(title)}</div>
+<div class="doc">
+  <h1 class="doc-title">${esc(title)}</h1>
 
-  <div class="sheet">
-    <div class="company-row">
-      <div class="company-cell-left">
-        <div class="logo-wrap">
-          <img class="logo" src="${dynamicLogo}" alt="${esc(businessName)} Logo"/>
-        </div>
+  <div class="top">
+    <div class="brand">
+      <img src="${dynamicLogo}" alt="Company Logo" />
+      <div class="brand-name">${esc(businessName)}</div>
+    </div>
+    <div class="meta">
+      <div><span class="k">${esc(doc.docTitle || 'QUOTATION')} #:</span> <span class="v">${esc(doc.docNumber)}</span></div>
+      <div><span class="k">${esc(doc.dateLabel || 'Quote Date')}:</span> <span class="v">${esc(doc.dateValue)}</span></div>
+      <div><span class="k">${esc(doc.expiryLabel || 'Valid Until')}:</span> <span class="v">${esc(doc.expiryValue || '—')}</span></div>
+    </div>
+  </div>
 
-        <div class="company-info">
-          <div class="company-name">${esc(businessName)}</div>
-          <div class="company-address">${esc(businessAddress)}</div>
+  <div class="cards">
+    <div class="card">
+      <h3>Billed By</h3>
+      <p class="nm">${esc(businessName)}</p>
+      <p>${esc(businessAddress)}</p>
+      <p><span class="lbl">GSTIN:</span> ${esc(gstin)}</p>
+      <p><span class="lbl">PAN:</span> ${esc(pan)}</p>
+      <p><span class="lbl">Phone:</span> ${esc(phone)}</p>
+    </div>
+    <div class="card">
+      <h3>Billed To${shipName && shipName !== doc.partyName ? ' / Ship To' : ''}</h3>
+      <p class="nm">${esc(doc.partyName)}</p>
+      <p>${esc(doc.partyAddress || '')}</p>
+      ${doc.partyGstin ? `<p><span class="lbl">GSTIN:</span> ${esc(doc.partyGstin)}</p>` : ''}
+      ${doc.partyPhone ? `<p><span class="lbl">Phone:</span> ${esc(doc.partyPhone)}</p>` : ''}
+      ${shipName && shipName !== doc.partyName ? `<p><span class="lbl">Ship To:</span> ${esc(shipName)}${shipAddress ? `, ${esc(shipAddress)}` : ''}${shipPhone ? ` (${esc(shipPhone)})` : ''}</p>` : ''}
+    </div>
+  </div>
 
-          <div class="company-line">
-            <strong>GSTIN:</strong> ${esc(gstin)}
-          </div>
+  <div class="supply-bar">
+    <div><span class="lbl">Place of Supply:</span> ${esc(doc.partyPlaceOfSupply || state)}</div>
+    <div><span class="lbl">Country of Supply:</span> India</div>
+  </div>
 
-          <div class="company-line">
-            <strong>Mobile:</strong> ${esc(phone)}
-          </div>
+  <table class="items">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th style="text-align: left;">Description</th>
+        <th>HSN/SAC</th>
+        <th>Qty</th>
+        <th>GST%</th>
+        <th style="text-align: right;">Taxable</th>
+        ${isInterState ? '<th style="text-align: right;">IGST</th>' : '<th style="text-align: right;">CGST</th><th style="text-align: right;">SGST</th>'}
+        <th style="text-align: right;">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemRows}
+    </tbody>
+  </table>
 
-          <div class="company-line">
-            <strong>PAN Number:</strong> ${esc(pan)}
-          </div>
-
-          <div class="company-line">
-            <strong>Email:</strong> ${esc(email)}
-          </div>
-        </div>
+  <div class="bottom">
+    <div class="left-col">
+      <div class="bank-card">
+        <h4>Bank Details</h4>
+        <p><span class="lbl">Bank Name:</span> ${esc(bankName)}, ${esc(branchName)}</p>
+        <p><span class="lbl">Account Name:</span> ${esc(accountName)}</p>
+        <p><span class="lbl">Account No:</span> ${esc(accountNo)}</p>
+        <p><span class="lbl">IFSC Code:</span> ${esc(ifsc)}</p>
       </div>
-
-      <div class="company-cell-right">
-        <div class="meta-grid">
-          <div class="meta-cell">
-            <div class="meta-label">${esc(doc.docTitle || 'QUOTATION')} No.</div>
-            <div class="meta-value">${esc(doc.docNumber || '—')}</div>
-          </div>
-
-          <div class="meta-cell">
-            <div class="meta-label">${esc(doc.dateLabel || 'Quote Date')}</div>
-            <div class="meta-value">${esc(doc.dateValue || '—')}</div>
-          </div>
-
-          <div class="meta-cell">
-            <div class="meta-label">${esc(doc.expiryLabel || 'Valid Until')}</div>
-            <div class="meta-value">${esc(doc.expiryValue || '—')}</div>
-          </div>
-        </div>
+      <div class="terms">
+        <h4>Terms &amp; Conditions</h4>
+        <ul>${termsList}</ul>
+      </div>
+      <div class="sign">
+        ${dynamicSignature ? `<img src="${dynamicSignature}" alt="Authorised Signature" />` : `<div class="for">For ${esc(businessName)}</div><div class="prop">Prop.</div>`}
+        <div class="sign-line">Authorised Signatory</div>
       </div>
     </div>
-
-    <div class="party-row">
-      <div class="party-cell">
-        <div class="party-heading">BILL TO</div>
-        <div class="party-name">${esc(doc.partyName)}</div>
-        <div class="party-text">
-          <span class="field-label">Address:</span>&nbsp; ${esc(doc.partyAddress || '—')}<br/>
-          <span class="field-label">Place of Supply:</span>&nbsp; ${esc(doc.partyPlaceOfSupply || state)}<br/>
-          <span class="field-label">Mobile:</span>&nbsp; ${esc(doc.partyPhone || '—')}
-          ${doc.partyGstin ? `<br/><span class="field-label">GSTIN:</span>&nbsp; ${esc(doc.partyGstin)}` : ''}
-        </div>
-      </div>
-
-      <div class="party-cell">
-        <div class="party-heading">SHIP TO</div>
-        <div class="party-name">${esc(shipName)}</div>
-        <div class="party-text">
-          <span class="field-label">Address:</span>&nbsp; ${esc(shipAddress || '—')}<br/>
-          <span class="field-label">Place of Supply:</span>&nbsp; ${esc(shipPlace)}<br/>
-          <span class="field-label">Mobile:</span>&nbsp; ${esc(shipPhone || '—')}
-        </div>
-      </div>
-    </div>
-
-    <div class="items-table-wrap">
-      <table class="items">
-        <colgroup>
-          <col style="width: 8%">
-          <col style="width: 42%">
-          <col style="width: 10%">
-          <col style="width: 13%">
-          <col style="width: 12%">
-          <col style="width: 15%">
-        </colgroup>
-
-        <thead>
-          <tr>
-            <th>S.NO.</th>
-            <th>ITEMS</th>
-            <th>QTY.</th>
-            <th>RATE</th>
-            <th>TAX</th>
-            <th>AMOUNT</th>
-          </tr>
-        </thead>
-
+    <div class="right-col">
+      <table class="tot-table">
         <tbody>
-          ${doc.items
-            .map((item, index) => {
-              const taxable = Number(
-                item.taxable_amount ??
-                  Number(item.rate || 0) * Number(item.quantity || 0),
-              );
-              const taxAmount = Math.max(
-                0,
-                Number(item.total_amount || 0) - taxable,
-              );
-
-              return `
-            <tr class="item-row">
-              <td class="qty item-area">${index + 1}</td>
-              <td class="item-area">
-                <div class="item-name">${esc(item.product_name)}</div>
-              </td>
-              <td class="qty item-area">${esc(item.quantity)} ${esc(item.unit || 'PCS')}</td>
-              <td class="rate item-area">₹ ${money(item.rate)}</td>
-              <td class="tax item-area">
-                ₹ ${money(taxAmount)}
-                <div class="tax-rate">(${esc(item.tax_rate)}%)</div>
-              </td>
-              <td class="amount item-area">₹ ${money(item.total_amount)}</td>
-            </tr>`;
-            })
-            .join('')}
-
-          <tr class="total-row">
-            <td></td>
-            <td class="total-label">TOTAL</td>
-            <td class="qty">${esc(totalQty)}</td>
-            <td></td>
-            <td class="tax">₹ ${money(totalTax)}</td>
-            <td class="amount">₹ ${money(doc.grandTotal)}</td>
-          </tr>
+          <tr><td class="t-lbl">Sub Total</td><td class="t-val">₹ ${money(doc.subtotal)}</td></tr>
+          ${taxBreakRows}
+          ${doc.roundOff ? `<tr><td class="t-lbl">Round Off</td><td class="t-val">₹ ${money(doc.roundOff)}</td></tr>` : ''}
+          <tr class="grand"><td>Grand Total</td><td class="t-val">₹ ${money(doc.grandTotal)}</td></tr>
         </tbody>
       </table>
+      <div class="words">${esc(totalAmountWords)}</div>
     </div>
-
-    <div class="gst-box-wrap">
-      ${
-        isInterState
-          ? `
-      <table class="gst">
-        <colgroup>
-          <col style="width: 14%">
-          <col style="width: 24%">
-          <col style="width: 12%">
-          <col style="width: 20%">
-          <col style="width: 30%">
-        </colgroup>
-        <thead>
-          <tr>
-            <th>HSN/SAC</th>
-            <th>Taxable Value</th>
-            <th>IGST Rate</th>
-            <th>IGST Amount</th>
-            <th>Total Tax Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>${esc(doc.items[0]?.hsn_sac || '—')}</td>
-            <td>₹ ${money(doc.taxableAmount)}</td>
-            <td>${esc(firstTaxRate)}%</td>
-            <td style="border-right: 1px solid #000;">₹ ${money(doc.igst)}</td>
-            <td>₹ ${money(totalTax)}</td>
-          </tr>
-        </tbody>
-      </table>`
-          : `
-      <table class="gst">
-        <colgroup>
-          <col style="width: 14%">
-          <col style="width: 24%">
-          <col style="width: 9%">
-          <col style="width: 15%">
-          <col style="width: 9%">
-          <col style="width: 15%">
-          <col style="width: 14%">
-        </colgroup>
-        <thead>
-          <tr>
-            <th rowspan="2">HSN/SAC</th>
-            <th rowspan="2">Taxable Value</th>
-            <th colspan="2">CGST</th>
-            <th colspan="2">SGST</th>
-            <th rowspan="2">Total Tax Amount</th>
-          </tr>
-          <tr>
-            <th>Rate</th>
-            <th>Amount</th>
-            <th>Rate</th>
-            <th style="border-right: 1px solid #000;">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>${esc(doc.items[0]?.hsn_sac || '—')}</td>
-            <td>₹ ${money(doc.taxableAmount)}</td>
-            <td>${halfRate}%</td>
-            <td>₹ ${money(doc.cgst)}</td>
-            <td>${halfRate}%</td>
-            <td style="border-right: 1px solid #000;">₹ ${money(doc.sgst)}</td>
-            <td>₹ ${money(totalTax)}</td>
-          </tr>
-        </tbody>
-      </table>`
-      }
-    </div>
-
-    <div class="words-box-wrap">
-      <div class="words">
-        <div class="words-label">Total Amount (in words)</div>
-        <div class="words-value">${esc(totalAmountWords)}</div>
-      </div>
-    </div>
-
-    <div class="bottom">
-      <div class="bottom-cell-1">
-        <div class="section-title">Bank Details</div>
-        <table class="bank-table">
-          <tr><td class="bank-label">Name:</td><td><strong>${esc(accountName)}</strong></td></tr>
-          <tr><td class="bank-label">IFSC Code:</td><td><strong>${esc(ifsc)}</strong></td></tr>
-          <tr><td class="bank-label">Account No:</td><td><strong>${esc(accountNo)}</strong></td></tr>
-          <tr><td class="bank-label">Bank:</td><td><strong>${esc(bankName)}, ${esc(branchName)}</strong></td></tr>
-        </table>
-      </div>
-
-      <div class="bottom-cell-2">
-        <div class="section-title">Terms and Conditions</div>
-        <div class="terms">
-          ${esc(
-            doc.terms ||
-              `Payment 100% Advance.
-All payments to be drawn in favour of "${businessName}", payable at Barabanki
-This quotation is valid for 15 Days, subject to availability with our principals
-ALL SUBJECT TO BARABANKI JURISDICTION
-(E. & O.E.)`,
-          )}
-        </div>
-      </div>
-
-      <div class="bottom-cell-3">
-        <div class="signature">
-          <div class="stamp-wrap">
-            ${
-              dynamicSignature
-                ? `<img src="${dynamicSignature}" alt="Authorized Signature"/>`
-                : `<svg width="180" height="70" viewBox="0 0 200 80" style="display:block; margin:auto;">
-                    <text x="100" y="18" font-family="Arial, sans-serif" font-size="13.5" font-weight="bold" fill="#0b4da2" text-anchor="middle">For ${esc(businessName)}</text>
-                    <path d="M 45 60 C 60 35, 80 25, 95 38 C 105 48, 88 72, 75 60 C 68 50, 90 34, 115 44 C 132 50, 110 68, 130 58 C 145 50, 168 52, 178 50 M 100 55 L 188 52" fill="none" stroke="#0b4da2" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <text x="180" y="66" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#0b4da2">Prop.</text>
-                  </svg>`
-            }
-          </div>
-          <div class="sign-line">Authorised Signatory</div>
-        </div>
-      </div>
-    </div>
-
   </div>
 </div>
 </body>
@@ -943,10 +429,34 @@ async function loadPdfMake(): Promise<PdfMakeApi> {
   return api;
 }
 
-/** PNG/JPEG data URLs only — SVG artwork is redrawn as vectors below. */
-function rasterImageUrl(url: unknown): string | null {
-  if (typeof url !== 'string' || !url) return null;
-  return /^data:image\/(png|jpe?g);/i.test(url) ? url : null;
+/**
+ * Uploaded artwork: PNG/JPEG data URLs plus hosted https uploads
+ * (e.g. Supabase storage objects). SVG artwork is redrawn as vectors
+ * by solarHomeVectorLogo() instead.
+ */
+export function headerImageUrl(url: unknown): string | null {
+  if (typeof url !== 'string') return null;
+  const u = url.trim();
+  if (!u) return null;
+  if (/^data:image\/(png|jpe?g);/i.test(u)) return u;
+  if (/^https?:\/\//i.test(u) && /\.(png|jpe?g)(\?.*)?$/i.test(u)) return u;
+  return null;
+}
+
+/** Browser load check — a dead/blocked URL must fall back, never crash the PDF. */
+function loadableImageUrl(url: string | null): Promise<string | null> {
+  if (!url) return Promise.resolve(null);
+  if (url.startsWith('data:')) return Promise.resolve(url);
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onload = () => resolve(url);
+      img.onerror = () => resolve(null);
+      img.src = url;
+    } catch {
+      resolve(null);
+    }
+  });
 }
 
 /**
@@ -956,7 +466,8 @@ function rasterImageUrl(url: unknown): string | null {
  */
 function solarHomeVectorLogo() {
   const s = 0.64;
-  const X = (x: number) => Math.round(x * s * 100) / 100;
+  const X0 = 4; // centers the 70pt artwork inside the 78pt logo column
+  const X = (x: number) => Math.round((x * s + X0) * 100) / 100;
   const pts = (list: Array<[number, number]>) =>
     list.map(([x, y]) => ({ x: X(x), y: X(y) }));
   // Ground arc: quadratic (22,55) C(55,70) (88,55), sampled to segments.
@@ -1062,7 +573,6 @@ function solarHomeVectorLogo() {
         color: '#475569',
       },
     ],
-    width: 70,
   };
 }
 
@@ -1072,13 +582,26 @@ function solarHomeVectorLogo() {
  * 6px gaps before GST + Words, right-aligned Proprietor stamp.
  * All text is real PDF text (selectable, zoom-sharp).
  */
-export function buildOmVectorDoc(business: any, doc: PrintableDocData): unknown {
-  const INK = '#000000';
-  const HEAD_FILL = '#E5E5E5';
+export type OmVectorAssets = {
+  logoUrl?: string | null;
+  signatureUrl?: string | null;
+};
+
+export function buildOmVectorDoc(
+  business: any,
+  doc: PrintableDocData,
+  assets?: OmVectorAssets,
+): unknown {
+  const ACCENT = '#EA580C';
+  const TINT = '#FFF7ED';
+  const CARD_BORDER = '#FFEDD5';
+  const GRID = '#FED7AA';
+  const INK = '#1E293B';
+  const DARK = '#0F172A';
+  const MUTED = '#64748B';
+  const ALTROW = '#FFFAF5';
   const STAMP_BLUE = '#0B4DA2';
   const RUPEE = '₹';
-  // 6px at 96dpi = 4.5pt — spacing before GST and Words boxes.
-  const SECTION_GAP = 4.5;
 
   const businessName = business?.name || 'AVADH BORING COMPANY';
   const businessAddress =
@@ -1098,210 +621,207 @@ export function buildOmVectorDoc(business: any, doc: PrintableDocData): unknown 
   const accountNo = business?.bank_account_number || '120034396413';
   const ifsc = business?.bank_ifsc_code || 'CNRB0018631';
 
-  const logoUrl = rasterImageUrl(business?.logo_url);
-  const signatureUrl = rasterImageUrl(business?.signature_url);
+  // Header mark priority (mirrors the HTML template): uploaded stamp,
+  // then uploaded logo, then the redrawn Solar Home vector.
+  const logoUrl =
+    assets?.logoUrl !== undefined
+      ? assets.logoUrl
+      : (headerImageUrl(business?.stamp_url) ??
+        headerImageUrl(business?.logo_url));
+  const signatureUrl =
+    assets?.signatureUrl !== undefined
+      ? assets.signatureUrl
+      : headerImageUrl(business?.signature_url);
 
   const title = doc.docTitle || 'QUOTATION';
   const isInterState = Number(doc.igst || 0) > 0;
-  const totalQty = doc.items.reduce(
-    (sum, item) => sum + Number(item.quantity || 0),
-    0,
-  );
-  const totalTax =
-    Number(doc.cgst || 0) + Number(doc.sgst || 0) + Number(doc.igst || 0);
   const totalAmountWords = numberToWordsINR(doc.grandTotal);
-  const firstTaxRate = Number(doc.items[0]?.tax_rate || 0);
-  const halfRate = firstTaxRate / 2;
 
   const shipName = doc.shipToName || doc.partyName;
   const shipAddress = doc.shipToAddress || doc.partyAddress || '';
   const shipPhone = doc.shipToPhone || doc.partyPhone || '';
-  const shipPlace = doc.shipToPlaceOfSupply || doc.partyPlaceOfSupply || state;
 
   const rs = (n: number) => `${RUPEE} ${money(Number(n || 0))}`;
   const em = (v: unknown) => String(v ?? '—');
 
-  // 1px continuous outer grid. `top` draws the section's top rule —
-  // true for the first box and standalone boxes after a gap, false for
-  // directly-stacked followers (avoids doubled 2px seams).
-  const box = (top: boolean) => ({
-    hLineWidth: (i: number) => (i === 0 ? (top ? 1 : 0) : 1),
-    vLineWidth: () => 1,
-    hLineColor: () => INK,
-    vLineColor: () => INK,
+  const noBox = {
+    hLineWidth: () => 0,
+    vLineWidth: () => 0,
     paddingLeft: () => 0,
     paddingRight: () => 0,
     paddingTop: () => 0,
     paddingBottom: () => 0,
-  });
-  // Inner vertical dividers only (meta grid) — no outer frame.
-  const innerDividers = {
-    hLineWidth: () => 0,
-    vLineWidth: (i: number, node: any) =>
-      i === 0 || i === node.table.widths.length ? 0 : 1,
-    hLineColor: () => INK,
-    vLineColor: () => INK,
-    paddingLeft: () => 4,
-    paddingRight: () => 4,
-    paddingTop: () => 6,
-    paddingBottom: () => 6,
   };
-  // Full 1px grid for item/GST tables.
-  const grid = (padX: number, padY: number) => ({
+  const cardBox = (borderColor: string) => ({
     hLineWidth: () => 1,
     vLineWidth: () => 1,
-    hLineColor: () => INK,
-    vLineColor: () => INK,
-    paddingLeft: () => padX,
-    paddingRight: () => padX,
-    paddingTop: () => padY,
-    paddingBottom: () => padY,
+    hLineColor: () => borderColor,
+    vLineColor: () => borderColor,
+    paddingLeft: () => 6,
+    paddingRight: () => 6,
+    paddingTop: () => 6,
+    paddingBottom: () => 6,
+  });
+  const itemGrid = {
+    hLineWidth: () => 1,
+    vLineWidth: () => 1,
+    hLineColor: () => GRID,
+    vLineColor: () => GRID,
+    paddingLeft: () => 5,
+    paddingRight: () => 5,
+    paddingTop: () => 3,
+    paddingBottom: () => 3,
+  };
+
+  const cardCell = (stack: unknown[]) => ({
+    stack,
+    fillColor: TINT,
+    margin: [0, 0, 0, 0],
   });
 
-  const metaCell = (label: string, value: string) => ({
-    stack: [
-      {
-        text: label,
-        bold: true,
-        fontSize: 11,
-        alignment: 'center',
-        margin: [0, 0, 0, 6],
-      },
-      { text: value, fontSize: 11, alignment: 'center' },
-    ],
+  const cardHeading = (text: string) => ({
+    text,
+    bold: true,
+    fontSize: 11.5,
+    color: ACCENT,
+    margin: [0, 0, 0, 4],
   });
 
-  const infoLine = (label: string, value: string) => ({
+  const fieldLine = (label: string, value: string, size = 10.5) => ({
     text: [
-      { text: `${label}: `, bold: true },
-      { text: value },
+      { text: `${label}: `, bold: true, color: MUTED },
+      { text: value, color: INK },
     ],
-    fontSize: 9.5,
-    lineHeight: 1.45,
+    fontSize: size,
+    lineHeight: 1.4,
   });
 
-  const partyBlock = (
-    heading: string,
-    name: string,
-    rows: Array<{ label: string; value: string }>,
-  ) => ({
-    stack: [
-      { text: heading, bold: true, fontSize: 10.5, margin: [0, 0, 0, 4] },
-      {
-        text: name,
-        bold: true,
-        fontSize: 11,
-        margin: [0, 0, 0, 3],
-      },
-      ...rows.map((r) => ({
-        text: [
-          { text: `${r.label}: `, bold: true },
-          { text: r.value },
-        ],
-        fontSize: 9.5,
-        lineHeight: 1.4,
-      })),
-    ],
-  });
-
-  const headCell = (text: string) => ({
+  const headCell = (text: string, alignment: string = 'center') => ({
     text,
     bold: true,
     fontSize: 10,
-    alignment: 'center',
-    fillColor: HEAD_FILL,
+    color: '#FFFFFF',
+    fillColor: ACCENT,
+    alignment,
   });
 
-  const companyInfo = {
-    stack: [
-      { text: businessName, bold: true, fontSize: 15, margin: [0, 0, 0, 3] },
-      { text: businessAddress, fontSize: 9.5, margin: [0, 0, 0, 4] },
-      infoLine('GSTIN', gstin),
-      infoLine('Mobile', phone),
-      infoLine('PAN Number', pan),
-      infoLine('Email', email),
+  const brandBlock = {
+    columns: [
+      logoUrl
+        ? { image: logoUrl, fit: [71, 56] }
+        : solarHomeVectorLogo(),
+      {
+        stack: [
+          { text: businessName, bold: true, fontSize: 16, color: DARK },
+        ],
+      },
     ],
+    columnGap: 10,
   };
 
-  const companyBox = {
+  const metaLine = (label: string, value: string) => ({
+    text: [
+      { text: `${label}: `, color: MUTED },
+      { text: value, bold: true, color: DARK },
+    ],
+    fontSize: 11,
+    alignment: 'right',
+    lineHeight: 1.8,
+  });
+
+  const billedByCard = {
     table: {
-      widths: ['50%', '50%'],
+      widths: ['*'],
       body: [
         [
-          {
-            stack: [
-              {
-                columns: [
-                  logoUrl
-                    ? { image: logoUrl, width: 70 }
-                    : solarHomeVectorLogo(),
-                  companyInfo,
-                ],
-                columnGap: 9,
-              },
-            ],
-            margin: [7, 7, 7, 7],
-          },
-          {
-            table: {
-              widths: ['*', '*', '*'],
-              body: [
-                [
-                  metaCell(`${title} No.`, em(doc.docNumber)),
-                  metaCell(doc.dateLabel || 'Quote Date', em(doc.dateValue)),
-                  metaCell(
-                    doc.expiryLabel || 'Valid Until',
-                    em(doc.expiryValue),
-                  ),
-                ],
-              ],
+          cardCell([
+            cardHeading('Billed By'),
+            {
+              text: businessName,
+              bold: true,
+              fontSize: 12,
+              color: DARK,
+              margin: [0, 0, 0, 2],
             },
-            layout: innerDividers,
-          },
+            { text: businessAddress, fontSize: 10.5 },
+            fieldLine('GSTIN', gstin),
+            fieldLine('PAN', pan),
+            fieldLine('Phone', phone),
+          ]),
         ],
       ],
     },
-    layout: box(true),
+    layout: cardBox(CARD_BORDER),
   };
 
-  const partyBox = {
+  const billedToLines: unknown[] = [
+    cardHeading(
+      shipName && shipName !== doc.partyName
+        ? 'Billed To / Ship To'
+        : 'Billed To',
+    ),
+    {
+      text: doc.partyName,
+      bold: true,
+      fontSize: 12,
+      color: DARK,
+      margin: [0, 0, 0, 2],
+    },
+    { text: em(doc.partyAddress), fontSize: 10.5 },
+  ];
+  if (doc.partyGstin)
+    billedToLines.push(fieldLine('GSTIN', String(doc.partyGstin)));
+  if (doc.partyPhone)
+    billedToLines.push(fieldLine('Phone', String(doc.partyPhone)));
+  if (shipName && shipName !== doc.partyName)
+    billedToLines.push(
+      fieldLine(
+        'Ship To',
+        `${shipName}${shipAddress ? `, ${shipAddress}` : ''}${shipPhone ? ` (${shipPhone})` : ''}`,
+      ),
+    );
+
+  const billedToCard = {
+    table: { widths: ['*'], body: [[cardCell(billedToLines)]] },
+    layout: cardBox(CARD_BORDER),
+  };
+
+  const supplyBar = {
     table: {
-      widths: ['50%', '50%'],
+      widths: ['*', '*'],
       body: [
         [
           {
-            stack: [
-              partyBlock('BILL TO', doc.partyName, [
-                { label: 'Address', value: em(doc.partyAddress) },
-                {
-                  label: 'Place of Supply',
-                  value: em(doc.partyPlaceOfSupply || state),
-                },
-                { label: 'Mobile', value: em(doc.partyPhone) },
-                ...(doc.partyGstin
-                  ? [{ label: 'GSTIN', value: String(doc.partyGstin) }]
-                  : []),
-              ]),
+            text: [
+              { text: 'Place of Supply: ', bold: true, color: MUTED },
+              { text: em(doc.partyPlaceOfSupply || state), color: INK },
             ],
-            margin: [7, 7, 7, 7],
+            fontSize: 10.5,
+            margin: [6, 5, 6, 5],
           },
           {
-            stack: [
-              partyBlock('SHIP TO', shipName, [
-                { label: 'Address', value: em(shipAddress) },
-                { label: 'Place of Supply', value: em(shipPlace) },
-                { label: 'Mobile', value: em(shipPhone) },
-              ]),
+            text: [
+              { text: 'Country of Supply: ', bold: true, color: MUTED },
+              { text: 'India', color: INK },
             ],
-            margin: [7, 7, 7, 7],
+            fontSize: 10.5,
+            margin: [6, 5, 6, 5],
           },
         ],
       ],
     },
-    layout: box(false),
+    layout: cardBox(CARD_BORDER),
   };
+
+  const bodyCell = (text: string, alignment: string, alt: boolean) => ({
+    text,
+    fontSize: 10,
+    alignment,
+    ...(alt ? { fillColor: ALTROW } : {}),
+  });
 
   const itemRows = doc.items.map((item, index) => {
+    const alt = index % 2 === 1;
     const taxable = Number(
       item.taxable_amount ?? Number(item.rate || 0) * Number(item.quantity || 0),
     );
@@ -1309,182 +829,125 @@ export function buildOmVectorDoc(business: any, doc: PrintableDocData): unknown 
       0,
       Number(item.total_amount || 0) - taxable,
     );
+    const base = [
+      bodyCell(String(index + 1), 'center', alt),
+      { text: String(item.product_name || ''), fontSize: 10, ...(alt ? { fillColor: ALTROW } : {}) },
+      bodyCell(em(item.hsn_sac) === '—' ? '—' : String(item.hsn_sac), 'center', alt),
+      bodyCell(
+        `${item.quantity ?? 0} ${item.unit || 'PCS'}`,
+        'center',
+        alt,
+      ),
+      bodyCell(`${Number(item.tax_rate || 0)}%`, 'center', alt),
+      bodyCell(rs(taxable), 'right', alt),
+    ];
+    const taxCells = isInterState
+      ? [bodyCell(rs(taxAmount), 'right', alt)]
+      : [
+          bodyCell(rs(taxAmount / 2), 'right', alt),
+          bodyCell(rs(taxAmount / 2), 'right', alt),
+        ];
     return [
-      { text: String(index + 1), alignment: 'center' },
-      { text: String(item.product_name || '') },
+      ...base,
+      ...taxCells,
       {
-        text: `${item.quantity ?? 0} ${item.unit || 'PCS'}`,
-        alignment: 'center',
-      },
-      { text: rs(item.rate), alignment: 'right' },
-      {
-        text: [
-          { text: `${rs(taxAmount)}\n` },
-          {
-            text: `(${Number(item.tax_rate || 0)}%)`,
-            fontSize: 8,
-            color: '#333333',
-          },
-        ],
+        text: rs(item.total_amount),
+        bold: true,
+        fontSize: 10,
         alignment: 'right',
+        ...(alt ? { fillColor: ALTROW } : {}),
       },
-      { text: rs(item.total_amount), alignment: 'right' },
     ];
   });
 
-  const itemsBox = {
+  const itemsTable = {
     table: {
-      widths: [30, '*', 46, 60, 60, 70],
+      widths: isInterState
+        ? [24, '*', 46, 32, 30, 64, 60, 66]
+        : [24, '*', 44, 32, 30, 64, 54, 54, 64],
       body: [
-        [
-          headCell('S.NO.'),
-          headCell('ITEMS'),
-          headCell('QTY.'),
-          headCell('RATE'),
-          headCell('TAX'),
-          headCell('AMOUNT'),
-        ],
+        isInterState
+          ? [
+              headCell('#'),
+              headCell('Description', 'left'),
+              headCell('HSN/SAC'),
+              headCell('Qty'),
+              headCell('GST%'),
+              headCell('Taxable', 'right'),
+              headCell('IGST', 'right'),
+              headCell('Total', 'right'),
+            ]
+          : [
+              headCell('#'),
+              headCell('Description', 'left'),
+              headCell('HSN/SAC'),
+              headCell('Qty'),
+              headCell('GST%'),
+              headCell('Taxable', 'right'),
+              headCell('CGST', 'right'),
+              headCell('SGST', 'right'),
+              headCell('Total', 'right'),
+            ],
         ...itemRows,
-        [
-          { text: '', fillColor: HEAD_FILL },
-          {
-            text: 'TOTAL',
-            bold: true,
-            fontSize: 10.5,
-            alignment: 'right',
-            fillColor: HEAD_FILL,
-          },
-          {
-            text: String(totalQty),
-            bold: true,
-            alignment: 'center',
-            fillColor: HEAD_FILL,
-          },
-          { text: '', fillColor: HEAD_FILL },
-          {
-            text: rs(totalTax),
-            bold: true,
-            fontSize: 10.5,
-            alignment: 'right',
-            fillColor: HEAD_FILL,
-          },
-          {
-            text: rs(doc.grandTotal),
-            bold: true,
-            fontSize: 10.5,
-            alignment: 'right',
-            fillColor: HEAD_FILL,
-          },
-        ],
       ],
     },
-    layout: grid(5, 4),
+    layout: itemGrid,
   };
 
-  const hsn = em(doc.items[0]?.hsn_sac);
-  const gstHead = (text: string, extra?: Record<string, unknown>) => ({
-    text,
-    bold: true,
-    fontSize: 9.5,
-    alignment: 'center',
-    fillColor: HEAD_FILL,
-    ...(extra || {}),
-  });
-  const gstCell = (text: string) => ({
-    text,
-    bold: true,
-    fontSize: 9.5,
-    alignment: 'center',
-  });
+  const totRow = (label: string, value: string) => [
+    { text: label, fontSize: 11, color: MUTED },
+    { text: value, bold: true, fontSize: 11, color: DARK, alignment: 'right' },
+  ];
+  const totalsRows: unknown[][] = [
+    totRow('Sub Total', rs(doc.subtotal)),
+  ];
+  if (isInterState) {
+    totalsRows.push(
+      totRow(`IGST (${Number(doc.items[0]?.tax_rate || 0)}%)`, rs(doc.igst)),
+    );
+  } else {
+    totalsRows.push(totRow('CGST', rs(doc.cgst)));
+    totalsRows.push(totRow('SGST', rs(doc.sgst)));
+  }
+  if (doc.roundOff) totalsRows.push(totRow('Round Off', rs(doc.roundOff)));
 
-  const gstBox = {
-    table: isInterState
-      ? {
-          widths: ['14%', '24%', '12%', '20%', '30%'],
-          body: [
-            [
-              gstHead('HSN/SAC'),
-              gstHead('Taxable Value'),
-              gstHead('IGST Rate'),
-              gstHead('IGST Amount'),
-              gstHead('Total Tax Amount'),
-            ],
-            [
-              gstCell(hsn),
-              gstCell(rs(doc.taxableAmount)),
-              gstCell(`${firstTaxRate}%`),
-              gstCell(rs(doc.igst)),
-              gstCell(rs(totalTax)),
-            ],
-          ],
-        }
-      : {
-          widths: ['14%', '24%', '9%', '15%', '9%', '15%', '14%'],
-          body: [
-            [
-              gstHead('HSN/SAC', { rowSpan: 2 }),
-              gstHead('Taxable Value', { rowSpan: 2 }),
-              gstHead('CGST', { colSpan: 2 }),
-              {},
-              gstHead('SGST', { colSpan: 2 }),
-              {},
-              gstHead('Total Tax Amount', { rowSpan: 2 }),
-            ],
-            [
-              '',
-              '',
-              gstHead('Rate'),
-              gstHead('Amount'),
-              gstHead('Rate'),
-              gstHead('Amount'),
-              '',
-            ],
-            [
-              gstCell(hsn),
-              gstCell(rs(doc.taxableAmount)),
-              gstCell(`${halfRate}%`),
-              gstCell(rs(doc.cgst)),
-              gstCell(`${halfRate}%`),
-              gstCell(rs(doc.sgst)),
-              gstCell(rs(totalTax)),
-            ],
-          ],
-        },
-    layout: grid(6, 4),
-  };
-
-  const wordsBox = {
+  const bankCard = {
     table: {
       widths: ['*'],
       body: [
         [
-          {
-            stack: [
-              {
-                text: 'Total Amount (in words)',
-                bold: true,
-                fontSize: 9,
-                margin: [0, 0, 0, 2],
-              },
-              { text: totalAmountWords, fontSize: 10 },
-            ],
-            margin: [5, 5, 5, 5],
-          },
+          cardCell([
+            cardHeading('Bank Details'),
+            fieldLine('Bank Name', `${bankName}, ${branchName}`, 10),
+            fieldLine('Account Name', accountName, 10),
+            fieldLine('Account No', accountNo, 10),
+            fieldLine('IFSC Code', ifsc, 10),
+          ]),
         ],
       ],
     },
-    layout: box(true),
+    layout: cardBox(CARD_BORDER),
   };
 
-  // Box 3 of Row 7: stamp block, vertically cleared and centered
-  // above the Authorised Signatory rule.
+  const termsItems = (
+    doc.terms ||
+    `Payment 100% Advance.
+All payments to be drawn in favour of "${businessName}", payable at Barabanki.
+This quotation is valid for 15 Days, subject to availability with our principals.
+ALL SUBJECT TO BARABANKI JURISDICTION.
+(E. & O.E.)`
+  )
+    .split('\n')
+    .map((t) => t.trim())
+    .filter(Boolean);
+
   const signatureStack = {
     stack: [
-      { text: '', margin: [0, 12, 0, 0] },
+      { text: '', margin: [0, 6, 0, 0] },
       signatureUrl
         ? {
             image: signatureUrl,
-            width: 150,
+            fit: [150, 65],
             alignment: 'center',
             margin: [0, 4, 0, 4],
           }
@@ -1517,7 +980,7 @@ export function buildOmVectorDoc(business: any, doc: PrintableDocData): unknown 
             x2: 150,
             y2: 0,
             lineWidth: 1,
-            lineColor: INK,
+            lineColor: DARK,
           },
         ],
         alignment: 'center',
@@ -1528,85 +991,125 @@ export function buildOmVectorDoc(business: any, doc: PrintableDocData): unknown 
         bold: true,
         fontSize: 9,
         alignment: 'center',
+        color: DARK,
       },
     ],
     alignment: 'center',
   };
 
-  const bottomBox = {
-    table: {
-      widths: ['35%', '35%', '30%'],
-      body: [
-        [
-          {
-            stack: [
-              {
-                text: 'Bank Details',
-                bold: true,
-                fontSize: 10,
-                margin: [0, 0, 0, 5],
-              },
-              infoLine('Name', accountName),
-              infoLine('IFSC Code', ifsc),
-              infoLine('Account No', accountNo),
-              infoLine('Bank', `${bankName}, ${branchName}`),
-            ],
-            margin: [6, 6, 6, 6],
-          },
-          {
-            stack: [
-              {
-                text: 'Terms and Conditions',
-                bold: true,
-                fontSize: 10,
-                margin: [0, 0, 0, 5],
-              },
-              {
-                text:
-                  doc.terms ||
-                  `Payment 100% Advance.\nAll payments to be drawn in favour of "${businessName}", payable at Barabanki.\nThis quotation is valid for 15 Days, subject to availability with our principals.\nALL SUBJECT TO BARABANKI JURISDICTION.\n(E. & O.E.)`,
-                fontSize: 9,
-                lineHeight: 1.35,
-              },
-            ],
-            margin: [6, 6, 6, 6],
-          },
-          {
-            stack: [signatureStack],
-            margin: [6, 6, 6, 6],
-          },
-        ],
-      ],
-    },
-    layout: box(false),
-  };
-
   return {
     pageSize: 'A4',
-    pageMargins: [23, 23, 23, 23],
+    pageMargins: [28, 28, 28, 28],
     defaultStyle: {
       font: 'Roboto',
       fontSize: 10,
       color: INK,
-      lineHeight: 1.25,
+      lineHeight: 1.5,
     },
     content: [
       {
         text: title,
         bold: true,
-        fontSize: 15,
+        fontSize: 24,
+        color: ACCENT,
         alignment: 'center',
-        decoration: 'underline',
         margin: [0, 0, 0, 8],
       },
-      companyBox,
-      partyBox,
-      itemsBox,
-      { text: '', margin: [0, SECTION_GAP, 0, 0] },
-      gstBox,
-      { text: '', margin: [0, SECTION_GAP, 0, 0] },
-      wordsBox,
-      bottomBox,
+      {
+        columns: [brandBlock, (
+          {
+            stack: [
+              metaLine(`${title} #:`, em(doc.docNumber)),
+              metaLine(doc.dateLabel || 'Quote Date', em(doc.dateValue)),
+              metaLine(doc.expiryLabel || 'Valid Until', em(doc.expiryValue)),
+            ],
+          }
+        )],
+        columnGap: 12,
+        margin: [0, 0, 0, 8],
+      },
+      {
+        columns: [billedByCard, billedToCard],
+        columnGap: 8,
+        margin: [0, 0, 0, 6],
+      },
+      { stack: [supplyBar], margin: [0, 0, 0, 8] },
+      { stack: [itemsTable], margin: [0, 0, 0, 8] },
+      {
+        columns: [
+          {
+            stack: [
+              bankCard,
+              {
+                text: 'Terms & Conditions',
+                bold: true,
+                fontSize: 11.5,
+                color: ACCENT,
+                margin: [0, 2, 0, 4],
+              },
+              ...termsItems.map((t) => ({
+                text: [
+                  { text: '•  ', bold: true, color: ACCENT },
+                  { text: String(t), color: INK },
+                ],
+                fontSize: 9.5,
+                margin: [0, 0, 0, 2],
+              })),
+              signatureStack,
+            ],
+          },
+          {
+            stack: [
+              {
+                table: {
+                  widths: ['*', 'auto'],
+                  body: totalsRows,
+                },
+                layout: {
+                  ...noBox,
+                  paddingTop: () => 3,
+                  paddingBottom: () => 3,
+                },
+              },
+              {
+                canvas: [
+                  {
+                    type: 'line',
+                    x1: 0,
+                    y1: 0,
+                    x2: 245,
+                    y2: 0,
+                    lineWidth: 2,
+                    lineColor: ACCENT,
+                  },
+                ],
+                margin: [0, 4, 0, 6],
+              },
+              {
+                columns: [
+                  { text: 'Grand Total', bold: true, fontSize: 12, color: DARK },
+                  {
+                    text: rs(doc.grandTotal),
+                    bold: true,
+                    fontSize: 15,
+                    color: DARK,
+                    alignment: 'right',
+                  },
+                ],
+              },
+              {
+                text: totalAmountWords,
+                italics: true,
+                fontSize: 10,
+                color: MUTED,
+                alignment: 'right',
+                margin: [0, 4, 0, 0],
+              },
+            ],
+          },
+        ],
+        columnGap: 14,
+      },
     ],
   };
 }
@@ -1615,7 +1118,17 @@ export async function renderDocSheetToPdfBlob(
   business: any,
   doc: PrintableDocData,
 ): Promise<Blob> {
-  const docDefinition = buildOmVectorDoc(business, doc);
+  // Resolve uploaded artwork first (verified loadable, else vector fallback).
+  const [logoUrl, signatureUrl] = await Promise.all([
+    loadableImageUrl(
+      headerImageUrl(business?.stamp_url) ?? headerImageUrl(business?.logo_url),
+    ),
+    loadableImageUrl(headerImageUrl(business?.signature_url)),
+  ]);
+  const docDefinition = buildOmVectorDoc(business, doc, {
+    logoUrl,
+    signatureUrl,
+  });
   const pdfMake = await loadPdfMake();
   const blob: Blob = await new Promise<Blob>((resolve, reject) => {
     try {
