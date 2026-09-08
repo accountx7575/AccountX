@@ -943,10 +943,127 @@ async function loadPdfMake(): Promise<PdfMakeApi> {
   return api;
 }
 
-/** PNG/JPEG data URLs only — SVG artwork stays out of the vector build. */
+/** PNG/JPEG data URLs only — SVG artwork is redrawn as vectors below. */
 function rasterImageUrl(url: unknown): string | null {
   if (typeof url !== 'string' || !url) return null;
   return /^data:image\/(png|jpe?g);/i.test(url) ? url : null;
+}
+
+/**
+ * Fallback Solar Home mark redrawn with native pdfmake canvas vectors
+ * (sun + roof + body + panel lines + ground arc + wordmark), so the
+ * header logo is never blank and stays crisp at any zoom.
+ */
+function solarHomeVectorLogo() {
+  const s = 0.64;
+  const X = (x: number) => Math.round(x * s * 100) / 100;
+  const pts = (list: Array<[number, number]>) =>
+    list.map(([x, y]) => ({ x: X(x), y: X(y) }));
+  // Ground arc: quadratic (22,55) C(55,70) (88,55), sampled to segments.
+  const arc: Array<{ x: number; y: number }> = [];
+  for (let i = 0; i <= 12; i += 1) {
+    const t = i / 12;
+    const a = (1 - t) * (1 - t);
+    const b = 2 * (1 - t) * t;
+    const c = t * t;
+    arc.push({
+      x: X(a * 22 + b * 55 + c * 88),
+      y: X(a * 55 + b * 70 + c * 55),
+    });
+  }
+  return {
+    stack: [
+      {
+        canvas: [
+          {
+            type: 'ellipse',
+            x: X(55),
+            y: X(30),
+            r1: X(22),
+            r2: X(22),
+            fillColor: '#F59E0B',
+          },
+          {
+            type: 'polyline',
+            points: pts([
+              [55, 10],
+              [18, 38],
+              [24, 42],
+              [55, 17],
+              [86, 42],
+              [92, 38],
+            ]),
+            closePath: true,
+            lineColor: '#1E3A8A',
+            fillColor: '#1E3A8A',
+          },
+          {
+            type: 'polyline',
+            points: pts([
+              [26, 42],
+              [55, 20],
+              [84, 42],
+              [78, 58],
+              [32, 58],
+            ]),
+            closePath: true,
+            lineColor: '#0284C7',
+            fillColor: '#0284C7',
+          },
+          {
+            type: 'line',
+            x1: X(55),
+            y1: X(20),
+            x2: X(55),
+            y2: X(58),
+            lineWidth: 1.5,
+            lineColor: '#FFFFFF',
+          },
+          {
+            type: 'line',
+            x1: X(38),
+            y1: X(32),
+            x2: X(72),
+            y2: X(32),
+            lineWidth: 1,
+            lineColor: '#FFFFFF',
+          },
+          {
+            type: 'line',
+            x1: X(34),
+            y1: X(44),
+            x2: X(76),
+            y2: X(44),
+            lineWidth: 1,
+            lineColor: '#FFFFFF',
+          },
+          {
+            type: 'polyline',
+            points: arc,
+            lineWidth: 2.5,
+            lineColor: '#16A34A',
+            lineCap: 'round',
+          },
+        ],
+      },
+      {
+        text: 'SOLAR HOME',
+        bold: true,
+        fontSize: 7,
+        alignment: 'center',
+        color: '#0F172A',
+        margin: [0, 2, 0, 0],
+      },
+      {
+        text: 'RENEWABLE ENERGY',
+        bold: true,
+        fontSize: 4.5,
+        alignment: 'center',
+        color: '#475569',
+      },
+    ],
+    width: 70,
+  };
 }
 
 /**
@@ -1113,12 +1230,15 @@ export function buildOmVectorDoc(business: any, doc: PrintableDocData): unknown 
         [
           {
             stack: [
-              logoUrl
-                ? {
-                    columns: [{ image: logoUrl, width: 70 }, companyInfo],
-                    columnGap: 9,
-                  }
-                : companyInfo,
+              {
+                columns: [
+                  logoUrl
+                    ? { image: logoUrl, width: 70 }
+                    : solarHomeVectorLogo(),
+                  companyInfo,
+                ],
+                columnGap: 9,
+              },
             ],
             margin: [7, 7, 7, 7],
           },
@@ -1356,8 +1476,11 @@ export function buildOmVectorDoc(business: any, doc: PrintableDocData): unknown 
     layout: box(true),
   };
 
+  // Box 3 of Row 7: stamp block, vertically cleared and centered
+  // above the Authorised Signatory rule.
   const signatureStack = {
     stack: [
+      { text: '', margin: [0, 12, 0, 0] },
       signatureUrl
         ? {
             image: signatureUrl,
@@ -1398,7 +1521,7 @@ export function buildOmVectorDoc(business: any, doc: PrintableDocData): unknown 
           },
         ],
         alignment: 'center',
-        margin: [0, 6, 0, 3],
+        margin: [0, 8, 0, 3],
       },
       {
         text: 'Authorised Signatory',
@@ -1407,6 +1530,7 @@ export function buildOmVectorDoc(business: any, doc: PrintableDocData): unknown 
         alignment: 'center',
       },
     ],
+    alignment: 'center',
   };
 
   const bottomBox = {
