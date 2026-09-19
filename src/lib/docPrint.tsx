@@ -176,10 +176,9 @@ export function generateOmStyleHtml(
         0,
         Number(item.total_amount || 0) - taxable,
       );
-      const half = taxAmount / 2;
       const taxCells = isInterState
         ? `<td class="num">₹ ${money(taxAmount)}</td>`
-        : `<td class="num">₹ ${money(half)}</td><td class="num">₹ ${money(half)}</td>`;
+        : '';
       return `
           <tr class="${index % 2 === 1 ? 'alt' : ''}">
             <td class="ctr">${index + 1}</td>
@@ -225,15 +224,15 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
   html, body { margin: 0; padding: 0; background: #fff; color: #1e293b; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5px; line-height: 1.5; }
   .doc { width: 100%; max-width: 190mm; margin: 0 auto; }
-  .doc-title { text-align: center; color: #ea580c; font-size: 26px; font-weight: 800; letter-spacing: 1.5px; margin: 0 0 6mm; text-transform: uppercase; }
+  .doc-title { text-align: center; color: #ea580c; font-size: 26px; font-weight: 800; letter-spacing: 1.5px; margin: 0 0 2.5mm; text-transform: uppercase; }
+  .doc-rule { width: 32mm; height: 1mm; background: #ea580c; border-radius: 1mm; margin: 0 auto 6mm; }
   .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6mm; margin-bottom: 6mm; }
   .brand { display: flex; align-items: center; gap: 4mm; }
   .brand img { max-width: 95px; max-height: 75px; object-fit: contain; }
-  .brand-name { font-size: 16px; font-weight: 800; color: #0f172a; }
   .meta { text-align: right; font-size: 11px; line-height: 1.8; white-space: nowrap; }
   .meta .k { color: #64748b; }
   .meta .v { font-weight: 800; color: #0f172a; }
-  .cards { display: flex; gap: 4mm; margin-bottom: 5mm; }
+  .cards { display: flex; gap: 4mm; margin-bottom: 5mm; align-items: stretch; }
   .card { flex: 1; background: #fff7ed; border: 0; border-radius: 3mm; padding: 4mm; }
   .card h3 { margin: 0 0 2mm; font-size: 11.5px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: #ea580c; }
   .card p { margin: 1px 0; font-size: 10.5px; }
@@ -270,11 +269,11 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
 <body>
 <div class="doc">
   <h1 class="doc-title">${esc(title)}</h1>
+  <div class="doc-rule"></div>
 
   <div class="top">
     <div class="brand">
       <img src="${dynamicLogo}" alt="Company Logo" />
-      <div class="brand-name">${esc(businessName)}</div>
     </div>
     <div class="meta">
       <div><span class="k">${esc(doc.docTitle || 'QUOTATION')} #:</span> <span class="v">${esc(doc.docNumber)}</span></div>
@@ -313,7 +312,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
         <th>Qty</th>
         <th>GST%</th>
         <th style="text-align: right;">Taxable</th>
-        ${isInterState ? '<th style="text-align: right;">IGST</th>' : '<th style="text-align: right;">CGST</th><th style="text-align: right;">SGST</th>'}
+        ${isInterState ? '<th style="text-align: right;">IGST</th>' : ''}
         <th style="text-align: right;">Total</th>
       </tr>
     </thead>
@@ -696,19 +695,10 @@ export function buildOmVectorDoc(
     alignment,
   });
 
-  const brandBlock = {
-    columns: [
-      logoUrl
-        ? { image: logoUrl, fit: [71, 56] }
-        : solarHomeVectorLogo(),
-      {
-        stack: [
-          { text: businessName, bold: true, fontSize: 16, color: DARK },
-        ],
-      },
-    ],
-    columnGap: 10,
-  };
+  // Logo only — company details already live in Billed By.
+  const brandBlock = logoUrl
+    ? { image: logoUrl, fit: [71, 56] }
+    : solarHomeVectorLogo();
 
   const metaLine = (label: string, value: string) => ({
     text: [
@@ -720,30 +710,20 @@ export function buildOmVectorDoc(
     lineHeight: 1.6,
   });
 
-  const billedByCard = {
-    table: {
-      widths: ['*'],
-      body: [
-        [
-          cardCell([
-            cardHeading('Billed By'),
-            {
-              text: businessName,
-              bold: true,
-              fontSize: 12,
-              color: DARK,
-              margin: [0, 0, 0, 2],
-            },
-            { text: businessAddress, fontSize: 10.5 },
-            fieldLine('GSTIN', gstin),
-            fieldLine('PAN', pan),
-            fieldLine('Phone', phone),
-          ]),
-        ],
-      ],
+  const billedByLines: unknown[] = [
+    cardHeading('Billed By'),
+    {
+      text: businessName,
+      bold: true,
+      fontSize: 12,
+      color: DARK,
+      margin: [0, 0, 0, 2],
     },
-    layout: cardPad,
-  };
+    { text: businessAddress, fontSize: 10.5 },
+    fieldLine('GSTIN', gstin),
+    fieldLine('PAN', pan),
+    fieldLine('Phone', phone),
+  ];
 
   const billedToLines: unknown[] = [
     cardHeading(
@@ -775,9 +755,21 @@ export function buildOmVectorDoc(
       ),
     );
 
-  const billedToCard = {
-    table: { widths: ['*'], body: [[cardCell(billedToLines)]] },
-    layout: cardPad,
+  // One shared row: both cells stretch to the same height and each
+  // cell's peach fill covers its full (equal) height.
+  const partyCards = {
+    table: {
+      widths: ['*', 8, '*'],
+      body: [
+        [
+          { ...cardCell(billedByLines), margin: [7, 7, 7, 7] },
+          '',
+          { ...cardCell(billedToLines), margin: [7, 7, 7, 7] },
+        ],
+      ],
+    },
+    layout: noBox,
+    margin: [0, 0, 0, 6],
   };
 
   const bodyCell = (text: string, alignment: string, alt: boolean) => ({
@@ -810,10 +802,7 @@ export function buildOmVectorDoc(
     ];
     const taxCells = isInterState
       ? [bodyCell(rs(taxAmount), 'right', alt)]
-      : [
-          bodyCell(rs(taxAmount / 2), 'right', alt),
-          bodyCell(rs(taxAmount / 2), 'right', alt),
-        ];
+      : [];
     return [
       ...base,
       ...taxCells,
@@ -831,7 +820,7 @@ export function buildOmVectorDoc(
     table: {
       widths: isInterState
         ? [20, '*', 36, 30, 22, 60, 60, 64]
-        : [18, '*', 34, 30, 22, 60, 54, 54, 62],
+        : [20, '*', 36, 32, 24, 62, 66],
       body: [
         isInterState
           ? [
@@ -851,8 +840,6 @@ export function buildOmVectorDoc(
               headCell('Qty'),
               headCell('GST%'),
               headCell('Taxable', 'right'),
-              headCell('CGST', 'right'),
-              headCell('SGST', 'right'),
               headCell('Total', 'right'),
             ],
         ...itemRows,
@@ -980,7 +967,22 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
         fontSize: 24,
         color: ACCENT,
         alignment: 'center',
-        margin: [0, 0, 0, 6],
+        margin: [0, 0, 0, 2],
+      },
+      {
+        canvas: [
+          {
+            type: 'line',
+            x1: 0,
+            y1: 0,
+            x2: 120,
+            y2: 0,
+            lineWidth: 2.5,
+            lineColor: ACCENT,
+          },
+        ],
+        alignment: 'center',
+        margin: [0, 0, 0, 8],
       },
       {
         columns: [brandBlock, (
@@ -995,11 +997,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
         columnGap: 12,
         margin: [0, 0, 0, 6],
       },
-      {
-        columns: [billedByCard, billedToCard],
-        columnGap: 8,
-        margin: [0, 0, 0, 6],
-      },
+      partyCards,
       { stack: [itemsTable], margin: [0, 0, 0, 6] },
       {
         columns: [
