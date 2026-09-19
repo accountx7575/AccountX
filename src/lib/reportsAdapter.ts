@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+﻿import { supabase } from '@/lib/supabase';
 import type { LucideIcon } from 'lucide-react';
 import {
   BarChart3,
@@ -16,6 +16,7 @@ import {
   ScrollText,
   Receipt,
   Boxes,
+  TrendingUp,
 } from 'lucide-react';
 
 /* ============================================================================
@@ -588,7 +589,8 @@ export type ReportFamilyId =
   | 'gstr-1'
   | 'gstr-3b'
   | 'expense-report'
-  | 'stock-report';
+  | 'stock-report'
+  | 'cash-flow-statement';
 
 export interface ReportFamilyMeta {
   id: ReportFamilyId;
@@ -762,6 +764,16 @@ export const REPORT_REGISTRY: ReportFamilyMeta[] = [
     route: '/app/reports/stock-report',
     status: 'available',
     binding: 'get_stock_valuation / stock_movements',
+  },
+  {
+    id: 'cash-flow-statement',
+    title: 'Cash Flow Statement',
+    description: 'Indirect-method statement: net profit plus adjustments, split into Operating / Investing / Financing from posted Cash & Bank journals. The daily Money in/out grid lives under Cash Flow.',
+    icon: TrendingUp,
+    accent: 'cash',
+    route: '/app/reports/cash-flow-statement',
+    status: 'available',
+    binding: "journal lines @ group 'Cash & Bank' (counterpart-classified)",
   },
 ];
 
@@ -1210,4 +1222,199 @@ export async function fetchCashBankMovements(q: ReportQuery): Promise<CashBankMo
     { opening: 0, inflow: 0, outflow: 0, closing: 0 },
   );
   return { kind: 'cash-bank', rows, totals };
+}
+
+/* --------------------- Cash Flow Statement (indirect, O/I/F) -------------- */
+/* Frontend-only family over the SAME Cash & Bank ledger-truth as the
+ * cash-bank movements report (posted journal_entry_lines whose account sits
+ * in group 'Cash & Bank'). The existing 'cash-flow' daily grid
+ * (v_cashflow_daily) is left untouched.
+ *
+ * INDIRECT METHOD, reconciling by construction:
+ *  - netIncome = P&L 'Net Profit' for the period (best-effort via the
+ *    existing get_profit_and_loss RPC; null when unreachable — the section
+ *    cash totals below still reconcile on their own).
+ *  - Every cash-touching posted entry is classified by its NON-CASH
+ *    counterpart groups (deterministic CASE, same rules as migration 043 but
+ *    applied to the correct side):
+ *      Fixed Assets                            -> investing
+ *      Long-term Liabilities, Capital Account  -> financing
+ *      everything else (incl. unknown groups)  -> operating  [fallback]
+ *    Priority is investing > financing > operating when an entry mixes
+ *    natures. Cash-to-cash transfers (no non-cash counterpart) stay in
+ *    operating under 'Cash & Bank transfer' so the sections always sum to
+ *    the period net change in cash.
+ *  - Attribution: an entry's cash-side net (debit − credit, positive =
+ *    money in) is attributed to its largest-absolute non-cash counterpart
+ *    ledger, then aggregated per ledger. SUM(operating+investing+financing)
+ *    == closing − opening == period cash net, always.
+ *  - View-layer reconciliation: operating adjustments =
+ *    operatingTotal − netIncome (working-capital + non-cash adjustments
+ *    implied by the books, never fabricated line-by-line). */
+
+export type CashFlowStatementSection = 'operating' | 'investing' | 'financing';
+
+export interface CashFlowStatementLine {
+  account_name: string;
+  group_name: string;
+  inflow: number;
+  outflow: number;
+  /** inflow − outflow; positive = money in */
+  net: number;
+  entries: number;
+}
+
+export interface CashFlowStatementReport {
+  kind: 'cash-flow-statement';
+  range: DateRange;
+  /** P&L Net Profit for the period; null when the P&L RPC is unreachable */
+  netIncome: number | null;
+  operating: CashFlowStatementLine[];
+  investing: CashFlowStatementLine[];
+  financing: CashFlowStatementLine[];
+  totals: {
+    operating: number;
+    investing: number;
+    financing: number;
+    /** operating + investing + financing == closing − opening */
+    netChange: number;
+    opening: number;
+    closing: number;
+  };
+  opening: number;
+  closing: number;
+}
+
+/** Pure classifier over counterpart group names (unit-testable, no I/O). */
+export function classifyCashFlowCounterpart(groups: string[]): CashFlowStatementSection {
+  if (groups.includes('Fixed Assets')) return 'investing';
+  if (groups.some((g) => g === 'Long-term Liabilities' || g === 'Capital Account')) return 'financing';
+  return 'operating';
+}
+
+function cfsAdd(
+  bucket: Map<string, CashFlowStatementLine>,
+  accountName: string,
+  groupName: string,
+  cashNet: number
+): void {
+  const key = `${accountName}::${groupName}`;
+  const cur = bucket.get(key) || { account_name: accountName, group_name: groupName, inflow: 0, outflow: 0, net: 0, entries: 0 };
+  if (cashNet >= 0) cur.inflow = r2(cur.inflow + cashNet);
+  else cur.outflow = r2(cur.outflow - cashNet);
+  cur.net = r2(cur.net + cashNet);
+  cur.entries += 1;
+  bucket.set(key, cur);
+}
+
+export async function fetchCashFlowStatement(q: ReportQuery): Promise<CashFlowStatementReport> {
+  // 1. Cash-side lines in the period + opening balance (same predicate as
+  //    fetchCashBankMovements: posted entries, Cash & Bank group).
+  const base = () =>
+    supabase
+      .from('journal_entry_lines')
+      .select('entry_id, debit_amount, credit_amount, account_name, entry:journal_entries!inner(date, status), accounts!inner(group_name)')
+      .eq('accounts.group_name', 'Cash & Bank');
+
+  const periodSel = await base()
+    .eq('journal_entries.business_id', q.businessId)
+    .eq('entry.status', 'posted')
+    .gte('journal_entries.date', q.range.from)
+    .lte('journal_entries.date', q.range.to);
+  if (periodSel.error) throw new Error(periodSel.error.message);
+
+  const openSel = await base()
+    .eq('journal_entries.business_id', q.businessId)
+    .eq('entry.status', 'posted')
+    .lt('journal_entries.date', q.range.from);
+  if (openSel.error) throw new Error(openSel.error.message);
+
+  type CashLine = { entry_id: string; debit_amount: number | null; credit_amount: number | null; account_name: string | null };
+  const periodLines = (periodSel.data as unknown as CashLine[]) || [];
+  const opening = r2(
+    ((openSel.data as unknown as CashLine[]) || []).reduce(
+      (s, l) => s + Number(l.debit_amount || 0) - Number(l.credit_amount || 0), 0
+    )
+  );
+
+  // 2. Counterpart lines for every cash-touching entry (chunked .in()).
+  const entryIds = [...new Set(periodLines.map((l) => l.entry_id).filter(Boolean))];
+  type FullLine = { entry_id: string; debit_amount: number | null; credit_amount: number | null; account_name: string | null; accounts: { group_name: string } | { group_name: string }[] | null };
+  const byEntry = new Map<string, FullLine[]>();
+  const CHUNK = 400;
+  for (let i = 0; i < entryIds.length; i += CHUNK) {
+    const chunk = entryIds.slice(i, i + CHUNK);
+    const { data, error } = await supabase
+      .from('journal_entry_lines')
+      .select('entry_id, debit_amount, credit_amount, account_name, entry:journal_entries!inner(business_id, status), accounts!inner(group_name)')
+      .eq('entry.business_id', q.businessId)
+      .eq('entry.status', 'posted')
+      .in('entry_id', chunk);
+    if (error) throw new Error(error.message);
+    for (const l of (data as unknown as FullLine[]) || []) {
+      const arr = byEntry.get(l.entry_id) || [];
+      arr.push(l);
+      byEntry.set(l.entry_id, arr);
+    }
+  }
+  const groupOf = (l: FullLine): string =>
+    Array.isArray(l.accounts) ? l.accounts[0]?.group_name ?? '' : l.accounts?.group_name ?? '';
+
+  // 3. Classify each entry, attribute its cash net to the primary counterpart.
+  const buckets: Record<CashFlowStatementSection, Map<string, CashFlowStatementLine>> = {
+    operating: new Map(), investing: new Map(), financing: new Map(),
+  };
+  for (const [entryId, lines] of byEntry) {
+    const cashNet = r2(
+      lines.filter((l) => groupOf(l) === 'Cash & Bank').reduce(
+        (s, l) => s + Number(l.debit_amount || 0) - Number(l.credit_amount || 0), 0
+      )
+    );
+    if (!cashNet && !lines.some((l) => groupOf(l) === 'Cash & Bank')) continue;
+    void entryId;
+    const counterparts = lines.filter((l) => groupOf(l) !== 'Cash & Bank');
+    if (counterparts.length === 0) {
+      cfsAdd(buckets.operating, 'Cash & Bank transfer', 'Cash & Bank', cashNet);
+      continue;
+    }
+    const section = classifyCashFlowCounterpart(counterparts.map(groupOf));
+    const primary = [...counterparts].sort(
+      (a, b) => Math.abs(Number(b.debit_amount || 0) + Number(b.credit_amount || 0)) - Math.abs(Number(a.debit_amount || 0) + Number(a.credit_amount || 0))
+    )[0];
+    cfsAdd(buckets[section], primary.account_name || 'Unnamed', groupOf(primary) || 'Unclassified', cashNet);
+  }
+
+  const toSorted = (m: Map<string, CashFlowStatementLine>): CashFlowStatementLine[] =>
+    [...m.values()].sort((a, b) => a.account_name.localeCompare(b.account_name));
+  const operating = toSorted(buckets.operating);
+  const investing = toSorted(buckets.investing);
+  const financing = toSorted(buckets.financing);
+  const sum = (ls: CashFlowStatementLine[]): number => r2(ls.reduce((s, l) => s + l.net, 0));
+  const tOperating = sum(operating);
+  const tInvesting = sum(investing);
+  const tFinancing = sum(financing);
+  const netChange = r2(tOperating + tInvesting + tFinancing);
+  const closing = r2(opening + netChange);
+
+  // 4. Net income memo (best-effort; never blocks the statement).
+  let netIncome: number | null = null;
+  try {
+    const pl = await fetchProfitLoss(q);
+    const np = pl.rows.find((r) => r.section === 'Summary' && r.group_name === 'Net Profit');
+    if (np) netIncome = r2(np.amount);
+  } catch {
+    netIncome = null;
+  }
+
+  return {
+    kind: 'cash-flow-statement',
+    range: q.range,
+    netIncome,
+    operating,
+    investing,
+    financing,
+    totals: { operating: tOperating, investing: tInvesting, financing: tFinancing, netChange, opening, closing },
+    opening,
+    closing,
+  };
 }

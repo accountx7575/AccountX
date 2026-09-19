@@ -35,6 +35,7 @@ import {
   fetchReceivablesDetail,
   fetchPayablesDetail,
   fetchCashBankMovements,
+  fetchCashFlowStatement,
   fetchExpenseReport,
   fetchStockReport,
   type OutstandingRow,
@@ -117,6 +118,7 @@ type ReportData =
   | Awaited<ReturnType<typeof fetchReceivablesDetail>>
 | Awaited<ReturnType<typeof fetchPayablesDetail>>
 | Awaited<ReturnType<typeof fetchCashBankMovements>>
+| Awaited<ReturnType<typeof fetchCashFlowStatement>>
 | Awaited<ReturnType<typeof fetchGstr1>>
 | Awaited<ReturnType<typeof fetchGstr3b>>
 | Awaited<ReturnType<typeof fetchExpenseReport>>
@@ -302,6 +304,96 @@ function CashFlowView({ data }: { data: Extract<ReportData, { kind: 'cash-flow' 
         </tr>
       </tfoot>
     </table>
+  );
+}
+
+function CashFlowStatementView({ data }: { data: Extract<ReportData, { kind: 'cash-flow-statement' }> }) {
+  const t = data.totals;
+  const adjustments = data.netIncome != null ? t.operating - data.netIncome : null;
+  const section = (
+    title: string,
+    hint: string,
+    lines: { account_name: string; group_name: string; inflow: number; outflow: number; net: number; entries: number }[],
+    total: number
+  ) => (
+    <Fragment key={title}>
+      <BandRow label={`${title} — ${hint}`} colSpan={4} />
+      {lines.length === 0 ? (
+        <tr>
+          <td colSpan={4} className="px-3 py-2 pl-6 text-xs text-secondary-400">
+            No {title.toLowerCase()} cash movements in this period.
+          </td>
+        </tr>
+      ) : (
+        lines.map((l) => (
+          <tr key={`${l.account_name}::${l.group_name}`} className="break-inside-avoid">
+            <td className="px-3 py-1.5 pl-6 font-medium text-secondary-900 dark:text-secondary-100">{l.account_name}</td>
+            <td className="px-3 py-1.5 text-xs text-secondary-500 dark:text-secondary-400">{l.group_name}</td>
+            <TdNum className="text-emerald-600 dark:text-emerald-400">{l.inflow ? formatCurrency(l.inflow) : '—'}</TdNum>
+            <TdNum>{formatCurrency(l.net)}</TdNum>
+          </tr>
+        ))
+      )}
+      <tr className="border-t border-secondary-200 dark:border-secondary-700">
+        <td className="px-3 py-1.5 pl-6 text-xs font-semibold uppercase tracking-wide text-secondary-500 dark:text-secondary-400" colSpan={3}>
+          Net cash from {title.toLowerCase()}
+        </td>
+        <TdNum emphasis>{formatCurrency(total)}</TdNum>
+      </tr>
+    </Fragment>
+  );
+  return (
+    <div>
+      <p className="text-xs text-secondary-500 dark:text-secondary-400 mb-4 print:hidden">
+        Indirect method over posted Cash &amp; Bank journals: starts from net profit, classifies each entry by its
+        non-cash counterpart (Fixed Assets → investing; Long-term Liabilities / Capital → financing; everything else →
+        operating). Sections always sum to the period change in cash. The daily Money in/out grid lives under Cash Flow.
+      </p>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-4 pb-4 border-b border-secondary-100 dark:border-secondary-800 text-sm">
+        <span className="text-secondary-500 dark:text-secondary-400">
+          Opening cash:{' '}
+          <span className="figure font-semibold text-secondary-900 dark:text-secondary-100">{formatCurrency(data.opening)}</span>
+        </span>
+        <span className="text-secondary-500 dark:text-secondary-400">
+          Net profit:{' '}
+          <span className="figure font-semibold text-secondary-900 dark:text-secondary-100">
+            {data.netIncome != null ? formatCurrency(data.netIncome) : '—'}
+          </span>
+        </span>
+        {adjustments != null && (
+          <span className="text-secondary-500 dark:text-secondary-400">
+            Operating adjustments:{' '}
+            <span className="figure font-semibold text-secondary-900 dark:text-secondary-100">{formatCurrency(adjustments)}</span>
+            <span className="ml-1 text-xs text-secondary-400">(operating − net profit)</span>
+          </span>
+        )}
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr>
+            <Th>Particulars</Th>
+            <Th>Counterpart group</Th>
+            <Th right>Cash in</Th>
+            <Th right>Net</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {section('Operating', 'day-to-day business', data.operating, t.operating)}
+          {section('Investing', 'fixed assets', data.investing, t.investing)}
+          {section('Financing', 'loans & capital', data.financing, t.financing)}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-secondary-300 dark:border-secondary-600 font-semibold">
+            <td className="px-3 py-2" colSpan={3}>Net change in cash</td>
+            <TdNum emphasis>{formatCurrency(t.netChange)}</TdNum>
+          </tr>
+          <tr className="bg-secondary-50/70 dark:bg-secondary-800/50 font-semibold">
+            <td className="px-3 py-2" colSpan={3}>Closing cash (opening + change)</td>
+            <TdNum emphasis>{formatCurrency(t.closing)}</TdNum>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
   );
 }
 
@@ -713,6 +805,7 @@ const AI_REPORT_IDS = new Set([
   'profit-loss',
   'balance-sheet',
   'cash-flow',
+  'cash-flow-statement',
   'party-ledger',
   'gst-summary',
   'gstr-1',
@@ -772,6 +865,8 @@ export function ReportDetailPage() {
           return fetchBalanceSheet({ businessId: bid, asOf: range.to });
         case 'cash-flow':
           return fetchCashFlow({ businessId: bid, range });
+        case 'cash-flow-statement':
+          return fetchCashFlowStatement({ businessId: bid, range });
         case 'day-book':
           return fetchDayBook({ businessId: bid, range });
         case 'ar-ap-aging':
@@ -826,6 +921,17 @@ export function ReportDetailPage() {
         return [
           ['Date', 'Inflow', 'Outflow'],
           ...d.daily.map((x) => [x.flow_date, x.inflow, x.outflow]),
+        ];
+      case 'cash-flow-statement':
+        return [
+          ['Section', 'Account', 'Counterpart Group', 'Cash In', 'Net'],
+          ['Opening cash balance', '', '', '', d.opening],
+          ...(d.netIncome != null ? [['Net profit (memo, P&L)', '', '', '', d.netIncome] as (string | number)[]] : []),
+          ...d.operating.map((l) => ['Operating', l.account_name, l.group_name, l.inflow, l.net] as (string | number)[]),
+          ...d.investing.map((l) => ['Investing', l.account_name, l.group_name, l.inflow, l.net] as (string | number)[]),
+          ...d.financing.map((l) => ['Financing', l.account_name, l.group_name, l.inflow, l.net] as (string | number)[]),
+          ['TOTAL net change', '', '', '', d.totals.netChange],
+          ['Closing cash balance', '', '', '', d.totals.closing],
         ];
       case 'day-book':
         return [
@@ -912,7 +1018,12 @@ export function ReportDetailPage() {
       ('entries' in report.data && report.data.entries.length > 0) ||
       ('outward' in report.data && (report.data.outward?.doc_count ?? 0) + (report.data.inward?.doc_count ?? 0) > 0) ||
       ('valuation' in report.data &&
-        (report.data.valuation.length > 0 || report.data.movements.length > 0)));
+        (report.data.valuation.length > 0 || report.data.movements.length > 0)) ||
+      ('operating' in report.data &&
+        (report.data.operating.length > 0 ||
+          report.data.investing.length > 0 ||
+          report.data.financing.length > 0 ||
+          report.data.totals.netChange !== 0)));
 
   const handleExport = () => {
     const matrix = buildCsv();
@@ -979,6 +1090,8 @@ export function ReportDetailPage() {
         return <BalanceSheetView data={report.data} />;
       case 'cash-flow':
         return <CashFlowView data={report.data} />;
+      case 'cash-flow-statement':
+        return <CashFlowStatementView data={report.data} />;
       case 'day-book':
         return <DayBookView data={report.data} />;
       case 'ar-ap-aging':

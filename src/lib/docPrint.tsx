@@ -233,14 +233,12 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
   .meta { text-align: right; font-size: 11px; line-height: 1.8; white-space: nowrap; }
   .meta .k { color: #64748b; }
   .meta .v { font-weight: 800; color: #0f172a; }
-  .cards { display: flex; gap: 4mm; margin-bottom: 3mm; }
-  .card { flex: 1; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 3mm; padding: 4mm; }
+  .cards { display: flex; gap: 4mm; margin-bottom: 5mm; }
+  .card { flex: 1; background: #fff7ed; border: 0; border-radius: 3mm; padding: 4mm; }
   .card h3 { margin: 0 0 2mm; font-size: 11.5px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: #ea580c; }
   .card p { margin: 1px 0; font-size: 10.5px; }
   .card .nm { font-size: 12px; font-weight: 800; color: #0f172a; margin-bottom: 1mm; }
   .card .lbl { color: #64748b; font-weight: 700; }
-  .supply-bar { display: flex; gap: 10mm; font-size: 10.5px; margin: 0 0 5mm; padding: 2.5mm 4mm; border: 1px solid #ffedd5; border-radius: 2mm; }
-  .supply-bar .lbl { color: #64748b; font-weight: 700; }
   table.items { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
   .items th { background: #ea580c; color: #fff; font-size: 10.5px; font-weight: 800; padding: 2.5mm 2mm; border: 1px solid #ea580c; }
   .items td { border: 1px solid #fed7aa; padding: 2mm; font-size: 10px; vertical-align: top; }
@@ -300,13 +298,10 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
       <p>${esc(doc.partyAddress || '')}</p>
       ${doc.partyGstin ? `<p><span class="lbl">GSTIN:</span> ${esc(doc.partyGstin)}</p>` : ''}
       ${doc.partyPhone ? `<p><span class="lbl">Phone:</span> ${esc(doc.partyPhone)}</p>` : ''}
+      <p><span class="lbl">Place of Supply:</span> ${esc(doc.partyPlaceOfSupply || state)}</p>
+      <p><span class="lbl">Country of Supply:</span> India</p>
       ${shipName && shipName !== doc.partyName ? `<p><span class="lbl">Ship To:</span> ${esc(shipName)}${shipAddress ? `, ${esc(shipAddress)}` : ''}${shipPhone ? ` (${esc(shipPhone)})` : ''}</p>` : ''}
     </div>
-  </div>
-
-  <div class="supply-bar">
-    <div><span class="lbl">Place of Supply:</span> ${esc(doc.partyPlaceOfSupply || state)}</div>
-    <div><span class="lbl">Country of Supply:</span> India</div>
   </div>
 
   <table class="items">
@@ -769,6 +764,9 @@ export function buildOmVectorDoc(
     billedToLines.push(fieldLine('GSTIN', String(doc.partyGstin)));
   if (doc.partyPhone)
     billedToLines.push(fieldLine('Phone', String(doc.partyPhone)));
+  if (doc.partyPlaceOfSupply || state)
+    billedToLines.push(fieldLine('Place of Supply', em(doc.partyPlaceOfSupply || state)));
+  billedToLines.push(fieldLine('Country of Supply', 'India'));
   if (shipName && shipName !== doc.partyName)
     billedToLines.push(
       fieldLine(
@@ -780,25 +778,6 @@ export function buildOmVectorDoc(
   const billedToCard = {
     table: { widths: ['*'], body: [[cardCell(billedToLines)]] },
     layout: cardPad,
-  };
-
-  const supplyBar = {
-    columns: [
-      {
-        text: [
-          { text: 'Place of Supply: ', bold: true, color: MUTED },
-          { text: em(doc.partyPlaceOfSupply || state), color: INK },
-        ],
-        fontSize: 10.5,
-      },
-      {
-        text: [
-          { text: 'Country of Supply: ', bold: true, color: MUTED },
-          { text: 'India', color: INK },
-        ],
-        fontSize: 10.5,
-      },
-    ],
   };
 
   const bodyCell = (text: string, alignment: string, alt: boolean) => ({
@@ -1021,7 +1000,6 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
         columnGap: 8,
         margin: [0, 0, 0, 6],
       },
-      { stack: [supplyBar], margin: [0, 0, 0, 6] },
       { stack: [itemsTable], margin: [0, 0, 0, 6] },
       {
         columns: [
