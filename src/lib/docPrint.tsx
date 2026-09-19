@@ -224,8 +224,9 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
   html, body { margin: 0; padding: 0; background: #fff; color: #1e293b; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5px; line-height: 1.5; }
   .doc { width: 100%; max-width: 190mm; margin: 0 auto; }
-  .doc-title { text-align: center; color: #ea580c; font-size: 26px; font-weight: 800; letter-spacing: 1.5px; margin: 0 0 1mm; text-transform: uppercase; }
-  .doc-rule { width: 32mm; height: 1mm; background: #ea580c; border-radius: 1mm; margin: 0 auto 6mm; }
+  .doc-title-wrap { text-align: center; margin: 0 0 6mm; }
+  .doc-title { display: inline-block; color: #ea580c; font-size: 26px; font-weight: 800; letter-spacing: 1.5px; margin: 0; text-transform: uppercase; }
+  .doc-rule { width: 100%; height: 1mm; background: #ea580c; border-radius: 1mm; margin: 0.5mm 0 0; }
   .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6mm; margin-bottom: 6mm; }
   .brand { display: flex; align-items: center; gap: 4mm; }
   .brand img { max-width: 95px; max-height: 75px; object-fit: contain; }
@@ -268,8 +269,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
 </head>
 <body>
 <div class="doc">
-  <h1 class="doc-title">${esc(title)}</h1>
-  <div class="doc-rule"></div>
+  <div class="doc-title-wrap"><h1 class="doc-title">${esc(title)}</h1><div class="doc-rule"></div></div>
 
   <div class="top">
     <div class="brand">
@@ -968,22 +968,9 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
         fontSize: 24,
         color: ACCENT,
         alignment: 'center',
-        margin: [0, 0, 0, 0],
-      },
-      {
-        canvas: [
-          {
-            type: 'line',
-            x1: 0,
-            y1: 0,
-            x2: 120,
-            y2: 0,
-            lineWidth: 2.5,
-            lineColor: ACCENT,
-          },
-        ],
-        alignment: 'center',
-        margin: [0, 2, 0, 8],
+        decoration: 'underline',
+        decorationColor: ACCENT,
+        margin: [0, 0, 0, 8],
       },
       {
         columns: [brandBlock, (
