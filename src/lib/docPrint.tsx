@@ -224,7 +224,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
   html, body { margin: 0; padding: 0; background: #fff; color: #1e293b; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5px; line-height: 1.5; }
   .doc { width: 100%; max-width: 190mm; margin: 0 auto; }
-  .doc-title { text-align: center; color: #ea580c; font-size: 26px; font-weight: 800; letter-spacing: 1.5px; margin: 0 0 2.5mm; text-transform: uppercase; }
+  .doc-title { text-align: center; color: #ea580c; font-size: 26px; font-weight: 800; letter-spacing: 1.5px; margin: 0 0 1mm; text-transform: uppercase; }
   .doc-rule { width: 32mm; height: 1mm; background: #ea580c; border-radius: 1mm; margin: 0 auto 6mm; }
   .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6mm; margin-bottom: 6mm; }
   .brand { display: flex; align-items: center; gap: 4mm; }
@@ -240,8 +240,8 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
   .card .lbl { color: #64748b; font-weight: 700; }
   table.items { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
   .items th { background: #ea580c; color: #fff; font-size: 10.5px; font-weight: 800; padding: 2.5mm 2mm; border: 1px solid #ea580c; }
-  .items td { border: 1px solid #fed7aa; padding: 2mm; font-size: 10px; vertical-align: top; }
-  .items tr.alt td { background: #fffaf5; }
+  .items td { border: 0; padding: 2mm; font-size: 10px; vertical-align: top; background: #fffdf9; }
+  .items tr.alt td { background: #fff8f3; }
   .num { text-align: right; white-space: nowrap; }
   .ctr { text-align: center; }
   .bottom { display: flex; gap: 5mm; align-items: flex-start; }
@@ -591,7 +591,8 @@ export function buildOmVectorDoc(
   const INK = '#1E293B';
   const DARK = '#0F172A';
   const MUTED = '#64748B';
-  const ALTROW = '#FFFAF5';
+  const ROW_EVEN = '#FFFDF9';
+  const ROW_ODD = '#FFF8F3';
   const STAMP_BLUE = '#0B4DA2';
   const RUPEE = '₹';
 
@@ -776,7 +777,7 @@ export function buildOmVectorDoc(
     text,
     fontSize: 10,
     alignment,
-    ...(alt ? { fillColor: ALTROW } : {}),
+    fillColor: alt ? ROW_ODD : ROW_EVEN,
   });
 
   const itemRows = doc.items.map((item, index) => {
@@ -790,7 +791,7 @@ export function buildOmVectorDoc(
     );
     const base = [
       bodyCell(String(index + 1), 'center', alt),
-      { text: String(item.product_name || ''), fontSize: 10, ...(alt ? { fillColor: ALTROW } : {}) },
+      { text: String(item.product_name || ''), fontSize: 10, fillColor: alt ? ROW_ODD : ROW_EVEN },
       bodyCell(em(item.hsn_sac) === '—' ? '—' : String(item.hsn_sac), 'center', alt),
       bodyCell(
         `${item.quantity ?? 0} ${item.unit || 'PCS'}`,
@@ -811,7 +812,7 @@ export function buildOmVectorDoc(
         bold: true,
         fontSize: 10,
         alignment: 'right',
-        ...(alt ? { fillColor: ALTROW } : {}),
+        fillColor: alt ? ROW_ODD : ROW_EVEN,
       },
     ];
   });
@@ -967,7 +968,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
         fontSize: 24,
         color: ACCENT,
         alignment: 'center',
-        margin: [0, 0, 0, 2],
+        margin: [0, 0, 0, 0],
       },
       {
         canvas: [
@@ -982,7 +983,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
           },
         ],
         alignment: 'center',
-        margin: [0, 0, 0, 8],
+        margin: [0, 2, 0, 8],
       },
       {
         columns: [brandBlock, (
@@ -1035,18 +1036,22 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
                   paddingBottom: () => 2,
                 },
               },
+              // Full-width rule: single star-width cell, bottom border only —
+              // spans the whole summary block to the margin edge.
               {
-                canvas: [
-                  {
-                    type: 'line',
-                    x1: 0,
-                    y1: 0,
-                    x2: 245,
-                    y2: 0,
-                    lineWidth: 2,
-                    lineColor: ACCENT,
-                  },
-                ],
+                table: {
+                  widths: ['*'],
+                  body: [[{ text: '', fontSize: 2 }]],
+                },
+                layout: {
+                  hLineWidth: (i: number) => (i === 1 ? 2 : 0),
+                  vLineWidth: () => 0,
+                  hLineColor: () => ACCENT,
+                  paddingLeft: () => 0,
+                  paddingRight: () => 0,
+                  paddingTop: () => 0,
+                  paddingBottom: () => 0,
+                },
                 margin: [0, 3, 0, 4],
               },
               {
