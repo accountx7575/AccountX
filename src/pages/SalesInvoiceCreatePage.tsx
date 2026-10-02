@@ -414,7 +414,7 @@ export function SalesInvoiceCreatePage() {
         }
       />
 
-      <div className="w-full max-w-5xl">
+      <div>
         <div className="card p-6 min-w-0">
           <FormSection title="Party & Dates" description="Who you're billing and when payment is due">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
