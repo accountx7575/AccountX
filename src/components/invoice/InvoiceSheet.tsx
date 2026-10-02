@@ -42,11 +42,12 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
   const signatureName = business?.invoice_signature_name?.trim() || null;
 
   return (
-    <div className="bg-white text-secondary-900 rounded-xl border border-secondary-200 shadow-card">
-      {/* Document title — centered warm-orange heading mirroring the quotation template */}
-      <div className="px-6 pt-5 text-center">
+    <>
+      {/* Document title — standalone above the card, mirroring the quotation template */}
+      <div className="pb-3 text-center print:pb-2">
         <h2 className="text-[26px] leading-none font-extrabold uppercase tracking-[1.5px] text-[#ea580c]">Tax Invoice</h2>
       </div>
+      <div className="bg-white text-secondary-900 rounded-xl border border-secondary-200 shadow-card">
       {/* Seller / meta header */}
       <div className="flex flex-col sm:flex-row justify-between gap-4 px-6 py-5 border-b border-secondary-200">
         <div className="min-w-0 flex items-start gap-3">
@@ -131,7 +132,8 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
           <thead>
             <tr className="bg-secondary-50 text-left text-secondary-500 border-b border-secondary-200">
               <th className="px-3 py-2 font-semibold w-8">#</th>
-              <th className="px-3 py-2 font-semibold">Item &amp; HSN/SAC</th>
+              <th className="px-3 py-2 font-semibold">Item / Description</th>
+              <th className="px-3 py-2 font-semibold text-center w-[84px]">HSN / SAC</th>
               <th className="px-3 py-2 font-semibold text-right">Qty</th>
               <th className="px-3 py-2 font-semibold text-right">Rate</th>
               <th className="px-3 py-2 font-semibold text-right">Disc</th>
@@ -147,10 +149,8 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
             {items.map((it, i) => (
               <tr key={it.id} className="border-b border-secondary-100">
                 <td className="px-3 py-2 text-secondary-400">{i + 1}</td>
-                <td className="px-3 py-2">
-                  <p className="font-medium">{it.product_name}</p>
-                  {it.hsn_sac && <p className="text-[10px] text-secondary-400 font-mono">HSN/SAC: {it.hsn_sac}</p>}
-                </td>
+                <td className="px-3 py-2 font-medium">{it.product_name}</td>
+                <td className="px-3 py-2 text-center tabular-nums font-mono w-[84px]">{it.hsn_sac || '—'}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatNumber(Number(it.quantity))} {it.unit}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(Number(it.rate), sym)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{Number(it.discount_amount) > 0 ? formatCurrency(Number(it.discount_amount), sym) : '—'}</td>
@@ -296,6 +296,7 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
           {footerText}
         </p>
       )}
-    </div>
+      </div>
+    </>
   );
 }
