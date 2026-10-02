@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/common/DatePicker';
 import { Input } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
-import { Plus, Trash2, Search, Save, ArrowLeft, Printer, FileText, FileSpreadsheet, Rocket, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, Printer, FileText, FileSpreadsheet, Rocket, Loader2 } from 'lucide-react';
 import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
 import { computeDocLine } from '@/lib/payloads';
 import { InvoiceSheet, type InvoiceWithCustomer } from '@/components/invoice/InvoiceSheet';
@@ -55,8 +55,6 @@ export function SalesInvoiceCreatePage() {
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
-  const [productSearch, setProductSearch] = useState('');
-  const [searchIdx, setSearchIdx] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [quotaModalOpen, setQuotaModalOpen] = useState(false);
   const [maintenanceModalOpen, setMaintenanceModalOpen] = useState(false);
@@ -87,7 +85,7 @@ export function SalesInvoiceCreatePage() {
     saveMutation.mutate(status);
   };
 
-  const productNameRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const rowRefs = useRef<(HTMLSelectElement | null)[]>([]);
 
   const { data: customers } = useQuery({
     queryKey: ['customers', activeBusiness?.id],
@@ -108,14 +106,6 @@ export function SalesInvoiceCreatePage() {
     },
     enabled: !!activeBusiness,
   });
-
-  const filteredProducts = useMemo(() => {
-    if (!products) return [];
-    return products.filter((p) =>
-      p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-      p.sku?.toLowerCase().includes(productSearch.toLowerCase())
-    );
-  }, [products, productSearch]);
 
   const selectedCustomer = useMemo(
     () => customers?.find((c) => c.id === customerId) || null,
@@ -176,23 +166,10 @@ export function SalesInvoiceCreatePage() {
     }));
   };
 
-  const selectProduct = (idx: number, product: Product) => {
-    updateItem(idx, {
-      product_id: product.id,
-      product_name: product.name,
-      hsn_sac: product.hsn_sac || '',
-      unit: product.unit,
-      rate: product.selling_price,
-      tax_rate: product.tax_rate,
-    });
-    setSearchIdx(null);
-    setProductSearch('');
-  };
-
   const addItem = () => {
     setItems((prev) => [...prev, { ...emptyItem }]);
     requestAnimationFrame(() => {
-      productNameRefs.current[items.length]?.focus();
+      rowRefs.current[items.length]?.focus();
     });
   };
   const removeItem = (idx: number) => setItems((prev) => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
@@ -200,28 +177,10 @@ export function SalesInvoiceCreatePage() {
   const handleRowKeyDown = (e: KeyboardEvent, idx: number) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      productNameRefs.current[idx + 1]?.focus();
+      rowRefs.current[idx + 1]?.focus();
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      productNameRefs.current[idx - 1]?.focus();
-    }
-  };
-
-  const handleProductInputKeyDown = (e: KeyboardEvent<HTMLInputElement>, idx: number) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (searchIdx === idx && productSearch && filteredProducts.length > 0) {
-        selectProduct(idx, filteredProducts[0]);
-        requestAnimationFrame(() => {
-          const qtyInput = (productNameRefs.current[idx]?.closest('tr'))?.querySelector<HTMLInputElement>('input[type="number"]');
-          qtyInput?.focus();
-        });
-      }
-    } else if (e.key === 'Escape') {
-      setSearchIdx(null);
-      setProductSearch('');
-    } else {
-      handleRowKeyDown(e, idx);
+      rowRefs.current[idx - 1]?.focus();
     }
   };
 
@@ -443,7 +402,7 @@ export function SalesInvoiceCreatePage() {
 
           <FormSection
             title="Line Items"
-            description="Type to search products · ⌘ picks first match"
+            description="Choose a product — rate, HSN & tax autofill"
             actions={
               <button type="button" onClick={addItem} className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline">
                 <Plus className="h-4 w-4" /> Add Item
@@ -451,76 +410,67 @@ export function SalesInvoiceCreatePage() {
             }
           >
             <div className="overflow-x-auto scrollbar-thin -mx-2">
-              <table className="w-full text-sm min-w-[640px]">
+              <table className="w-full text-sm min-w-[900px]">
                 <thead>
                   <tr className="border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
-                    <th className="text-left px-2 py-2 font-medium w-2/5">Product</th>
-                    <th className="text-right px-2 py-2 font-medium">Qty</th>
-                    <th className="text-right px-2 py-2 font-medium">Rate</th>
-                    <th className="text-right px-2 py-2 font-medium">Disc</th>
-                    <th className="text-left px-2 py-2 font-medium">Tax %</th>
-                    <th className="text-right px-2 py-2 font-medium">Amount</th>
-                    <th className="w-8"></th>
+                    <th className="text-left px-2 py-2 font-medium min-w-[220px]">Product</th>
+                    <th className="text-right px-2 py-2 font-medium w-24">Qty</th>
+                    <th className="text-right px-2 py-2 font-medium w-28">Rate</th>
+                    <th className="text-right px-2 py-2 font-medium w-24">Disc</th>
+                    <th className="text-left px-2 py-2 font-medium w-24">Tax %</th>
+                    <th className="text-right px-2 py-2 font-medium w-32">Amount</th>
+                    <th className="w-10"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item, idx) => (
                     <tr key={idx} className="border-b border-secondary-100 dark:border-secondary-800/50">
-                      <td className="px-2 py-2 relative">
-                        <div className="relative">
-                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-secondary-400 pointer-events-none" />
-                          <Input
-                            ref={(el) => { productNameRefs.current[idx] = el; }}
-                            placeholder="Type to search… ⌘"
-                            value={item.product_name || (searchIdx === idx ? productSearch : '')}
-                            onChange={(e) => {
-                              setSearchIdx(idx);
-                              setProductSearch(e.target.value);
-                              if (!e.target.value) {
-                                updateItem(idx, { product_id: null, product_name: '', hsn_sac: '', rate: 0, tax_rate: 0 });
-                              } else {
-                                updateItem(idx, { product_name: e.target.value });
-                              }
-                            }}
-                            onFocus={() => setSearchIdx(idx)}
-                            onBlur={() => setTimeout(() => setSearchIdx((cur) => (cur === idx ? null : cur)), 150)}
-                            onKeyDown={(e) => handleProductInputKeyDown(e, idx)}
-                            className="w-full pl-8"
-                          />
-                        </div>
-                        {searchIdx === idx && productSearch && filteredProducts.length > 0 && (
-                          <div className="absolute z-20 mt-1 w-full card-solid max-h-48 overflow-y-auto scrollbar-thin p-1 shadow-lg">
-                            {filteredProducts.slice(0, 8).map((p) => (
-                              <button
-                                key={p.id}
-                                onMouseDown={() => selectProduct(idx, p)}
-                                className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/30 text-left"
-                              >
-                                <div>
-                                  <p className="text-sm font-medium text-secondary-900 dark:text-secondary-100">{p.name}</p>
-                                  <p className="text-xs text-secondary-400">{p.hsn_sac || 'No HSN'} • Stock: {p.current_stock}</p>
-                                </div>
-                                <span className="figure text-xs text-primary-600 dark:text-primary-400">{formatCurrency(p.selling_price, sym)}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </td>
                       <td className="px-2 py-2">
-                        <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, { quantity: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-20 text-right figure" />
+                        <select
+                          ref={(el) => { rowRefs.current[idx] = el; }}
+                          value={item.product_id || ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const p = products?.find((pr) => pr.id === val);
+                            if (p) {
+                              updateItem(idx, {
+                                product_id: p.id,
+                                product_name: p.name,
+                                hsn_sac: p.hsn_sac || '',
+                                unit: p.unit || 'PCS',
+                                rate: p.selling_price || 0,
+                                tax_rate: p.tax_rate || 0,
+                              });
+                            } else {
+                              updateItem(idx, { product_id: null, product_name: '', hsn_sac: '', unit: 'PCS', rate: 0, tax_rate: 0 });
+                            }
+                          }}
+                          onKeyDown={(e) => handleRowKeyDown(e, idx)}
+                          className="input w-full min-w-[220px]"
+                        >
+                          <option value="">-- Select Product --</option>
+                          {products?.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} · {formatCurrency(p.selling_price, sym)} · Stock {p.current_stock}
+                            </option>
+                          ))}
+                        </select>
                       </td>
-                      <td className="px-2 py-2">
-                        <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, { rate: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-24 text-right figure" />
+                      <td className="px-2 py-2 w-24">
+                        <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, { quantity: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-right figure" />
                       </td>
-                      <td className="px-2 py-2">
-                        <Input type="number" value={item.discount_amount} onChange={(e) => updateItem(idx, { discount_amount: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-20 text-right figure" />
+                      <td className="px-2 py-2 w-28">
+                        <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, { rate: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-right figure" />
+                      </td>
+                      <td className="px-2 py-2 w-24">
+                        <Input type="number" value={item.discount_amount} onChange={(e) => updateItem(idx, { discount_amount: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-right figure" />
                         {roundTo2(item.quantity * item.rate - item.discount_amount) > 0 && (
                           <p className="figure text-[10px] text-secondary-400 mt-1 text-right pr-1">{formatCurrency(roundTo2(item.quantity * item.rate - item.discount_amount), sym)}</p>
                         )}
                       </td>
-                      <td className="px-2 py-2">
+                      <td className="px-2 py-2 w-24">
                         <select
-                          className="input w-20 px-1.5 py-1.5 text-xs"
+                          className="input w-full px-1.5 py-1.5 text-xs"
                           value={String(item.tax_rate)}
                           onChange={(e) => updateItem(idx, { tax_rate: parseFloat(e.target.value) })}
                           onKeyDown={(e) => handleRowKeyDown(e, idx)}
@@ -528,10 +478,10 @@ export function SalesInvoiceCreatePage() {
                           {taxRateOptions.map((r) => <option key={r} value={String(r)}>{r}%</option>)}
                         </select>
                       </td>
-                      <td className="px-2 py-2 text-right tabular-nums font-medium text-secondary-900 dark:text-secondary-100 figure">
+                      <td className="px-2 py-2 w-32 text-right tabular-nums font-medium text-secondary-900 dark:text-secondary-100 figure">
                         {formatCurrency(item.total_amount, sym)}
                       </td>
-                      <td className="px-2 py-2">
+                      <td className="px-2 py-2 w-10">
                         <button onClick={() => removeItem(idx)} className="p-1 text-secondary-400 hover:text-error-600 transition-colors" title="Remove row">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -542,9 +492,8 @@ export function SalesInvoiceCreatePage() {
               </table>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-secondary-400">
-              <span><kbd className="kbd">↑↓</kbd> row nav</span>
-              <span><kbd className="kbd">⌘</kbd> pick first match</span>
-              <span><kbd className="kbd">Esc</kbd> close suggestions</span>
+              <span><kbd className="kbd">↑↓</kbd> move between rows</span>
+              <span>Rate, HSN &amp; tax autofill on product select</span>
             </div>
           </FormSection>
 
