@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { FileText, Plus, Search, Ban, Eye, CheckCircle2, Trash2, Printer, FileDown, FileSpreadsheet, Share2, Truck } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { fetchInvoiceItems, renderInvoiceSheetToPdf, exportInvoiceExcel } from '@/lib/invoiceExport';
@@ -184,6 +185,22 @@ export function SalesInvoicesPage() {
             <option value="paid">Paid</option>
             <option value="cancelled">Cancelled</option>
           </select>
+          <div className="sm:ml-auto">
+            <DataTableExportToolbar
+              columns={[
+                { key: 'number', label: 'Invoice No.', getText: (inv) => inv.invoice_number },
+                { key: 'customer', label: 'Customer', getText: (inv) => inv.customer?.name || '—' },
+                { key: 'date', label: 'Date', getText: (inv) => formatDate(inv.invoice_date) },
+                { key: 'total', label: 'Total', getText: (inv) => formatCurrency(inv.grand_total, activeBusiness?.currency_symbol) },
+                { key: 'balance', label: 'Balance', getText: (inv) => formatCurrency(inv.balance_amount, activeBusiness?.currency_symbol) },
+                { key: 'status', label: 'Status', getText: (inv) => inv.status.replace('_', ' ') },
+              ]}
+              rows={filtered}
+              filename="sales-invoices"
+              title="Sales Invoices"
+              storageKey="sales-invoices"
+            />
+          </div>
         </div>
 
         {isError ? (

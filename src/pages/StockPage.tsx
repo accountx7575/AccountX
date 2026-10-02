@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Boxes, Search, AlertTriangle, Package } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import type { Product } from '@/types/db';
 
 type ValuationRow = {
@@ -85,10 +86,37 @@ export function StockPage() {
       </div>
 
       <div className="card">
-        <div className="p-4 border-b border-secondary-200 dark:border-secondary-800">
-          <div className="relative max-w-sm">
+        <div className="p-4 border-b border-secondary-200 dark:border-secondary-800 flex flex-wrap items-center gap-3">
+          <div className="relative max-w-sm flex-1 min-w-[12rem]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400" />
             <Input placeholder="Search products..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          </div>
+          <div className="sm:ml-auto">
+            <DataTableExportToolbar
+              columns={[
+                { key: 'name', label: 'Product', getText: (p) => p.name },
+                { key: 'sku', label: 'SKU', getText: (p) => p.sku || '—' },
+                { key: 'hsn', label: 'HSN/SAC', getText: (p) => p.hsn_sac || '—' },
+                { key: 'stock', label: 'Current Stock', getText: (p) => `${valuationByProduct.get(p.id)?.quantity ?? p.current_stock} ${p.unit}` },
+                { key: 'min', label: 'Min Stock', getText: (p) => `${p.minimum_stock} ${p.unit}` },
+                { key: 'avg', label: 'Avg Cost', getText: (p) => formatCurrency(valuationByProduct.get(p.id)?.avg_cost ?? 0, activeBusiness?.currency_symbol) },
+                { key: 'value', label: 'Value (at cost)', getText: (p) => formatCurrency(valuationByProduct.get(p.id)?.total_value ?? 0, activeBusiness?.currency_symbol) },
+                {
+                  key: 'status',
+                  label: 'Status',
+                  getText: (p) =>
+                    Number(p.current_stock) <= 0
+                      ? 'Out of Stock'
+                      : Number(p.minimum_stock) > 0 && Number(p.current_stock) <= Number(p.minimum_stock)
+                        ? 'Low'
+                        : 'In Stock',
+                },
+              ]}
+              rows={filtered}
+              filename="stock"
+              title="Stock Overview"
+              storageKey="stock"
+            />
           </div>
         </div>
         {isError ? (

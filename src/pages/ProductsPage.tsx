@@ -12,6 +12,7 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { Package, Plus, Pencil, Archive, Boxes } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import type { Product } from '@/types/db';
@@ -82,6 +83,24 @@ export function ProductsPage() {
           pageSize={list.pageSize}
           onPageSizeChange={list.setPageSize}
         />
+        <div className="px-4 py-2 border-b border-secondary-200 dark:border-secondary-800 flex justify-end">
+          <DataTableExportToolbar
+            columns={[
+              { key: 'name', label: 'Product', getText: (p) => p.name },
+              { key: 'sku', label: 'SKU', getText: (p) => p.sku || '—' },
+              { key: 'type', label: 'Type', getText: (p) => p.type },
+              { key: 'hsn', label: 'HSN/SAC', getText: (p) => p.hsn_sac || '—' },
+              { key: 'purchase', label: 'Purchase Price', getText: (p) => formatCurrency(p.purchase_price, activeBusiness?.currency_symbol) },
+              { key: 'selling', label: 'Selling Price', getText: (p) => formatCurrency(p.selling_price, activeBusiness?.currency_symbol) },
+              { key: 'stock', label: 'Stock', getText: (p) => (p.type === 'product' ? `${p.current_stock} ${p.unit}` : '—') },
+              { key: 'tax', label: 'Tax', getText: (p) => `${p.tax_rate}%` },
+            ]}
+            rows={products}
+            filename="products"
+            title="Products"
+            storageKey="products"
+          />
+        </div>
 
         {isError ? (
           <ErrorState title="Unable to load products." onRetry={() => refetch()} />

@@ -19,6 +19,7 @@ import {
   type EWayBill,
 } from '@/lib/ewayBill';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import {
   Truck, Plus, Search, Printer, Eye, Pencil, Ban, FileDown, CheckCircle2, XCircle,
 } from 'lucide-react';
@@ -197,6 +198,27 @@ export function EWayBillPage() {
           <div className="relative flex-1 max-w-sm sm:ml-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400" />
             <Input placeholder="Search bill no / invoice / customer / vehicle..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          </div>
+          <div className="w-full flex sm:justify-end">
+            <DataTableExportToolbar
+              columns={[
+                { key: 'ewayBillNo', label: 'e-Way Bill No.', getText: (b) => b.ewayBillNo },
+                { key: 'docType', label: 'Doc Type', getText: (b) => b.docType },
+                { key: 'invoiceNumber', label: 'Invoice No.', getText: (b) => b.invoiceNumber },
+                { key: 'docDate', label: 'Document Date', getText: (b) => formatDate(b.docDate) },
+                { key: 'customerName', label: 'Customer', getText: (b) => b.customerName },
+                { key: 'vehicleNo', label: 'Vehicle No.', getText: (b) => b.vehicleNo },
+                { key: 'transporterId', label: 'Transporter ID', getText: (b) => b.transporterId || '—' },
+                { key: 'fromPincode', label: 'From Pincode', getText: (b) => b.fromPincode },
+                { key: 'toPincode', label: 'To Pincode', getText: (b) => b.toPincode },
+                { key: 'validUntil', label: 'Valid Until', getText: (b) => new Date(b.validUntil).toLocaleString() },
+                { key: 'status', label: 'Status', getText: (b) => b.status.replace('_', ' ') },
+              ]}
+              rows={filtered}
+              filename="eway-bills"
+              title="e-Way Bills"
+              storageKey="eway-bills"
+            />
           </div>
         </div>
 

@@ -14,6 +14,7 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { Users, Plus, Pencil, Trash2, Mail } from 'lucide-react';
 import { formatCurrency, formatDate, getInitials } from '@/lib/utils';
 import { buildCustomerUpdate } from '@/lib/payloads';
@@ -121,6 +122,24 @@ export function CustomersPage() {
           pageSize={list.pageSize}
           onPageSizeChange={list.setPageSize}
         />
+        <div className="px-4 py-2 border-b border-secondary-200 dark:border-secondary-800 flex justify-end">
+          <DataTableExportToolbar
+            columns={[
+              { key: 'name', label: 'Customer', getText: (c) => c.name },
+              { key: 'company', label: 'Company', getText: (c) => c.company_name || '—' },
+              { key: 'phone', label: 'Phone', getText: (c) => c.phone || '—' },
+              { key: 'email', label: 'Email', getText: (c) => c.email || '—' },
+              { key: 'gstin', label: 'GSTIN', getText: (c) => c.gstin || '—' },
+              { key: 'outstanding', label: 'Outstanding', getText: (c) => formatCurrency(c.current_balance, activeBusiness?.currency_symbol) },
+              { key: 'sales', label: 'Total Sales', getText: (c) => formatCurrency(c.total_sales, activeBusiness?.currency_symbol) },
+              { key: 'status', label: 'Status', getText: (c) => c.status },
+            ]}
+            rows={customers}
+            filename="customers"
+            title="Customers"
+            storageKey="customers"
+          />
+        </div>
 
         {isError ? (
           <ErrorState title="Unable to load customers." onRetry={() => refetch()} />

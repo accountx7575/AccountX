@@ -14,6 +14,7 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { Truck, Plus, Pencil, Trash2, Mail } from 'lucide-react';
 import { formatCurrency, formatDate, getInitials } from '@/lib/utils';
 import { buildSupplierUpdate } from '@/lib/payloads';
@@ -119,6 +120,24 @@ export function SuppliersPage() {
           pageSize={list.pageSize}
           onPageSizeChange={list.setPageSize}
         />
+        <div className="px-4 py-2 border-b border-secondary-200 dark:border-secondary-800 flex justify-end">
+          <DataTableExportToolbar
+            columns={[
+              { key: 'name', label: 'Supplier', getText: (s) => s.name },
+              { key: 'company', label: 'Company', getText: (s) => s.company_name || '—' },
+              { key: 'phone', label: 'Phone', getText: (s) => s.phone || '—' },
+              { key: 'email', label: 'Email', getText: (s) => s.email || '—' },
+              { key: 'gstin', label: 'GSTIN', getText: (s) => s.gstin || '—' },
+              { key: 'outstanding', label: 'Outstanding', getText: (s) => formatCurrency(s.current_balance, activeBusiness?.currency_symbol) },
+              { key: 'purchases', label: 'Total Purchases', getText: (s) => formatCurrency(s.total_purchases, activeBusiness?.currency_symbol) },
+              { key: 'status', label: 'Status', getText: (s) => s.status },
+            ]}
+            rows={suppliers}
+            filename="suppliers"
+            title="Suppliers"
+            storageKey="suppliers"
+          />
+        </div>
 
         {isError ? (
           <ErrorState title="Unable to load suppliers." onRetry={() => refetch()} />

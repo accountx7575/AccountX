@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { Input, FormField } from '@/components/ui/Input';
 import { ListPagination } from '@/components/ui/ListControls';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { usePagedList } from '@/hooks/usePagedList';
 import {
   ClipboardList,
@@ -478,6 +479,20 @@ export function QuotationsPage() {
               <option value={100}>100</option>
             </select>
           </div>
+
+          <DataTableExportToolbar
+            columns={[
+              { key: 'number', label: 'Quote No.', getText: (q) => q.quotation_number },
+              { key: 'date', label: 'Date', getText: (q) => formatDate(q.quote_date) },
+              { key: 'customer', label: 'Customer', getText: (q) => q.customer?.name || '—' },
+              { key: 'total', label: 'Total', getText: (q) => formatCurrency(q.grand_total, activeBusiness?.currency_symbol) },
+              { key: 'status', label: 'Status', getText: (q) => q.status },
+            ]}
+            rows={processedQuotes}
+            filename="quotations"
+            title="Quotations"
+            storageKey="quotations"
+          />
         </div>
 
         {isError ? (

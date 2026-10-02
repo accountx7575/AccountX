@@ -14,6 +14,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ShoppingCart, Plus, Search, Ban, CheckCircle2, Trash2, Printer } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { renderDocSheetToPdf, type PrintableDocData } from '@/lib/docPrint';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import type { PurchaseBill, PurchaseBillItem } from '@/types/db';
 
 export function PurchaseBillsPage() {
@@ -162,10 +163,26 @@ export function PurchaseBillsPage() {
       />
 
       <div className="card">
-        <div className="p-4 border-b border-secondary-200 dark:border-secondary-800">
-          <div className="relative max-w-sm">
+        <div className="p-4 border-b border-secondary-200 dark:border-secondary-800 flex flex-wrap items-center gap-3">
+          <div className="relative max-w-sm flex-1 min-w-[12rem]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400" />
             <Input placeholder="Search purchase bills..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+          </div>
+          <div className="sm:ml-auto">
+            <DataTableExportToolbar
+              columns={[
+                { key: 'number', label: 'Bill No.', getText: (b) => b.bill_number },
+                { key: 'supplier', label: 'Supplier', getText: (b) => b.supplier?.name || '—' },
+                { key: 'date', label: 'Date', getText: (b) => formatDate(b.bill_date) },
+                { key: 'total', label: 'Total', getText: (b) => formatCurrency(b.grand_total, activeBusiness?.currency_symbol) },
+                { key: 'balance', label: 'Balance', getText: (b) => formatCurrency(b.balance_amount, activeBusiness?.currency_symbol) },
+                { key: 'status', label: 'Status', getText: (b) => b.status.replace('_', ' ') },
+              ]}
+              rows={filtered}
+              filename="purchase-bills"
+              title="Purchase Bills"
+              storageKey="purchase-bills"
+            />
           </div>
         </div>
 
