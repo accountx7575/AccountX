@@ -460,12 +460,7 @@ export function SalesInvoiceCreatePage() {
                       <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, { rate: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-center figure" />
                     </div>
                     <div className="py-2">
-                      <div className="relative">
-                        <Input type="number" value={item.discount_amount} onChange={(e) => updateItem(idx, { discount_amount: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-center figure" />
-                        {roundTo2(item.quantity * item.rate - item.discount_amount) > 0 && (
-                          <p className="absolute left-0 right-0 top-full mt-0.5 figure text-[10px] text-secondary-400 text-center whitespace-nowrap">{formatCurrency(roundTo2(item.quantity * item.rate - item.discount_amount), sym)}</p>
-                        )}
-                      </div>
+                      <Input type="number" value={item.discount_amount} onChange={(e) => updateItem(idx, { discount_amount: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-center figure" />
                     </div>
                     <div className="py-2">
                       <select
