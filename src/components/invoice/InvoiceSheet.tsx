@@ -33,7 +33,6 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
   const upiUri = buildUpiUri(business, Number(invoice.grand_total));
   // Forward-compatible stamp/signature slot: renders when a Business Settings
   // image URL (stamp_url) exists; styled manual-stamp placeholder otherwise.
-  const stampUrl = (business as (Business & { stamp_url?: string | null }) | null)?.stamp_url ?? null;
   const signatureUrl = (business as (Business & { signature_url?: string | null }) | null)?.signature_url ?? null;
   const bankName = business?.bank_name ?? null;
   const bankAccount = business?.bank_account_number ?? null;
@@ -52,7 +51,7 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
       <div className="flex flex-col sm:flex-row justify-between gap-4 px-6 py-5 border-b border-secondary-200">
         <div className="min-w-0 flex items-start gap-3">
           {business?.logo_url && (
-            <img src={business.logo_url} alt="Company logo" className="h-14 w-14 shrink-0 rounded-lg border border-secondary-200 object-contain" />
+            <img src={business.logo_url} alt="Company logo" className="h-16 w-auto max-w-40 shrink-0 object-contain" />
           )}
           <div className="min-w-0">
           <h1 className="text-lg font-bold">{business?.legal_name || business?.name || '—'}</h1>
@@ -277,14 +276,7 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
                 className="max-h-16 max-w-[70%] object-contain absolute left-2 bottom-1"
               />
             ) : null}
-            {stampUrl ? (
-              <img
-                src={stampUrl}
-                alt="Company stamp / seal"
-                className="max-h-16 max-w-[55%] object-contain absolute right-1 top-1 opacity-90 mix-blend-multiply"
-              />
-            ) : null}
-            {!signatureUrl && !stampUrl && (
+            {!signatureUrl && (
               <span className="text-[10px] text-secondary-300 px-3 text-center leading-tight">Affix company stamp / ink signature</span>
             )}
           </div>
