@@ -414,9 +414,8 @@ export function SalesInvoiceCreatePage() {
         }
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        {/* LEFT: entry form (wider editor proportion) */}
-        <div className="card p-6 min-w-0 xl:col-span-8">
+      <div className="w-full max-w-5xl">
+        <div className="card p-6 min-w-0">
           <FormSection title="Party & Dates" description="Who you're billing and when payment is due">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
@@ -578,22 +577,14 @@ export function SalesInvoiceCreatePage() {
           </FormSection>
         </div>
 
-        {/* RIGHT: live A4 sheet preview (compact proportion) */}
-        <div className="min-w-0 xl:col-span-4">
-          <div className="xl:sticky xl:top-20">
-            <div className="flex items-center justify-center gap-2 mb-3">
-              <span className="badge bg-primary-600 text-white">LIVE PREVIEW</span>
-              <span className="text-xs text-secondary-400">Updates as you type · A4 GST layout</span>
-            </div>
-            <div id="invoice-print-area" className="max-h-none xl:max-h-[calc(100vh-11rem)] overflow-visible xl:overflow-y-auto scrollbar-thin rounded-xl print:max-h-none print:overflow-visible print:border-0 print:shadow-none print:rounded-none">
-              <div className="origin-top scale-[0.85] xl:scale-[0.75] pb-[15%] print:origin-top-left print:scale-100 print:pb-0">
-                <InvoiceSheet
-                  business={activeBusiness}
-                  invoice={previewInvoice}
-                  items={previewItems.length > 0 ? previewItems : []}
-                />
-              </div>
-            </div>
+        {/* Hidden A4 sheet render — print/PDF source only (no visible preview) */}
+        <div aria-hidden="true" className="fixed -left-[9999px] top-0 w-[210mm] pointer-events-none select-none print:static print:w-auto">
+          <div id="invoice-print-area">
+            <InvoiceSheet
+              business={activeBusiness}
+              invoice={previewInvoice}
+              items={previewItems.length > 0 ? previewItems : []}
+            />
           </div>
         </div>
       </div>
