@@ -34,6 +34,8 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
   // Forward-compatible stamp/signature slot: renders when a Business Settings
   // image URL (stamp_url) exists; styled manual-stamp placeholder otherwise.
   const signatureUrl = (business as (Business & { signature_url?: string | null }) | null)?.signature_url ?? null;
+  // Transitional logo source: new uploads land in logo_url; existing uploads still in stamp_url.
+  const logoSrc = business?.logo_url || (business as (Business & { stamp_url?: string | null }) | null)?.stamp_url || null;
   const bankName = business?.bank_name ?? null;
   const bankAccount = business?.bank_account_number ?? null;
   const upiId = business?.upi_id ?? null;
@@ -50,14 +52,14 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
       {/* Seller / meta header */}
       <div className="flex flex-col sm:flex-row justify-between gap-4 px-6 py-5 border-b border-secondary-200">
         <div className="min-w-0 flex items-start gap-3">
-          {business?.logo_url && (
-            <img src={business.logo_url} alt="Company logo" className="h-16 w-auto max-w-40 shrink-0 object-contain" />
+          {logoSrc && (
+            <img src={logoSrc} alt="Company logo" className="h-16 w-auto max-w-40 shrink-0 object-contain" />
           )}
           <div className="min-w-0">
           <h1 className="text-lg font-bold">{business?.legal_name || business?.name || '—'}</h1>
           {business && (
             <p className="text-xs text-secondary-500 mt-1 whitespace-pre-line">
-              {[business.address, [business.city, business.state].filter(Boolean).join(', ')].filter(Boolean).join('\n')}
+              {[business.address, [business.city, business.state, business.pincode].filter(Boolean).join(', ')].filter(Boolean).join('\n')}
             </p>
           )}
           <p className="text-xs text-secondary-500 mt-1">
@@ -243,12 +245,17 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
       <div className="flex flex-col sm:flex-row justify-between gap-6 px-6 py-4">
         <div className="flex-1 min-w-0 space-y-3">
           <div className="flex items-center gap-2">
-            {upiUri && (
-              <>
-                <QRCodeSVG value={upiUri} size={56} level="M" />
-                <p className="text-[10px] text-secondary-400 max-w-24 leading-tight">Scan to pay via UPI</p>
-              </>
-            )}
+          {business?.upi_qr_url ? (
+            <>
+              <img src={business.upi_qr_url} alt="UPI QR code" className="h-20 w-20 rounded-md border border-secondary-200 object-contain" />
+              <p className="text-[10px] text-secondary-400 max-w-24 leading-tight">Scan to pay via UPI</p>
+            </>
+          ) : upiUri ? (
+            <>
+              <QRCodeSVG value={upiUri} size={56} level="M" />
+              <p className="text-[10px] text-secondary-400 max-w-24 leading-tight">Scan to pay via UPI</p>
+            </>
+          ) : null}
           </div>
           {(bankName || bankAccount || upiId) && (
             <div className="text-xs text-secondary-600">
@@ -268,18 +275,17 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
         <div className="sm:text-right shrink-0 pt-2">
           <p className="text-xs text-secondary-500">For <span className="font-semibold">{business?.legal_name || business?.name || '—'}</span></p>
           {signatureName && <p className="text-[11px] text-secondary-500 mt-0.5">{signatureName}</p>}
-          <div className="relative h-20 w-48 mt-1.5 rounded-md border border-dashed border-secondary-300 bg-secondary-50/40 flex items-center justify-center overflow-hidden sm:ml-auto">
-            {signatureUrl ? (
+          {signatureUrl ? (
+            <div className="relative h-16 w-48 mt-1.5 rounded-md border border-secondary-200 bg-white flex items-center justify-center overflow-hidden sm:ml-auto">
               <img
                 src={signatureUrl}
                 alt="Authorized signatory signature"
-                className="max-h-16 max-w-[70%] object-contain absolute left-2 bottom-1"
+                className="max-h-14 max-w-[90%] object-contain"
               />
-            ) : null}
-            {!signatureUrl && (
-              <span className="text-[10px] text-secondary-300 px-3 text-center leading-tight">Affix company stamp / ink signature</span>
-            )}
-          </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-secondary-400 mt-1.5 sm:text-right">Signature pending — upload in Settings</p>
+          )}
           <p className="text-[11px] text-secondary-400 border-t border-secondary-200 pt-1 mt-1.5">Authorized Signatory / Proprietor</p>
         </div>
       </div>

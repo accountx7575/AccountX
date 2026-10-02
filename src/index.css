@@ -194,7 +194,7 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 10mm 12mm;
   }
 
   html, body {
@@ -217,6 +217,7 @@
     position: absolute !important;
     inset: 0 auto auto 0;
     width: 100% !important;
+    max-width: 100% !important;
     margin: 0 !important;
     border-radius: 0 !important;
     border-color: #d4d4d8 !important;
@@ -286,7 +287,7 @@
 
   @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 10mm 12mm;
   }
 }
 

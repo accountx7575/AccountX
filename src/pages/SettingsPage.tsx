@@ -146,11 +146,14 @@ export function SettingsPage() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
     name: '', legal_name: '', phone: '', email: '', address: '', city: '', state: 'Maharashtra',
+    pincode: '',
     gstin: '', pan: '', financial_year: '2026-27', currency_symbol: '₹', invoice_prefix: 'INV',
     gst_registered: false,
     stamp_url: '' as string | null,
+    logo_url: '' as string | null,
     signature_url: '' as string | null,
     upi_id: '',
+    upi_qr_url: '' as string | null,
     invoice_footer_text: '',
     invoice_signature_name: '',
     bank_name: '',
@@ -175,6 +178,7 @@ export function SettingsPage() {
         address: activeBusiness.address || '',
         city: activeBusiness.city || '',
         state: activeBusiness.state || 'Maharashtra',
+        pincode: activeBusiness.pincode || '',
         gstin: activeBusiness.gstin || '',
         pan: activeBusiness.pan || '',
         financial_year: activeBusiness.financial_year || '2026-27',
@@ -182,8 +186,10 @@ export function SettingsPage() {
         invoice_prefix: activeBusiness.invoice_prefix || 'INV',
         gst_registered: activeBusiness.gst_registered,
         stamp_url: activeBusiness.stamp_url || '',
+        logo_url: activeBusiness.logo_url || '',
         signature_url: activeBusiness.signature_url || '',
         upi_id: activeBusiness.upi_id || '',
+        upi_qr_url: activeBusiness.upi_qr_url || '',
         invoice_footer_text: activeBusiness.invoice_footer_text || '',
         invoice_signature_name: activeBusiness.invoice_signature_name || '',
         bank_name: activeBusiness.bank_name || '',
@@ -195,7 +201,7 @@ export function SettingsPage() {
 
   /* ------------------------------ image reader ------------------------------- */
 
-  const readImageFile = (file: File, field: 'stamp_url' | 'signature_url') => {
+  const readImageFile = (file: File, field: 'stamp_url' | 'logo_url' | 'signature_url' | 'upi_qr_url') => {
     if (!file.type.startsWith('image/')) {
       toast('Please upload an image file (PNG, JPG, or SVG)', 'error');
       return;
@@ -352,6 +358,7 @@ export function SettingsPage() {
       e.gstin = 'Invalid GSTIN — expected 15 chars: 2-digit state code + PAN + entity number + Z + checksum';
     }
     if (form.pan.trim() && !PAN_REGEX.test(form.pan.trim())) e.pan = 'Invalid PAN — expected 10 chars like ABCDE1234F';
+    if (form.pincode.trim() && !/^[0-9]{6}$/.test(form.pincode.trim())) e.pincode = 'Invalid PIN — expected 6 digits';
     if (form.upi_id.trim() && !UPI_ID_REGEX.test(form.upi_id.trim())) e.upi_id = 'Invalid UPI ID — use only letters, numbers, dots, @ and dashes (e.g. business@upi)';
     if (form.bank_ifsc_code.trim() && !IFSC_REGEX.test(form.bank_ifsc_code.trim())) e.bank_ifsc_code = 'Invalid IFSC - format SBIN0001234';
     if (form.bank_account_number.trim() && !/^[0-9][0-9 -]{4,18}[0-9]$/.test(form.bank_account_number.trim())) e.bank_account_number = 'Account number must be 6-20 digits (spaces/dashes allowed)';
@@ -370,14 +377,17 @@ export function SettingsPage() {
         address: form.address || null,
         city: form.city || null,
         state: form.state,
+        pincode: form.pincode.trim() || null,
         pan: form.pan || null,
         financial_year: form.financial_year,
         currency_symbol: form.currency_symbol,
         invoice_prefix: form.invoice_prefix,
         gst_registered: form.gst_registered,
         stamp_url: form.stamp_url || null,
+        logo_url: form.logo_url || null,
         signature_url: form.signature_url || null,
         upi_id: form.upi_id || null,
+        upi_qr_url: form.upi_qr_url || null,
         invoice_footer_text: form.invoice_footer_text.trim() || null,
         invoice_signature_name: form.invoice_signature_name.trim() || null,
         bank_name: form.bank_name.trim() || null,
@@ -723,6 +733,14 @@ export function SettingsPage() {
               />
               <p className="text-xs text-secondary-400 mt-1">Shown on invoices for UPI QR payments</p>
             </FormField>
+            <StampSignatureSlot
+              title="UPI QR Code"
+              hint="Uploaded QR shown on invoices (PNG, JPG or SVG)"
+              value={form.upi_qr_url}
+              disabled={!canEditSettings}
+              onPick={(f) => readImageFile(f, 'upi_qr_url')}
+              onRemove={() => setForm((prev) => ({ ...prev, upi_qr_url: '' }))}
+            />
             <FormField label="Bank Name">
               <Input
                 value={form.bank_name}
@@ -755,6 +773,16 @@ export function SettingsPage() {
               <Select value={form.state} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, state: e.target.value })}>
                 {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
               </Select>
+            </FormField>
+            <FormField label="PIN Code" error={errors.pincode}>
+              <Input
+                value={form.pincode}
+                disabled={!canEditSettings}
+                maxLength={6}
+                inputMode="numeric"
+                placeholder="400001"
+                onChange={(e) => { clearError('pincode'); setForm({ ...form, pincode: e.target.value.replace(/[^0-9]/g, '').slice(0, 6) }); }}
+              />
             </FormField>
           </div>
           <div className="mt-4">
@@ -833,10 +861,10 @@ export function SettingsPage() {
             <StampSignatureSlot
               title="Company / Firm Logo"
               hint="Rendered top-left on quotation and sales invoice header"
-              value={form.stamp_url}
+              value={form.logo_url}
               disabled={!canEditSettings}
-              onPick={(f) => readImageFile(f, 'stamp_url')}
-              onRemove={() => setForm((prev) => ({ ...prev, stamp_url: '' }))}
+              onPick={(f) => readImageFile(f, 'logo_url')}
+              onRemove={() => setForm((prev) => ({ ...prev, logo_url: '' }))}
             />
             <StampSignatureSlot
               title="Company / Firm Stamp & Sign"

@@ -9,6 +9,7 @@ export type Business = {
   address: string | null;
   city: string | null;
   state: string | null;
+  pincode: string | null;
   country: string;
   gstin: string | null;
   pan: string | null;
@@ -21,6 +22,7 @@ export type Business = {
   stamp_url?: string | null;
   signature_url?: string | null;
   upi_id?: string | null;
+  upi_qr_url?: string | null;
   invoice_footer_text?: string | null;
   invoice_signature_name?: string | null;
   bank_name?: string | null;
