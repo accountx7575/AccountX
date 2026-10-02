@@ -128,13 +128,8 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
               <th className="px-3 py-2 font-semibold text-right">Rate</th>
               <th className="px-3 py-2 font-semibold text-right">Disc</th>
               <th className="px-3 py-2 font-semibold text-right">Taxable</th>
-              {isInterState ? (
+              {isInterState && (
                 <th className="px-3 py-2 font-semibold text-right">IGST</th>
-              ) : (
-                <>
-                  <th className="px-3 py-2 font-semibold text-right">CGST</th>
-                  <th className="px-3 py-2 font-semibold text-right">SGST</th>
-                </>
               )}
               {hasCess && <th className="px-3 py-2 font-semibold text-right">Cess</th>}
               <th className="px-3 py-2 font-semibold text-right">Amount</th>
@@ -152,22 +147,11 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
                 <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(Number(it.rate), sym)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{Number(it.discount_amount) > 0 ? formatCurrency(Number(it.discount_amount), sym) : '—'}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(Number(it.taxable_amount), sym)}</td>
-                {isInterState ? (
+                {isInterState && (
                   <td className="px-3 py-2 text-right tabular-nums">
                     {formatCurrency(Number(it.igst_amount), sym)}
                     <span className="text-[10px] text-secondary-400"> ({Number(it.tax_rate)}%)</span>
                   </td>
-                ) : (
-                  <>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {formatCurrency(Number(it.cgst_amount), sym)}
-                      <span className="text-[10px] text-secondary-400"> ({Number(it.tax_rate) / 2}%)</span>
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {formatCurrency(Number(it.sgst_amount), sym)}
-                      <span className="text-[10px] text-secondary-400"> ({Number(it.tax_rate) / 2}%)</span>
-                    </td>
-                  </>
                 )}
                 {hasCess && <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(Number(it.cess_amount), sym)}</td>}
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{formatCurrency(Number(it.total_amount), sym)}</td>

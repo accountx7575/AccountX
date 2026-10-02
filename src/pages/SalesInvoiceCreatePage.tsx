@@ -411,8 +411,9 @@ export function SalesInvoiceCreatePage() {
           >
             <div className="overflow-x-auto scrollbar-thin -mx-2">
               <div className="min-w-[900px] px-2 text-sm">
-                <div className="grid grid-cols-[1fr_80px_110px_90px_100px_110px_40px] items-center gap-3 border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
+                <div className="grid grid-cols-[1fr_100px_70px_100px_80px_90px_100px_40px] items-center gap-2 border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
                   <div className="py-2 font-medium text-left">Product</div>
+                  <div className="py-2 font-medium text-center">HSN/SAC</div>
                   <div className="py-2 font-medium text-center">Qty</div>
                   <div className="py-2 font-medium text-center">Rate</div>
                   <div className="py-2 font-medium text-center">Disc</div>
@@ -421,7 +422,7 @@ export function SalesInvoiceCreatePage() {
                   <div />
                 </div>
                 {items.map((item, idx) => (
-                  <div key={idx} className="grid grid-cols-[1fr_80px_110px_90px_100px_110px_40px] items-center gap-3 border-b border-secondary-100 dark:border-secondary-800/50">
+                  <div key={idx} className="grid grid-cols-[1fr_100px_70px_100px_80px_90px_100px_40px] items-center gap-2 border-b border-secondary-100 dark:border-secondary-800/50">
                     <div className="py-2 min-w-0">
                       <select
                         ref={(el) => { rowRefs.current[idx] = el; }}
@@ -452,6 +453,9 @@ export function SalesInvoiceCreatePage() {
                           </option>
                         ))}
                       </select>
+                    </div>
+                    <div className="py-2">
+                      <Input value={item.hsn_sac} onChange={(e) => updateItem(idx, { hsn_sac: e.target.value })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-center figure font-mono" placeholder="HSN" />
                     </div>
                     <div className="py-2">
                       <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, { quantity: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-center figure" />
