@@ -28,6 +28,7 @@ export type Business = {
   bank_name?: string | null;
   bank_account_number?: string | null;
   bank_ifsc_code?: string | null;
+  account_name?: string | null;
   created_at: string;
   updated_at: string;
 };

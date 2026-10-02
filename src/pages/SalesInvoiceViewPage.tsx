@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { InvoiceSheet, type InvoiceWithCustomer } from '@/components/invoice/InvoiceSheet';
+import { mergeBusinessExtras } from '@/lib/businessExtras';
 import { SendDialog } from '@/components/comms/SendDialog';
 import { ArrowLeft, Printer, FileDown, Ban, FileSpreadsheet, Share2, Send, History, Truck } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
@@ -189,7 +190,7 @@ export function SalesInvoiceViewPage() {
       {/* Printable GST tax-invoice document (shared InvoiceSheet component). */}
       <div id="invoice-print-area">
         <InvoiceSheet
-          business={activeBusiness}
+          business={mergeBusinessExtras(activeBusiness, activeBusiness?.id || '')}
           invoice={invoice}
           items={data.items}
           ewayBillNo={activeBusiness && invoiceId ? findEWayBillByInvoiceId(activeBusiness.id, invoiceId)?.ewayBillNo ?? null : null}

@@ -13,6 +13,7 @@ import { Plus, Trash2, Save, ArrowLeft, Printer, FileText, FileSpreadsheet, Rock
 import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
 import { computeDocLine } from '@/lib/payloads';
 import { InvoiceSheet, type InvoiceWithCustomer } from '@/components/invoice/InvoiceSheet';
+import { mergeBusinessExtras } from '@/lib/businessExtras';
 import { Modal } from '@/components/ui/Modal';
 import { useSubscriptionQuota } from '@/hooks/useSubscriptionQuota';
 import { printInvoice, exportPdfFromElement, exportInvoiceExcel } from '@/lib/invoiceExport';
@@ -527,7 +528,7 @@ export function SalesInvoiceCreatePage() {
         <div aria-hidden="true" className="fixed -left-[9999px] top-0 w-[210mm] pointer-events-none select-none print:static print:w-auto">
           <div id="invoice-print-area">
             <InvoiceSheet
-              business={activeBusiness}
+              business={mergeBusinessExtras(activeBusiness, activeBusiness?.id || '')}
               invoice={previewInvoice}
               items={previewItems.length > 0 ? previewItems : []}
             />

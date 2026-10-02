@@ -38,6 +38,7 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
   const logoSrc = business?.logo_url || (business as (Business & { stamp_url?: string | null }) | null)?.stamp_url || null;
   const bankName = business?.bank_name ?? null;
   const bankAccount = business?.bank_account_number ?? null;
+  const accountName = business?.account_name ?? null;
   const upiId = business?.upi_id ?? null;
   const footerText = business?.invoice_footer_text?.trim() || null;
   const signatureName = business?.invoice_signature_name?.trim() || null;
@@ -257,10 +258,11 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
             </>
           ) : null}
           </div>
-          {(bankName || bankAccount || upiId) && (
+          {(bankName || bankAccount || upiId || accountName) && (
             <div className="text-xs text-secondary-600">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-400 mb-1">Bank Details</p>
               {bankName && <p>{bankName}</p>}
+              {accountName && <p>A/c Name: <span className="font-medium">{accountName}</span></p>}
               {bankAccount && <p>A/c: <span className="font-mono">{bankAccount}</span></p>}
               {upiId && <p>UPI: <span className="font-mono">{upiId}</span></p>}
             </div>

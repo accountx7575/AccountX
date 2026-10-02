@@ -20,6 +20,7 @@ import { TallyExportPanel } from '@/components/settings/TallyExportPanel';
 import { BulkImportPanel } from '@/components/settings/BulkImportPanel';
 import { PageMotion } from '@/lib/motion';
 import { formatDate } from '@/lib/utils';
+import { DRIFTED_EXTRAS_KEYS, isMissingColumnError, stashBusinessExtras, type BusinessExtras } from '@/lib/businessExtras';
 
 const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Chandigarh','Puducherry'];
 
@@ -159,6 +160,7 @@ export function SettingsPage() {
     bank_name: '',
     bank_account_number: '',
     bank_ifsc_code: '',
+    account_name: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState<string | null>(null);
@@ -195,6 +197,7 @@ export function SettingsPage() {
         bank_name: activeBusiness.bank_name || '',
         bank_account_number: activeBusiness.bank_account_number || '',
         bank_ifsc_code: activeBusiness.bank_ifsc_code || '',
+        account_name: activeBusiness.account_name || '',
       });
     }
   }, [activeBusiness]);
@@ -367,7 +370,7 @@ export function SettingsPage() {
   }
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<{ stashed: string[] }> => {
       if (!activeBusiness) throw new Error('No active business');
       const payload: Record<string, unknown> = {
         name: form.name,
@@ -393,16 +396,45 @@ export function SettingsPage() {
         bank_name: form.bank_name.trim() || null,
         bank_account_number: form.bank_account_number || null,
         bank_ifsc_code: form.bank_ifsc_code.toUpperCase() || null,
+        account_name: form.account_name.trim() || null,
       };
       if (form.gst_registered) {
         payload.gstin = form.gstin || null;
       }
-      const { error } = await supabase.from('businesses').update(payload).eq('id', activeBusiness.id);
-      if (error) throw error;
+      const tryUpdate = async (p: Record<string, unknown>) => {
+        const { error } = await supabase.from('businesses').update(p).eq('id', activeBusiness.id);
+        return error;
+      };
+      const firstError = await tryUpdate(payload);
+      if (!firstError) return { stashed: [] };
+      if (!isMissingColumnError(firstError)) throw firstError;
+      // Live DB predates the extras migration: strip drifted keys, retry, stash locally.
+      const retry: Record<string, unknown> = { ...payload };
+      const stashed: string[] = [];
+      const stash: BusinessExtras = {};
+      for (const k of DRIFTED_EXTRAS_KEYS) {
+        if (k in retry) {
+          const v = retry[k];
+          delete retry[k];
+          if (typeof v === 'string' && v) {
+            stash[k] = v;
+            stashed.push(k);
+          }
+        }
+      }
+      const secondError = await tryUpdate(retry);
+      if (secondError) throw secondError;
+      if (stashed.length) stashBusinessExtras(activeBusiness.id, stash);
+      return { stashed };
     },
-    onSuccess: async () => {
+    onSuccess: async ({ stashed }) => {
       await refreshBusinesses();
-      toast('Business settings updated successfully', 'success');
+      toast(
+        stashed.length
+          ? `Settings saved — ${stashed.join(', ')} stored locally until the DB migration is applied`
+          : 'Business settings updated successfully',
+        stashed.length ? 'info' : 'success'
+      );
     },
     onError: (err: any) => toast(err.message || 'Failed to update settings', 'error'),
   });
@@ -759,6 +791,16 @@ export function SettingsPage() {
                 onChange={(e) => { clearError('bank_account_number'); setForm({ ...form, bank_account_number: e.target.value }); }}
               />
               <p className="text-xs text-secondary-400 mt-1">Printed on documents - never shared</p>
+            </FormField>
+            <FormField label="Account Holder Name">
+              <Input
+                value={form.account_name}
+                disabled={!canEditSettings}
+                maxLength={80}
+                placeholder="Rajesh Kumar"
+                onChange={(e) => setForm({ ...form, account_name: e.target.value })}
+              />
+              <p className="text-xs text-secondary-400 mt-1">Printed as A/c Name on invoices</p>
             </FormField>
             <FormField label="IFSC Code" error={errors.bank_ifsc_code}>
               <Input
