@@ -43,9 +43,17 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
 
   return (
     <div className="bg-white text-secondary-900 rounded-xl border border-secondary-200 shadow-card">
+      {/* Document title — centered warm-orange heading mirroring the quotation template */}
+      <div className="px-6 pt-5 text-center">
+        <h2 className="text-[26px] leading-none font-extrabold uppercase tracking-[1.5px] text-[#ea580c]">Tax Invoice</h2>
+      </div>
       {/* Seller / meta header */}
       <div className="flex flex-col sm:flex-row justify-between gap-4 px-6 py-5 border-b border-secondary-200">
-        <div className="min-w-0">
+        <div className="min-w-0 flex items-start gap-3">
+          {business?.logo_url && (
+            <img src={business.logo_url} alt="Company logo" className="h-14 w-14 shrink-0 rounded-lg border border-secondary-200 object-contain" />
+          )}
+          <div className="min-w-0">
           <h1 className="text-lg font-bold">{business?.legal_name || business?.name || '—'}</h1>
           {business && (
             <p className="text-xs text-secondary-500 mt-1 whitespace-pre-line">
@@ -59,9 +67,9 @@ export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }
           </p>
           {business?.phone && <p className="text-xs text-secondary-500">Phone: {business.phone}</p>}
           {business?.email && <p className="text-xs text-secondary-500">{business.email}</p>}
+          </div>
         </div>
         <div className="sm:text-right shrink-0">
-          <h2 className="text-base font-bold tracking-wide uppercase">Tax Invoice</h2>
           <table className="mt-2 text-xs">
             <tbody>
               <tr>
