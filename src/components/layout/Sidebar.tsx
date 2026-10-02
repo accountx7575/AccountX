@@ -83,6 +83,7 @@ const navSections: NavSection[] = [
     title: 'Compliance',
     items: [
       { to: '/app/gst', label: 'GST Compliance', icon: BadgePercent },
+      { to: '/app/eway-bill', label: 'e-Way Bill', icon: Truck },
       { to: '/app/tally', label: 'Tally Export', icon: FileCode2 },
     ],
   },

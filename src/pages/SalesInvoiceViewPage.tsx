@@ -10,9 +10,11 @@ import { Badge } from '@/components/ui/Badge';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { InvoiceSheet, type InvoiceWithCustomer } from '@/components/invoice/InvoiceSheet';
 import { SendDialog } from '@/components/comms/SendDialog';
-import { ArrowLeft, Printer, FileDown, Ban, FileSpreadsheet, Share2, Send, History } from 'lucide-react';
+import { ArrowLeft, Printer, FileDown, Ban, FileSpreadsheet, Share2, Send, History, Truck } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { printInvoice, exportPdfFromElement, exportInvoiceExcel } from '@/lib/invoiceExport';
+import { EWayBillModal } from '@/components/eway/EWayBillModal';
+import { findEWayBillByInvoiceId } from '@/lib/ewayBill';
 import { openWhatsAppShare } from '@/lib/whatsapp';
 import { captureElementToPdfBlob } from '@/lib/pdfCapture';
 import type { SalesInvoiceItem } from '@/types/db';
@@ -24,6 +26,7 @@ export function SalesInvoiceViewPage() {
   const { toast } = useToast();
   const [exporting, setExporting] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
+  const [ewayOpen, setEwayOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -158,6 +161,11 @@ export function SalesInvoiceViewPage() {
             <Button variant="secondary" onClick={() => navigate(`/app/communications?ref=${encodeURIComponent(invoice.invoice_number)}`)} title="Delivery history for this invoice">
               <History className="h-4 w-4" /> History
             </Button>
+            {Number(invoice.grand_total) > 50000 && invoice.status !== 'cancelled' && (
+              <Button variant="secondary" onClick={() => setEwayOpen(true)} title="Generate e-Way Bill for this invoice">
+                <Truck className="h-4 w-4" /> Generate e-Way Bill
+              </Button>
+            )}
             <Button onClick={printInvoice}>
               <Printer className="h-4 w-4" /> Print
             </Button>
@@ -180,8 +188,21 @@ export function SalesInvoiceViewPage() {
 
       {/* Printable GST tax-invoice document (shared InvoiceSheet component). */}
       <div id="invoice-print-area">
-        <InvoiceSheet business={activeBusiness} invoice={invoice} items={data.items} />
+        <InvoiceSheet
+          business={activeBusiness}
+          invoice={invoice}
+          items={data.items}
+          ewayBillNo={activeBusiness && invoiceId ? findEWayBillByInvoiceId(activeBusiness.id, invoiceId)?.ewayBillNo ?? null : null}
+          vehicleNo={activeBusiness && invoiceId ? findEWayBillByInvoiceId(activeBusiness.id, invoiceId)?.vehicleNo ?? null : null}
+        />
       </div>
+
+      <EWayBillModal
+        open={ewayOpen}
+        onClose={() => setEwayOpen(false)}
+        business={activeBusiness}
+        invoice={invoice}
+      />
 
       <SendDialog
         open={sendOpen}

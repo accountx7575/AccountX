@@ -5,6 +5,8 @@ export interface PrintableDocData {
   dateValue: string;
   expiryLabel?: string;
   expiryValue?: string | null;
+  ewayBillNo?: string | null;
+  vehicleNo?: string | null;
   partyLabel: string;
   partyName: string;
   partyAddress?: string;
@@ -279,6 +281,8 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
       <div><span class="k">${esc(doc.docTitle || 'QUOTATION')} #:</span> <span class="v">${esc(doc.docNumber)}</span></div>
       <div><span class="k">${esc(doc.dateLabel || 'Quote Date')}:</span> <span class="v">${esc(doc.dateValue)}</span></div>
       <div><span class="k">${esc(doc.expiryLabel || 'Valid Until')}:</span> <span class="v">${esc(doc.expiryValue || '—')}</span></div>
+      ${doc.ewayBillNo ? `<div><span class="k">e-Way Bill No:</span> <span class="v">${esc(doc.ewayBillNo)}</span></div>` : ''}
+      ${doc.vehicleNo ? `<div><span class="k">Vehicle No:</span> <span class="v">${esc(doc.vehicleNo)}</span></div>` : ''}
     </div>
   </div>
 
@@ -979,6 +983,8 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
               metaLine(`${title} #:`, em(doc.docNumber)),
               metaLine(doc.dateLabel || 'Quote Date', em(doc.dateValue)),
               metaLine(doc.expiryLabel || 'Valid Until', em(doc.expiryValue)),
+              ...(doc.ewayBillNo ? [metaLine('e-Way Bill No', em(doc.ewayBillNo))] : []),
+              ...(doc.vehicleNo ? [metaLine('Vehicle No', em(doc.vehicleNo))] : []),
             ],
           }
         )],

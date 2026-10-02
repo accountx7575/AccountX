@@ -11,6 +11,8 @@ type InvoiceSheetProps = {
   business: Business | null;
   invoice: InvoiceWithCustomer;
   items: SalesInvoiceItem[];
+  ewayBillNo?: string | null;
+  vehicleNo?: string | null;
 };
 
 /**
@@ -18,7 +20,7 @@ type InvoiceSheetProps = {
  * Light-only styling by design so browser print and PDF capture are theme-independent.
  * Reused by: SalesInvoiceViewPage (print/PDF source) and SalesInvoiceCreatePage (live preview).
  */
-export function InvoiceSheet({ business, invoice, items }: InvoiceSheetProps) {
+export function InvoiceSheet({ business, invoice, items, ewayBillNo, vehicleNo }: InvoiceSheetProps) {
   const sym = business?.currency_symbol || '₹';
   const customer = invoice.customer;
 
@@ -74,6 +76,18 @@ export function InvoiceSheet({ business, invoice, items }: InvoiceSheetProps) {
                 <tr>
                   <td className="text-secondary-500 pr-3 py-0.5">Due Date</td>
                   <td className="py-0.5">{formatDate(invoice.due_date)}</td>
+                </tr>
+              )}
+              {ewayBillNo && (
+                <tr>
+                  <td className="text-secondary-500 pr-3 py-0.5">e-Way Bill No</td>
+                  <td className="font-mono font-semibold py-0.5">{ewayBillNo}</td>
+                </tr>
+              )}
+              {vehicleNo && (
+                <tr>
+                  <td className="text-secondary-500 pr-3 py-0.5">Vehicle No</td>
+                  <td className="font-mono py-0.5">{vehicleNo}</td>
                 </tr>
               )}
               <tr>

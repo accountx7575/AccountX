@@ -11,9 +11,10 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { FileText, Plus, Search, Ban, Eye, CheckCircle2, Trash2, Printer, FileDown, FileSpreadsheet, Share2 } from 'lucide-react';
+import { FileText, Plus, Search, Ban, Eye, CheckCircle2, Trash2, Printer, FileDown, FileSpreadsheet, Share2, Truck } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { fetchInvoiceItems, renderInvoiceSheetToPdf, exportInvoiceExcel } from '@/lib/invoiceExport';
+import { EWayBillModal } from '@/components/eway/EWayBillModal';
 import { openWhatsAppShare } from '@/lib/whatsapp';
 import type { Customer } from '@/types/db';
 import type { SalesInvoice } from '@/types/db';
@@ -52,6 +53,7 @@ export function SalesInvoicesPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [cancelTarget, setCancelTarget] = useState<SalesInvoice | null>(null);
   const [discardTarget, setDiscardTarget] = useState<SalesInvoice | null>(null);
+  const [ewayTarget, setEwayTarget] = useState<(SalesInvoice & { customer: { name: string; phone: string | null } | null }) | null>(null);
 
   const { data: invoices, isLoading, isError, refetch } = useQuery({
     queryKey: ['sales-invoices', activeBusiness?.id],
@@ -59,7 +61,7 @@ export function SalesInvoicesPage() {
       if (!activeBusiness) return [];
       const { data, error } = await supabase
         .from('sales_invoices')
-        .select('*, customer:customers(name,phone)')
+        .select('*, customer:customers(name,phone,company_name,address,city,state,pincode)')
         .eq('business_id', activeBusiness.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -269,6 +271,15 @@ export function SalesInvoicesPage() {
                         >
                           <Share2 className="h-4 w-4" />
                         </button>
+                        {Number(inv.grand_total) > 50000 && inv.status !== 'cancelled' && (
+                          <button
+                            onClick={() => setEwayTarget(inv)}
+                            className="p-1.5 rounded-lg text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                            title="Generate e-Way Bill"
+                          >
+                            <Truck className="h-4 w-4" />
+                          </button>
+                        )}
                         {inv.status === 'draft' && (
                           <>
                             <button
@@ -314,6 +325,13 @@ export function SalesInvoicesPage() {
         message="Nothing was ever posted — the draft will be hard-deleted."
         confirmText="Discard"
         loading={discardDraftMutation.isPending}
+      />
+
+      <EWayBillModal
+        open={!!ewayTarget}
+        onClose={() => setEwayTarget(null)}
+        business={activeBusiness}
+        invoice={ewayTarget}
       />
 
       <ConfirmDialog

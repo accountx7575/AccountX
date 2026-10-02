@@ -68,6 +68,7 @@ const GstReconciliationPage = lazy(() => import('@/pages/gst/GstReconciliationPa
 const TallyWizardPage = lazy(() => import('@/pages/tally/TallyWizardPage').then((m) => ({ default: m.TallyWizardPage })));
 const TallyMappingPage = lazy(() => import('@/pages/tally/TallyMappingPage').then((m) => ({ default: m.TallyMappingPage })));
 const TallyHistoryPage = lazy(() => import('@/pages/tally/TallyHistoryPage').then((m) => ({ default: m.TallyHistoryPage })));
+const EWayBillPage = lazy(() => import('@/pages/EWayBillPage').then((m) => ({ default: m.EWayBillPage })));
 const CommunicationsPage = lazy(() => import('@/pages/CommunicationsPage').then((m) => ({ default: m.CommunicationsPage })));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const SleuthNotFoundPage = lazy(() => import('@/pages/SleuthNotFoundPage').then((m) => ({ default: m.SleuthNotFoundPage })));
@@ -203,6 +204,7 @@ function AppRoutes() {
         <Route path="gst/validation" element={<GstValidationPage />} />
         <Route path="gst/reconciliation" element={<GstReconciliationPage />} />
         <Route path="tally" element={<TallyWizardPage />} />
+        <Route path="eway-bill" element={<EWayBillPage />} />
         <Route path="tally/mapping" element={<TallyMappingPage />} />
         <Route path="tally/history" element={<TallyHistoryPage />} />
         
