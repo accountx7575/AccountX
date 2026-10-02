@@ -172,7 +172,7 @@ export function SalesInvoiceCreatePage() {
       rowRefs.current[items.length]?.focus();
     });
   };
-  const removeItem = (idx: number) => setItems((prev) => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
+  const removeItem = (idx: number) => setItems((prev) => prev.length === 1 ? [{ ...emptyItem }] : prev.filter((_, i) => i !== idx));
 
   const handleRowKeyDown = (e: KeyboardEvent, idx: number) => {
     if (e.key === 'ArrowDown') {
@@ -410,86 +410,84 @@ export function SalesInvoiceCreatePage() {
             }
           >
             <div className="overflow-x-auto scrollbar-thin -mx-2">
-              <table className="w-full text-sm min-w-[900px]">
-                <thead>
-                  <tr className="border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
-                    <th className="text-left px-2 py-2 font-medium min-w-[220px]">Product</th>
-                    <th className="text-right px-2 py-2 font-medium w-24">Qty</th>
-                    <th className="text-right px-2 py-2 font-medium w-28">Rate</th>
-                    <th className="text-right px-2 py-2 font-medium w-24">Disc</th>
-                    <th className="text-left px-2 py-2 font-medium w-24">Tax %</th>
-                    <th className="text-right px-2 py-2 font-medium w-32">Amount</th>
-                    <th className="w-10"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item, idx) => (
-                    <tr key={idx} className="border-b border-secondary-100 dark:border-secondary-800/50">
-                      <td className="px-2 py-2">
-                        <select
-                          ref={(el) => { rowRefs.current[idx] = el; }}
-                          value={item.product_id || ''}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const p = products?.find((pr) => pr.id === val);
-                            if (p) {
-                              updateItem(idx, {
-                                product_id: p.id,
-                                product_name: p.name,
-                                hsn_sac: p.hsn_sac || '',
-                                unit: p.unit || 'PCS',
-                                rate: p.selling_price || 0,
-                                tax_rate: p.tax_rate || 0,
-                              });
-                            } else {
-                              updateItem(idx, { product_id: null, product_name: '', hsn_sac: '', unit: 'PCS', rate: 0, tax_rate: 0 });
-                            }
-                          }}
-                          onKeyDown={(e) => handleRowKeyDown(e, idx)}
-                          className="input w-full min-w-[220px]"
-                        >
-                          <option value="">-- Select Product --</option>
-                          {products?.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} · {formatCurrency(p.selling_price, sym)} · Stock {p.current_stock}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-2 py-2 w-24">
-                        <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, { quantity: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-right figure" />
-                      </td>
-                      <td className="px-2 py-2 w-28">
-                        <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, { rate: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-right figure" />
-                      </td>
-                      <td className="px-2 py-2 w-24">
-                        <Input type="number" value={item.discount_amount} onChange={(e) => updateItem(idx, { discount_amount: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-right figure" />
+              <div className="min-w-[900px] px-2 text-sm">
+                <div className="grid grid-cols-[1fr_80px_110px_90px_100px_110px_40px] items-center gap-3 border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
+                  <div className="py-2 font-medium text-left">Product</div>
+                  <div className="py-2 font-medium text-center">Qty</div>
+                  <div className="py-2 font-medium text-center">Rate</div>
+                  <div className="py-2 font-medium text-center">Disc</div>
+                  <div className="py-2 font-medium text-center">Tax %</div>
+                  <div className="py-2 font-medium text-right">Amount</div>
+                  <div />
+                </div>
+                {items.map((item, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_80px_110px_90px_100px_110px_40px] items-center gap-3 border-b border-secondary-100 dark:border-secondary-800/50">
+                    <div className="py-2 min-w-0">
+                      <select
+                        ref={(el) => { rowRefs.current[idx] = el; }}
+                        value={item.product_id || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const p = products?.find((pr) => pr.id === val);
+                          if (p) {
+                            updateItem(idx, {
+                              product_id: p.id,
+                              product_name: p.name,
+                              hsn_sac: p.hsn_sac || '',
+                              unit: p.unit || 'PCS',
+                              rate: p.selling_price || 0,
+                              tax_rate: p.tax_rate || 0,
+                            });
+                          } else {
+                            updateItem(idx, { product_id: null, product_name: '', hsn_sac: '', unit: 'PCS', rate: 0, tax_rate: 0 });
+                          }
+                        }}
+                        onKeyDown={(e) => handleRowKeyDown(e, idx)}
+                        className="input w-full"
+                      >
+                        <option value="">-- Select Product --</option>
+                        {products?.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} · {formatCurrency(p.selling_price, sym)} · Stock {p.current_stock}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="py-2">
+                      <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, { quantity: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-center figure" />
+                    </div>
+                    <div className="py-2">
+                      <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, { rate: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-center figure" />
+                    </div>
+                    <div className="py-2">
+                      <div className="relative">
+                        <Input type="number" value={item.discount_amount} onChange={(e) => updateItem(idx, { discount_amount: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-center figure" />
                         {roundTo2(item.quantity * item.rate - item.discount_amount) > 0 && (
-                          <p className="figure text-[10px] text-secondary-400 mt-1 text-right pr-1">{formatCurrency(roundTo2(item.quantity * item.rate - item.discount_amount), sym)}</p>
+                          <p className="absolute left-0 right-0 top-full mt-0.5 figure text-[10px] text-secondary-400 text-center whitespace-nowrap">{formatCurrency(roundTo2(item.quantity * item.rate - item.discount_amount), sym)}</p>
                         )}
-                      </td>
-                      <td className="px-2 py-2 w-24">
-                        <select
-                          className="input w-full px-1.5 py-1.5 text-xs"
-                          value={String(item.tax_rate)}
-                          onChange={(e) => updateItem(idx, { tax_rate: parseFloat(e.target.value) })}
-                          onKeyDown={(e) => handleRowKeyDown(e, idx)}
-                        >
-                          {taxRateOptions.map((r) => <option key={r} value={String(r)}>{r}%</option>)}
-                        </select>
-                      </td>
-                      <td className="px-2 py-2 w-32 text-right tabular-nums font-medium text-secondary-900 dark:text-secondary-100 figure">
-                        {formatCurrency(item.total_amount, sym)}
-                      </td>
-                      <td className="px-2 py-2 w-10">
-                        <button onClick={() => removeItem(idx)} className="p-1 text-secondary-400 hover:text-error-600 transition-colors" title="Remove row">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    </div>
+                    <div className="py-2">
+                      <select
+                        className="input w-full px-1.5 py-1.5 text-xs text-center"
+                        value={String(item.tax_rate)}
+                        onChange={(e) => updateItem(idx, { tax_rate: parseFloat(e.target.value) })}
+                        onKeyDown={(e) => handleRowKeyDown(e, idx)}
+                      >
+                        {taxRateOptions.map((r) => <option key={r} value={String(r)}>{r}%</option>)}
+                      </select>
+                    </div>
+                    <div className="py-2 text-right tabular-nums font-medium text-secondary-900 dark:text-secondary-100 figure">
+                      {formatCurrency(item.total_amount, sym)}
+                    </div>
+                    <div className="py-2 flex justify-center">
+                      <button onClick={() => removeItem(idx)} className="p-1 text-secondary-400 hover:text-error-600 transition-colors" title="Remove row">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-secondary-400">
               <span><kbd className="kbd">↑↓</kbd> move between rows</span>
