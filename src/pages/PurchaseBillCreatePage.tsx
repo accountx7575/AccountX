@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/common/DatePicker';
 import { Input } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
-import { Plus, Trash2, Search, Save, ArrowLeft, Sparkles, Upload } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, Sparkles, Upload } from 'lucide-react';
 import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
 import { computeDocLine } from '@/lib/payloads';
 import type { Supplier, Product } from '@/types/db';
@@ -55,8 +55,7 @@ export function PurchaseBillCreatePage() {
   const [dueDate, setDueDate] = useState('');
   const [items, setItems] = useState<LineItem[]>([{ ...emptyItem }]);
   const [notes, setNotes] = useState('');
-  const [productSearch, setProductSearch] = useState('');
-  const [searchIdx, setSearchIdx] = useState<number | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState('');
   const [saving, setSaving] = useState(false);
 
   const { data: suppliers } = useQuery({
@@ -141,8 +140,6 @@ export function PurchaseBillCreatePage() {
       product_id: product.id, product_name: product.name, hsn_sac: product.hsn_sac || '',
       unit: product.unit, rate: product.purchase_price, tax_rate: product.tax_rate,
     });
-    setSearchIdx(null);
-    setProductSearch('');
   };
 
   const addItem = () => setItems((prev) => [...prev, { ...emptyItem }]);
@@ -305,6 +302,7 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
         cess_amount: 0,
         round_off: totals.roundOff,
         grand_total: totals.grandTotal,
+        payment_method: paymentMethod || null,
         notes: notes || null,
       };
       if (billNumber.trim()) {
@@ -439,43 +437,29 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
                 <div className="py-2 font-medium text-right">Amount</div>
                 <div />
               </div>
-              {items.map((item, idx) => {
-                // Matches computed once per row: empty while loading, empty
-                // search, or zero hits all yield [] so no box ever renders.
-                const matches = productSearch
-                  ? (products ?? []).filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 8)
-                  : [];
-                return (
+              {items.map((item, idx) => (
                 <div key={idx} className="grid grid-cols-[1fr_100px_70px_100px_80px_90px_100px_40px] items-center gap-2 border-b border-secondary-100 dark:border-secondary-800/50">
-                  <div className="py-2 min-w-0 relative">
-                    <div className="relative">
-                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-secondary-400 pointer-events-none" />
-                      <Input
-                        placeholder="Type to search products…"
-                        autoComplete="off"
-                        value={item.product_name || (searchIdx === idx ? productSearch : '')}
-                        onChange={(e) => {
-                          setSearchIdx(idx);
-                          setProductSearch(e.target.value);
-                          updateItem(idx, { product_id: null, product_name: e.target.value });
-                        }}
-                        onFocus={() => setSearchIdx(idx)}
-                        className="w-full pl-8"
-                      />
-                    </div>
-                    {searchIdx === idx && matches.length > 0 && (
-                      <div className="absolute z-50 mt-1 w-full card-solid max-h-48 overflow-y-auto scrollbar-thin p-1 shadow-lg">
-                        {matches.map((p) => (
-                          <button key={p.id} onClick={() => selectProduct(idx, p)} className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/30 text-left">
-                            <div>
-                              <p className="text-sm font-medium text-secondary-900 dark:text-secondary-100">{p.name}</p>
-                              <p className="text-xs text-secondary-400">{p.hsn_sac || 'No HSN'} • Stock: {p.current_stock}</p>
-                            </div>
-                            <span className="figure text-xs text-primary-600 dark:text-primary-400">{formatCurrency(p.purchase_price, sym)}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                  <div className="py-2 min-w-0">
+                    <select
+                      value={item.product_id || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const p = products?.find((pr) => pr.id === val);
+                        if (p) {
+                          selectProduct(idx, p);
+                        } else {
+                          updateItem(idx, { product_id: null, product_name: '', hsn_sac: '', unit: 'PCS', rate: 0, tax_rate: 0 });
+                        }
+                      }}
+                      className="input w-full"
+                    >
+                      <option value="">-- Select Product --</option>
+                      {products?.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} - ₹{formatCurrency(p.purchase_price, sym)} - Stock {p.current_stock}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="py-2">
                     <Input value={item.hsn_sac} onChange={(e) => updateItem(idx, { hsn_sac: e.target.value })} className="w-full text-center figure font-mono" placeholder="HSN" />
@@ -507,14 +491,29 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
                     </button>
                   </div>
                 </div>
-                );
-              })}
+              ))}
             </div>
           </div>
         </FormSection>
 
-        <FormSection title="Notes">
-          <textarea className="input resize-none max-w-xl" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes for this bill..." />
+        <FormSection title="Payment, Notes & Terms">
+          <div className="space-y-4">
+            <div className="max-w-48">
+              <label className="label">Payment Method</label>
+              <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                <option value="">—</option>
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="bank">Bank Transfer</option>
+                <option value="cheque">Cheque</option>
+                <option value="credit">Credit / Pending</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Notes</label>
+              <textarea className="input resize-none max-w-xl" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes for this bill..." />
+            </div>
+          </div>
         </FormSection>
 
         <FormSection title="Totals & GST">
