@@ -427,7 +427,7 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
             </button>
           }
         >
-          <div className="overflow-x-auto scrollbar-thin -mx-2">
+          <div className="overflow-x-auto md:overflow-visible scrollbar-thin -mx-2">
             <div className="min-w-[900px] px-2 text-sm">
               <div className="grid grid-cols-[1fr_100px_70px_100px_80px_90px_100px_40px] items-center gap-2 border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
                 <div className="py-2 font-medium text-left">Product</div>
@@ -439,13 +439,20 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
                 <div className="py-2 font-medium text-right">Amount</div>
                 <div />
               </div>
-              {items.map((item, idx) => (
+              {items.map((item, idx) => {
+                // Matches computed once per row: empty while loading, empty
+                // search, or zero hits all yield [] so no box ever renders.
+                const matches = productSearch
+                  ? (products ?? []).filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 8)
+                  : [];
+                return (
                 <div key={idx} className="grid grid-cols-[1fr_100px_70px_100px_80px_90px_100px_40px] items-center gap-2 border-b border-secondary-100 dark:border-secondary-800/50">
                   <div className="py-2 min-w-0 relative">
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-secondary-400 pointer-events-none" />
                       <Input
                         placeholder="Type to search products…"
+                        autoComplete="off"
                         value={item.product_name || (searchIdx === idx ? productSearch : '')}
                         onChange={(e) => {
                           setSearchIdx(idx);
@@ -456,9 +463,9 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
                         className="w-full pl-8"
                       />
                     </div>
-                    {searchIdx === idx && productSearch && products && (
-                      <div className="absolute z-20 mt-1 w-full card-solid max-h-48 overflow-y-auto scrollbar-thin p-1 shadow-lg">
-                        {products.filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 8).map((p) => (
+                    {searchIdx === idx && matches.length > 0 && (
+                      <div className="absolute z-50 mt-1 w-full card-solid max-h-48 overflow-y-auto scrollbar-thin p-1 shadow-lg">
+                        {matches.map((p) => (
                           <button key={p.id} onClick={() => selectProduct(idx, p)} className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/30 text-left">
                             <div>
                               <p className="text-sm font-medium text-secondary-900 dark:text-secondary-100">{p.name}</p>
@@ -500,7 +507,8 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </FormSection>
