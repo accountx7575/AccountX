@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { useToast } from '@/context/ToastContext';
+import { useToast, sanitizeUserFacingError } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
@@ -47,7 +47,8 @@ export function SuppliersPage() {
       let q = supabase
         .from('suppliers')
         .select('*', { count: 'exact' })
-        .eq('business_id', activeBusiness.id);
+        .eq('business_id', activeBusiness.id)
+        .eq('status', 'active');
       if (list.debouncedSearch) {
         const p = likePattern(list.debouncedSearch);
         q = q.or(`name.ilike."${p}",phone.ilike."${p}",email.ilike."${p}",gstin.ilike."${p}"`);
@@ -80,53 +81,122 @@ export function SuppliersPage() {
     onError: (err: any) => toast(err.message || 'Failed to save supplier', 'error'),
   });
 
-  // FK violations surface as PostgREST 23503 / "violates foreign key" messages.
-  // They must be detected here: ToastContext rewrites error-type toasts matching
-  // /violates .*(constraint|policy)/ to a generic message, so FK cases go out
-  // as 'warning' (unsanitized) with explicit copy instead.
+  // Permanent-delete cascade. Migrations hold REFERENCES suppliers(id)
+  // ON DELETE RESTRICT on purchase_bills / purchase_orders / debit_notes,
+  // and payments reference the supplier polymorphically (party_type +
+  // party_id). A bare delete throws FK 23503 whenever history exists, so
+  // linked rows are removed first — draft/unfinalized rows outright,
+  // finalized accounting rows only if RESTRICT still blocks (explicit user
+  // order: the supplier must go). There is no deactivate path anymore.
   const isFkConstraintError = (message: string) =>
     /foreign[_\s-]?key|violates\s+foreign|\b23503\b|\bfk_/i.test(message || '');
 
+  // Draft/unfinalized per the actual status columns in src/types/db.ts:
+  // bills confirmed|partially_paid|paid, orders confirmed|received|converted,
+  // notes issued|applied are finalized; everything else (draft|cancelled) goes
+  // outright. Payments carry no status — always removed with the supplier.
+  const isUnfinalizedStatus = (status: string) => status === 'draft' || status === 'cancelled';
+
   const deleteMutation = useMutation({
-    mutationFn: async (id: string): Promise<'deleted' | 'deactivated'> => {
+    mutationFn: async (id: string) => {
       if (!activeBusiness) throw new Error('No active business');
-      // Probe for linked records before deleting — a bare hard delete throws
-      // an FK violation (swallowed into a generic toast) when history exists.
-      const probes = await Promise.all([
-        supabase.from('purchase_bills').select('id', { count: 'exact', head: true }).eq('business_id', activeBusiness.id).eq('supplier_id', id),
-        supabase.from('purchase_orders').select('id', { count: 'exact', head: true }).eq('business_id', activeBusiness.id).eq('supplier_id', id),
-        supabase.from('debit_notes').select('id', { count: 'exact', head: true }).eq('business_id', activeBusiness.id).eq('supplier_id', id),
-        supabase.from('payments').select('id', { count: 'exact', head: true }).eq('business_id', activeBusiness.id).eq('party_type', 'supplier').eq('party_id', id),
+      const biz = activeBusiness.id;
+      // Probe + collect child ids (ids, not counts — line items key off parents).
+      const [billsRes, ordersRes, notesRes, paymentsRes] = await Promise.all([
+        supabase.from('purchase_bills').select('id,status').eq('business_id', biz).eq('supplier_id', id),
+        supabase.from('purchase_orders').select('id,status').eq('business_id', biz).eq('supplier_id', id),
+        supabase.from('debit_notes').select('id,status').eq('business_id', biz).eq('supplier_id', id),
+        supabase.from('payments').select('id').eq('business_id', biz).eq('party_type', 'supplier').eq('party_id', id),
       ]);
-      const probeError = probes.find((p) => p.error)?.error;
-      if (probeError) throw probeError;
-      const deactivate = async () => {
-        const { error } = await supabase.from('suppliers').update({ status: 'inactive' }).eq('id', id);
-        if (error) throw error;
-        return 'deactivated' as const;
+      for (const r of [billsRes, ordersRes, notesRes, paymentsRes]) if (r.error) throw r.error;
+      const bills = (billsRes.data ?? []) as { id: string; status: string }[];
+      const orders = (ordersRes.data ?? []) as { id: string; status: string }[];
+      const notes = (notesRes.data ?? []) as { id: string; status: string }[];
+      const paymentIds = ((paymentsRes.data ?? []) as { id: string }[]).map((p) => p.id);
+
+      const removed = {
+        payments: 0,
+        draftBills: 0, draftOrders: 0, draftNotes: 0,
+        finalizedBills: 0, finalizedOrders: 0, finalizedNotes: 0,
       };
-      if (probes.some((p) => (p.count ?? 0) > 0)) return deactivate();
-      const { error } = await supabase.from('suppliers').delete().eq('id', id);
-      // Race guard: a linked record created between probe and delete must
-      // degrade to deactivation, never to a raw FK error.
-      if (error) {
-        if (isFkConstraintError(error.message)) return deactivate();
-        throw error;
+
+      const deleteByIds = async (table: string, column: string, ids: string[]) => {
+        if (ids.length === 0) return;
+        const { error } = await supabase.from(table).delete().eq('business_id', biz).in(column, ids);
+        if (error) throw error;
+      };
+
+      let paymentsCleared = false;
+      const clearScope = async (draftOnly: boolean) => {
+        const pick = (rows: { id: string; status: string }[]) =>
+          draftOnly ? rows.filter((r) => isUnfinalizedStatus(r.status)) : rows;
+        const b = pick(bills);
+        const o = pick(orders);
+        const n = pick(notes);
+        // Payments may point at bills — remove before bills. Line items point
+        // at parents — remove before parents. Debit notes point at bills —
+        // clear notes (and their items) before bills.
+        if (!paymentsCleared) {
+          await deleteByIds('payments', 'id', paymentIds);
+          paymentsCleared = true;
+          removed.payments = paymentIds.length;
+        }
+        await deleteByIds('debit_note_items', 'debit_note_id', n.map((r) => r.id));
+        await deleteByIds('debit_notes', 'id', n.map((r) => r.id));
+        await deleteByIds('purchase_bill_items', 'bill_id', b.map((r) => r.id));
+        await deleteByIds('purchase_bills', 'id', b.map((r) => r.id));
+        await deleteByIds('purchase_order_items', 'purchase_order_id', o.map((r) => r.id));
+        await deleteByIds('purchase_orders', 'id', o.map((r) => r.id));
+        if (draftOnly) {
+          removed.draftBills = b.length;
+          removed.draftOrders = o.length;
+          removed.draftNotes = n.length;
+        } else {
+          removed.finalizedBills = bills.filter((r) => !isUnfinalizedStatus(r.status)).length;
+          removed.finalizedOrders = orders.filter((r) => !isUnfinalizedStatus(r.status)).length;
+          removed.finalizedNotes = notes.filter((r) => !isUnfinalizedStatus(r.status)).length;
+        }
+      };
+
+      const hardDelete = async () => {
+        const { error } = await supabase.from('suppliers').delete().eq('id', id);
+        if (error) throw error;
+      };
+
+      const finalizedExists =
+        bills.some((r) => !isUnfinalizedStatus(r.status)) ||
+        orders.some((r) => !isUnfinalizedStatus(r.status)) ||
+        notes.some((r) => !isUnfinalizedStatus(r.status));
+
+      try {
+        await clearScope(true);
+        await hardDelete();
+      } catch (err: any) {
+        // RESTRICT blocked by finalized accounting rows → per explicit user
+        // order those go too, then the supplier. Anything else (or nothing
+        // finalized to blame) surfaces as an explicit raw error below.
+        if (!finalizedExists || !isFkConstraintError(err?.message)) throw err;
+        await clearScope(false);
+        await hardDelete();
       }
-      return 'deleted';
+      return removed;
     },
-    onSuccess: (outcome) => {
+    onSuccess: (_removed, id) => {
+      // Drop the row from local cache immediately, then refetch authoritative state.
+      queryClient.setQueriesData<{ rows: Supplier[]; total: number }>(
+        { queryKey: ['suppliers', activeBusiness?.id] },
+        (old) => (old ? { rows: old.rows.filter((s) => s.id !== id), total: Math.max(0, old.total - 1) } : old),
+      );
       queryClient.invalidateQueries({ queryKey: ['suppliers', activeBusiness?.id] });
-      toast(outcome === 'deactivated' ? 'Supplier deactivated — existing purchase records kept' : 'Supplier deleted', 'success');
+      toast('Supplier permanently deleted successfully', 'success');
       setDeleteId(null);
     },
     onError: (err: any) => {
-      const raw = err?.message || '';
-      if (isFkConstraintError(raw)) {
-        toast('Cannot delete supplier with existing purchase records. Deactivated instead — existing history kept.', 'warning');
-      } else {
-        toast(raw || 'Failed to delete supplier', 'error');
-      }
+      const raw = err?.message || 'Failed to delete supplier';
+      // 'error' toasts matching ToastContext RAW_ERROR_SIGNATURES are rewritten
+      // to generic copy — route those through 'warning' (unsanitized) so the
+      // explicit raw message always reaches the user verbatim.
+      toast(raw, sanitizeUserFacingError(raw) === raw ? 'error' : 'warning');
     },
   });
 
