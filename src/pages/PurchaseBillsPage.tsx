@@ -15,7 +15,7 @@ import { ShoppingCart, Plus, Search, Ban, CheckCircle2, Trash2, Printer } from '
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { renderDocSheetToPdf, type PrintableDocData } from '@/lib/docPrint';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
-import type { PurchaseBill, PurchaseBillItem } from '@/types/db';
+import type { PurchaseBill, PurchaseBillItem, Supplier } from '@/types/db';
 
 export function PurchaseBillsPage() {
   const { activeBusiness } = useAuth();
@@ -38,6 +38,15 @@ export function PurchaseBillsPage() {
         .eq('bill_id', b.id)
         .order('created_at');
       if (error) throw error;
+      // Full supplier row for the swapped print parties: Billed By = vendor.
+      const { data: supplier, error: supplierError } = await supabase
+        .from('suppliers')
+        .select('*')
+        .eq('id', b.supplier_id)
+        .maybeSingle();
+      if (supplierError) throw supplierError;
+      const s = (supplier ?? null) as Supplier | null;
+      const supplierAddress = [s?.address, s?.city, s?.state, s?.pincode].filter(Boolean).join(', ');
       const payload: Omit<PrintableDocData, 'businessName' | 'gstin'> = {
         docTitle: 'PURCHASE BILL',
         docNumber: b.bill_number,
@@ -46,7 +55,11 @@ export function PurchaseBillsPage() {
         expiryLabel: 'Due Date',
         expiryValue: b.due_date,
         partyLabel: 'Supplier',
-        partyName: b.supplier?.name || '—',
+        partyName: s?.company_name || s?.name || b.supplier?.name || '—',
+        partyAddress: supplierAddress || undefined,
+        partyGstin: s?.gstin || undefined,
+        partyPhone: s?.phone || undefined,
+        isPurchaseBill: true,
         status: b.status,
         items: (items || []) as PurchaseBillItem[],
         subtotal: Number(b.subtotal),

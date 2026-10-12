@@ -37,6 +37,9 @@ export interface PrintableDocData {
   grandTotal: number;
   notes?: string | null;
   terms?: string | null;
+  /** Purchase-bill mode: Billed By = supplier, Billed To = our business,
+   *  no bank card, neutral terms, no signature image/For-block. */
+  isPurchaseBill?: boolean;
 }
 
 // Fallback Crisp Vector SVG Logo for Solar Home
@@ -163,6 +166,10 @@ export function generateOmStyleHtml(
   const dynamicLogo = business?.stamp_url || business?.logo_url || SOLAR_HOME_LOGO;
   const dynamicSignature = business?.signature_url || null;
 
+  // Purchase-bill mode swaps the sales-side party assignment. Default off —
+  // every other caller renders byte-identical output.
+  const isPurchase = doc.isPurchaseBill === true;
+
   const title = doc.docTitle || 'QUOTATION';
   const shipName = doc.shipToName || doc.partyName;
   const shipAddress = doc.shipToAddress || doc.partyAddress || '';
@@ -197,11 +204,16 @@ export function generateOmStyleHtml(
 
   const termsList = (
     doc.terms ||
-    `Payment 100% Advance.
+    (isPurchase
+      ? `Goods received are subject to inspection and acceptance as per the purchase order.
+Please quote this bill number in all future correspondence.
+ALL SUBJECT TO ${state.toUpperCase()} JURISDICTION.
+(E. & O.E.)`
+      : `Payment 100% Advance.
 All payments to be drawn in favour of "${businessName}", payable at Barabanki.
 This quotation is valid for 15 Days, subject to availability with our principals.
 ALL SUBJECT TO BARABANKI JURISDICTION.
-(E. & O.E.)`
+(E. & O.E.)`)
   )
     .split('\n')
     .map((t) => t.trim())
@@ -258,6 +270,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
   .sign { margin-top: 6mm; text-align: center; }
   .sign img { max-width: 170px; max-height: 65px; object-fit: contain; }
   .sign .for { font-size: 11px; font-weight: 800; color: #0b4da2; }
+  .sign .recvd { font-size: 11px; font-weight: 800; color: #0f172a; }
   .sign .prop { font-size: 12px; font-weight: 800; color: #0b4da2; text-align: right; padding-right: 8mm; }
   .sign-line { border-top: 1px solid #0f172a; padding-top: 2mm; margin-top: 2mm; font-size: 10px; font-weight: 700; }
   .tot-table { width: 100%; border-collapse: collapse; font-size: 11px; }
@@ -287,6 +300,25 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
   </div>
 
   <div class="cards">
+    ${isPurchase ? `
+    <div class="card">
+      <h3>Billed By</h3>
+      <p class="nm">${esc(doc.partyName)}</p>
+      <p>${esc(doc.partyAddress || '')}</p>
+      ${doc.partyGstin ? `<p><span class="lbl">GSTIN:</span> ${esc(doc.partyGstin)}</p>` : ''}
+      ${doc.partyPhone ? `<p><span class="lbl">Phone:</span> ${esc(doc.partyPhone)}</p>` : ''}
+    </div>
+    <div class="card">
+      <h3>Billed To</h3>
+      <p class="nm">${esc(businessName)}</p>
+      <p>${esc(businessAddress)}</p>
+      <p><span class="lbl">GSTIN:</span> ${esc(gstin)}</p>
+      <p><span class="lbl">PAN:</span> ${esc(pan)}</p>
+      <p><span class="lbl">Phone:</span> ${esc(phone)}</p>
+      <p><span class="lbl">Place of Supply:</span> ${esc(state)}</p>
+      <p><span class="lbl">Country of Supply:</span> India</p>
+    </div>
+    ` : `
     <div class="card">
       <h3>Billed By</h3>
       <p class="nm">${esc(businessName)}</p>
@@ -305,6 +337,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
       <p><span class="lbl">Country of Supply:</span> India</p>
       ${shipName && shipName !== doc.partyName ? `<p><span class="lbl">Ship To:</span> ${esc(shipName)}${shipAddress ? `, ${esc(shipAddress)}` : ''}${shipPhone ? ` (${esc(shipPhone)})` : ''}</p>` : ''}
     </div>
+    `}
   </div>
 
   <table class="items">
@@ -327,6 +360,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
 
   <div class="bottom">
     <div class="left-col">
+      ${isPurchase ? '' : `
       <div class="bank-card">
         <h4>Bank Details</h4>
         <p><span class="lbl">Bank Name:</span> ${esc(bankName)}, ${esc(branchName)}</p>
@@ -334,12 +368,15 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
         <p><span class="lbl">Account No:</span> ${esc(accountNo)}</p>
         <p><span class="lbl">IFSC Code:</span> ${esc(ifsc)}</p>
       </div>
+      `}
       <div class="terms">
         <h4>Terms &amp; Conditions</h4>
         <ul>${termsList}</ul>
       </div>
       <div class="sign">
-        ${dynamicSignature ? `<img src="${dynamicSignature}" alt="Authorised Signature" />` : `<div class="for">For ${esc(businessName)}</div><div class="prop">Prop.</div>`}
+        ${isPurchase
+          ? `<div class="recvd">Received By / Verified By</div>`
+          : (dynamicSignature ? `<img src="${dynamicSignature}" alt="Authorised Signature" />` : `<div class="for">For ${esc(businessName)}</div><div class="prop">Prop.</div>`)}
         <div class="sign-line">Authorised Signatory</div>
       </div>
     </div>
@@ -641,6 +678,10 @@ export function buildOmVectorDoc(
   const rs = (n: number) => `${RUPEE} ${money(Number(n || 0))}`;
   const em = (v: unknown) => String(v ?? '—');
 
+  // Purchase-bill mode swaps the sales-side party assignment. Default off —
+  // every other caller renders byte-identical output.
+  const isPurchase = doc.isPurchaseBill === true;
+
   const noBox = {
     hLineWidth: () => 0,
     vLineWidth: () => 0,
@@ -715,50 +756,83 @@ export function buildOmVectorDoc(
     lineHeight: 1.6,
   });
 
-  const billedByLines: unknown[] = [
-    cardHeading('Billed By'),
-    {
-      text: businessName,
-      bold: true,
-      fontSize: 12,
-      color: DARK,
-      margin: [0, 0, 0, 2],
-    },
-    { text: businessAddress, fontSize: 10.5 },
-    fieldLine('GSTIN', gstin),
-    fieldLine('PAN', pan),
-    fieldLine('Phone', phone),
-  ];
+  const billedByLines: unknown[] = isPurchase
+    ? [
+        cardHeading('Billed By'),
+        {
+          text: doc.partyName,
+          bold: true,
+          fontSize: 12,
+          color: DARK,
+          margin: [0, 0, 0, 2],
+        },
+        { text: em(doc.partyAddress), fontSize: 10.5 },
+        ...(doc.partyGstin ? [fieldLine('GSTIN', String(doc.partyGstin))] : []),
+        ...(doc.partyPhone ? [fieldLine('Phone', String(doc.partyPhone))] : []),
+      ]
+    : [
+        cardHeading('Billed By'),
+        {
+          text: businessName,
+          bold: true,
+          fontSize: 12,
+          color: DARK,
+          margin: [0, 0, 0, 2],
+        },
+        { text: businessAddress, fontSize: 10.5 },
+        fieldLine('GSTIN', gstin),
+        fieldLine('PAN', pan),
+        fieldLine('Phone', phone),
+      ];
 
-  const billedToLines: unknown[] = [
-    cardHeading(
-      shipName && shipName !== doc.partyName
-        ? 'Billed To / Ship To'
-        : 'Billed To',
-    ),
-    {
-      text: doc.partyName,
-      bold: true,
-      fontSize: 12,
-      color: DARK,
-      margin: [0, 0, 0, 2],
-    },
-    { text: em(doc.partyAddress), fontSize: 10.5 },
-  ];
-  if (doc.partyGstin)
-    billedToLines.push(fieldLine('GSTIN', String(doc.partyGstin)));
-  if (doc.partyPhone)
-    billedToLines.push(fieldLine('Phone', String(doc.partyPhone)));
-  if (doc.partyPlaceOfSupply || state)
-    billedToLines.push(fieldLine('Place of Supply', em(doc.partyPlaceOfSupply || state)));
-  billedToLines.push(fieldLine('Country of Supply', 'India'));
-  if (shipName && shipName !== doc.partyName)
-    billedToLines.push(
-      fieldLine(
-        'Ship To',
-        `${shipName}${shipAddress ? `, ${shipAddress}` : ''}${shipPhone ? ` (${shipPhone})` : ''}`,
-      ),
-    );
+  const billedToLines: unknown[] = isPurchase
+    ? [
+        cardHeading('Billed To'),
+        {
+          text: businessName,
+          bold: true,
+          fontSize: 12,
+          color: DARK,
+          margin: [0, 0, 0, 2],
+        },
+        { text: businessAddress, fontSize: 10.5 },
+        fieldLine('GSTIN', gstin),
+        fieldLine('PAN', pan),
+        fieldLine('Phone', phone),
+        fieldLine('Place of Supply', state),
+        fieldLine('Country of Supply', 'India'),
+      ]
+    : [
+        cardHeading(
+          shipName && shipName !== doc.partyName
+            ? 'Billed To / Ship To'
+            : 'Billed To',
+        ),
+        {
+          text: doc.partyName,
+          bold: true,
+          fontSize: 12,
+          color: DARK,
+          margin: [0, 0, 0, 2],
+        },
+        { text: em(doc.partyAddress), fontSize: 10.5 },
+      ];
+  if (!isPurchase) {
+    if (doc.partyGstin)
+      billedToLines.push(fieldLine('GSTIN', String(doc.partyGstin)));
+    if (doc.partyPhone)
+      billedToLines.push(fieldLine('Phone', String(doc.partyPhone)));
+    if (doc.partyPlaceOfSupply || state)
+      billedToLines.push(fieldLine('Place of Supply', em(doc.partyPlaceOfSupply || state)));
+    billedToLines.push(fieldLine('Country of Supply', 'India'));
+    if (shipName && shipName !== doc.partyName)
+      billedToLines.push(
+        fieldLine(
+          'Ship To',
+          `${shipName}${shipAddress ? `, ${shipAddress}` : ''}${shipPhone ? ` (${shipPhone})` : ''}`,
+        ),
+      );
+  }
 
   // One shared row: both cells stretch to the same height and each
   // cell's peach fill covers its full (equal) height.
@@ -890,17 +964,59 @@ export function buildOmVectorDoc(
 
   const termsItems = (
     doc.terms ||
-    `Payment 100% Advance.
+    (isPurchase
+      ? `Goods received are subject to inspection and acceptance as per the purchase order.
+Please quote this bill number in all future correspondence.
+ALL SUBJECT TO ${state.toUpperCase()} JURISDICTION.
+(E. & O.E.)`
+      : `Payment 100% Advance.
 All payments to be drawn in favour of "${businessName}", payable at Barabanki.
 This quotation is valid for 15 Days, subject to availability with our principals.
 ALL SUBJECT TO BARABANKI JURISDICTION.
-(E. & O.E.)`
+(E. & O.E.)`)
   )
     .split('\n')
     .map((t) => t.trim())
     .filter(Boolean);
 
-  const signatureStack = {
+  const signatureStack = isPurchase
+    ? {
+        stack: [
+          { text: '', margin: [0, 4, 0, 0] },
+          {
+            text: 'Received By / Verified By',
+            bold: true,
+            fontSize: 11,
+            color: DARK,
+            alignment: 'center',
+            margin: [0, 4, 0, 2],
+          },
+          {
+            canvas: [
+              {
+                type: 'line',
+                x1: 0,
+                y1: 0,
+                x2: 150,
+                y2: 0,
+                lineWidth: 1,
+                lineColor: DARK,
+              },
+            ],
+            alignment: 'center',
+            margin: [0, 6, 0, 3],
+          },
+          {
+            text: 'Authorised Signatory',
+            bold: true,
+            fontSize: 9,
+            alignment: 'center',
+            color: DARK,
+          },
+        ],
+        alignment: 'center',
+      }
+    : {
     stack: [
       { text: '', margin: [0, 4, 0, 0] },
       signatureUrl
@@ -997,7 +1113,7 @@ ALL SUBJECT TO BARABANKI JURISDICTION.
         columns: [
           {
             stack: [
-              bankCard,
+              ...(isPurchase ? [] : [bankCard]),
               {
                 text: 'Terms & Conditions',
                 bold: true,
