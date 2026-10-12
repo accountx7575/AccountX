@@ -80,17 +80,54 @@ export function SuppliersPage() {
     onError: (err: any) => toast(err.message || 'Failed to save supplier', 'error'),
   });
 
+  // FK violations surface as PostgREST 23503 / "violates foreign key" messages.
+  // They must be detected here: ToastContext rewrites error-type toasts matching
+  // /violates .*(constraint|policy)/ to a generic message, so FK cases go out
+  // as 'warning' (unsanitized) with explicit copy instead.
+  const isFkConstraintError = (message: string) =>
+    /foreign[_\s-]?key|violates\s+foreign|\b23503\b|\bfk_/i.test(message || '');
+
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (id: string): Promise<'deleted' | 'deactivated'> => {
+      if (!activeBusiness) throw new Error('No active business');
+      // Probe for linked records before deleting — a bare hard delete throws
+      // an FK violation (swallowed into a generic toast) when history exists.
+      const probes = await Promise.all([
+        supabase.from('purchase_bills').select('id', { count: 'exact', head: true }).eq('business_id', activeBusiness.id).eq('supplier_id', id),
+        supabase.from('purchase_orders').select('id', { count: 'exact', head: true }).eq('business_id', activeBusiness.id).eq('supplier_id', id),
+        supabase.from('debit_notes').select('id', { count: 'exact', head: true }).eq('business_id', activeBusiness.id).eq('supplier_id', id),
+        supabase.from('payments').select('id', { count: 'exact', head: true }).eq('business_id', activeBusiness.id).eq('party_type', 'supplier').eq('party_id', id),
+      ]);
+      const probeError = probes.find((p) => p.error)?.error;
+      if (probeError) throw probeError;
+      const deactivate = async () => {
+        const { error } = await supabase.from('suppliers').update({ status: 'inactive' }).eq('id', id);
+        if (error) throw error;
+        return 'deactivated' as const;
+      };
+      if (probes.some((p) => (p.count ?? 0) > 0)) return deactivate();
       const { error } = await supabase.from('suppliers').delete().eq('id', id);
-      if (error) throw error;
+      // Race guard: a linked record created between probe and delete must
+      // degrade to deactivation, never to a raw FK error.
+      if (error) {
+        if (isFkConstraintError(error.message)) return deactivate();
+        throw error;
+      }
+      return 'deleted';
     },
-    onSuccess: () => {
+    onSuccess: (outcome) => {
       queryClient.invalidateQueries({ queryKey: ['suppliers', activeBusiness?.id] });
-      toast('Supplier deleted', 'success');
+      toast(outcome === 'deactivated' ? 'Supplier deactivated — existing purchase records kept' : 'Supplier deleted', 'success');
       setDeleteId(null);
     },
-    onError: (err: any) => toast(err.message || 'Failed to delete supplier', 'error'),
+    onError: (err: any) => {
+      const raw = err?.message || '';
+      if (isFkConstraintError(raw)) {
+        toast('Cannot delete supplier with existing purchase records. Deactivated instead — existing history kept.', 'warning');
+      } else {
+        toast(raw || 'Failed to delete supplier', 'error');
+      }
+    },
   });
 
   const openEdit = (s: Supplier) => {
