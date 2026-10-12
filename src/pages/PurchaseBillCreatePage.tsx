@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -77,6 +77,21 @@ export function PurchaseBillCreatePage() {
     },
     enabled: !!activeBusiness,
   });
+
+  // Pre-fetch the next auto bill number on mount so the input shows the
+  // actual upcoming number (not just a placeholder). If the user clears the
+  // field, the RPC generates one server-side; if they type a custom number,
+  // that is used as-is.
+  useEffect(() => {
+    if (!activeBusiness) return;
+    supabase.rpc('next_document_number', {
+      p_business_id: activeBusiness.id,
+      p_doc_type: 'purchase_bill',
+      p_date: billDate,
+    }).then(({ data, error }) => {
+      if (!error && data) setBillNumber(String(data));
+    });
+  }, [activeBusiness?.id]);
 
   const isInterState = useMemo(() => {
     if (!activeBusiness || !supplierId || !suppliers) return false;
@@ -305,8 +320,20 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
         payment_method: paymentMethod || null,
         notes: notes || null,
       };
-      if (billNumber.trim()) {
-        p_bill.bill_number = billNumber.trim();
+      // Determine the bill number: custom if typed, else fetch fresh from
+      // the atomic counter right before the RPC.
+      let finalBillNumber = billNumber.trim();
+      if (!finalBillNumber) {
+        const { data: nextNum, error: nextErr } = await supabase.rpc('next_document_number', {
+          p_business_id: activeBusiness.id,
+          p_doc_type: 'purchase_bill',
+          p_date: billDate,
+        });
+        if (nextErr) throw nextErr;
+        finalBillNumber = String(nextNum || '');
+      }
+      if (finalBillNumber) {
+        p_bill.bill_number = finalBillNumber;
       }
 
       const p_items = items.map((it) => ({
@@ -326,14 +353,35 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
         total_amount: it.total_amount,
       }));
 
-      const { data, error } = await supabase.rpc('create_purchase_bill', {
-        p_business_id: activeBusiness.id,
-        p_bill,
-        p_items,
-        p_status: status,
-      });
-      if (error) throw error;
-      const result = data as unknown as { bill_id?: string }[] | { bill_id?: string } | null;
+      // Call RPC with one retry on duplicate key (23505)
+      let rpcResult: { data: any; error: any } | null = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        rpcResult = await supabase.rpc('create_purchase_bill', {
+          p_business_id: activeBusiness.id,
+          p_bill,
+          p_items,
+          p_status: status,
+        });
+        if (!rpcResult.error) break;
+        if (rpcResult.error.code === '23505' && attempt === 0) {
+          const { data: retryNum, error: retryNextErr } = await supabase.rpc('next_document_number', {
+            p_business_id: activeBusiness.id,
+            p_doc_type: 'purchase_bill',
+            p_date: billDate,
+          });
+          if (retryNextErr) throw retryNextErr;
+          p_bill.bill_number = String(retryNum || '');
+          continue;
+        }
+        break;
+      }
+      if (rpcResult?.error) {
+        if (rpcResult.error.code === '23505') {
+          throw new Error('Could not allocate a unique bill number — please try again or enter a custom number');
+        }
+        throw rpcResult.error;
+      }
+      const result = rpcResult!.data as unknown as { bill_id?: string }[] | { bill_id?: string } | null;
       const billId = Array.isArray(result) ? result[0]?.bill_id : result?.bill_id;
       return { billId: billId || '', status };
     },
