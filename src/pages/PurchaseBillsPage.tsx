@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { useToast } from '@/context/ToastContext';
+import { useToast, sanitizeUserFacingError } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -25,6 +25,7 @@ export function PurchaseBillsPage() {
   const [search, setSearch] = useState('');
   const [cancelTarget, setCancelTarget] = useState<PurchaseBill | null>(null);
   const [discardTarget, setDiscardTarget] = useState<PurchaseBill | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PurchaseBill | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
 
   const printBill = async (b: PurchaseBill & { supplier: { name: string } | null }) => {
@@ -154,6 +155,65 @@ export function PurchaseBillsPage() {
     onError: (err: any) => toast(err.message || 'Failed to cancel bill', 'error'),
   });
 
+  // Permanent bill delete. FK map to purchase_bills: purchase_bill_items.bill_id
+  // CASCADE (auto-cleared; deleted explicitly anyway as defense in depth),
+  // payments.bill_id SET NULL (no action needed), debit_notes.purchase_bill_id
+  // RESTRICT (linked notes + their items deleted first). Posted bills carry
+  // journal/stock postings with no FK back to the bill, so the
+  // cancel_purchase_bill RPC posts the reversal first to keep ledger/stock
+  // balanced; draft/cancelled bills skip it.
+  const deleteBillMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeBusiness || !deleteTarget) throw new Error('No bill selected');
+      const billId = deleteTarget.id;
+      const biz = activeBusiness.id;
+      if (['confirmed', 'partially_paid', 'paid'].includes(deleteTarget.status)) {
+        const { error } = await supabase.rpc('cancel_purchase_bill', { p_bill_id: billId });
+        if (error) throw error;
+      }
+      const { data: notes, error: notesError } = await supabase
+        .from('debit_notes')
+        .select('id')
+        .eq('business_id', biz)
+        .eq('purchase_bill_id', billId);
+      if (notesError) throw notesError;
+      const noteIds = ((notes ?? []) as { id: string }[]).map((n) => n.id);
+      if (noteIds.length > 0) {
+        const { error: itemsError } = await supabase.from('debit_note_items').delete().eq('business_id', biz).in('debit_note_id', noteIds);
+        if (itemsError) throw itemsError;
+        const { error: notesDelError } = await supabase.from('debit_notes').delete().eq('business_id', biz).in('id', noteIds);
+        if (notesDelError) throw notesDelError;
+      }
+      const { error: billItemsError } = await supabase.from('purchase_bill_items').delete().eq('business_id', biz).eq('bill_id', billId);
+      if (billItemsError) throw billItemsError;
+      const { error } = await supabase.from('purchase_bills').delete().eq('id', billId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      // Drop the row from the query cache immediately, then refetch.
+      const id = deleteTarget?.id;
+      if (id) {
+        queryClient.setQueryData<(PurchaseBill & { supplier: { name: string } | null })[]>(
+          ['purchase-bills', activeBusiness?.id],
+          (old) => (old ? old.filter((b) => b.id !== id) : old),
+        );
+      }
+      // A posted-bill reversal touches ledger/dashboard caches too.
+      ['purchase-bills', 'dashboard-stats', 'accounts', 'journal-entries', 'trial-balance'].forEach((k) =>
+        queryClient.invalidateQueries({ queryKey: [k, activeBusiness?.id] })
+      );
+      toast('Purchase bill deleted successfully', 'success');
+      setDeleteTarget(null);
+    },
+    onError: (err: any) => {
+      // Page convention keeps the modal open on error — surface the raw
+      // message, routing ToastContext-sanitized signatures through 'warning'
+      // (unsanitized) so the generic copy is unreachable.
+      const raw = err?.message || 'Failed to delete purchase bill';
+      toast(raw, sanitizeUserFacingError(raw) === raw ? 'error' : 'warning');
+    },
+  });
+
   return (
     <div>
       <PageHeader
@@ -237,6 +297,13 @@ export function PurchaseBillsPage() {
                         <Button size="sm" variant="ghost" loading={printingId === b.id} onClick={() => printBill(b)} title="Download this bill as PDF">
                           <Printer className="h-3 w-3" /> PDF
                         </Button>
+                        <button
+                          onClick={() => setDeleteTarget(b)}
+                          className="p-1.5 rounded-lg text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                          title="Delete bill"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                         {b.status === 'draft' && (
                           <>
                             <button
@@ -292,6 +359,16 @@ export function PurchaseBillsPage() {
         message={`This will cancel bill ${cancelTarget?.bill_number || ''} and post a reversal journal entry. Existing payments and stock movements are preserved.`}
         confirmText="Cancel Bill"
         loading={cancelMutation.isPending}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteBillMutation.mutate()}
+        title="Delete Purchase Bill?"
+        message={`Are you sure you want to permanently delete bill ${deleteTarget?.bill_number || ''}? This action cannot be undone.`}
+        confirmText="Delete"
+        loading={deleteBillMutation.isPending}
       />
     </div>
   );
