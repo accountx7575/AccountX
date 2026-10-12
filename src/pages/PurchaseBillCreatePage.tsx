@@ -36,6 +36,10 @@ const emptyItem: LineItem = {
   cgst_amount: 0, sgst_amount: 0, igst_amount: 0, total_amount: 0,
 };
 
+// Same GST slabs as the sales invoice grid — the Tax % select draws from
+// these plus any rate already present on a row.
+const GST_SLABS = [0, 0.25, 3, 5, 12, 18, 28];
+
 export function PurchaseBillCreatePage() {
   const { activeBusiness } = useAuth();
   const { toast } = useToast();
@@ -105,6 +109,12 @@ export function PurchaseBillCreatePage() {
     const grandTotal = roundTo2(beforeRound + roundOff);
     return { subtotal, totalDiscount, taxableAmount, cgst: roundTo2(cgst), sgst: roundTo2(sgst), igst: roundTo2(igst), roundOff, grandTotal };
   }, [items, isInterState]);
+
+  const taxRateOptions = useMemo(() => {
+    const used = new Set<number>(GST_SLABS);
+    items.forEach((it) => used.add(Number(it.tax_rate)));
+    return Array.from(used).sort((a, b) => a - b);
+  }, [items]);
 
   const updateItem = (idx: number, updates: Partial<LineItem>) => {
     setItems((prev) => prev.map((it, i) => {
@@ -418,64 +428,80 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
           }
         >
           <div className="overflow-x-auto scrollbar-thin -mx-2">
-            <table className="w-full text-sm min-w-[800px]">
-              <thead>
-                <tr className="border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
-                  <th className="text-left px-2 py-2 font-medium w-2/5">Product</th>
-                  <th className="text-right px-2 py-2 font-medium">Qty</th>
-                  <th className="text-right px-2 py-2 font-medium">Rate</th>
-                  <th className="text-right px-2 py-2 font-medium hidden md:table-cell">Disc</th>
-                  <th className="text-right px-2 py-2 font-medium">Tax %</th>
-                  <th className="text-right px-2 py-2 font-medium">Amount</th>
-                  <th className="w-8"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item, idx) => (
-                  <tr key={idx} className="border-b border-secondary-100 dark:border-secondary-800/50">
-                    <td className="px-2 py-2 relative">
-                      <div className="relative">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-secondary-400 pointer-events-none" />
-                        <Input
-                          placeholder="Type to search products…"
-                          value={item.product_name || (searchIdx === idx ? productSearch : '')}
-                          onChange={(e) => {
-                            setSearchIdx(idx);
-                            setProductSearch(e.target.value);
-                            updateItem(idx, { product_id: null, product_name: e.target.value });
-                          }}
-                          onFocus={() => setSearchIdx(idx)}
-                          className="w-full pl-8"
-                        />
+            <div className="min-w-[900px] px-2 text-sm">
+              <div className="grid grid-cols-[1fr_100px_70px_100px_80px_90px_100px_40px] items-center gap-2 border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
+                <div className="py-2 font-medium text-left">Product</div>
+                <div className="py-2 font-medium text-center">HSN/SAC</div>
+                <div className="py-2 font-medium text-center">Qty</div>
+                <div className="py-2 font-medium text-center">Rate</div>
+                <div className="py-2 font-medium text-center">Disc</div>
+                <div className="py-2 font-medium text-center">Tax %</div>
+                <div className="py-2 font-medium text-right">Amount</div>
+                <div />
+              </div>
+              {items.map((item, idx) => (
+                <div key={idx} className="grid grid-cols-[1fr_100px_70px_100px_80px_90px_100px_40px] items-center gap-2 border-b border-secondary-100 dark:border-secondary-800/50">
+                  <div className="py-2 min-w-0 relative">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-secondary-400 pointer-events-none" />
+                      <Input
+                        placeholder="Type to search products…"
+                        value={item.product_name || (searchIdx === idx ? productSearch : '')}
+                        onChange={(e) => {
+                          setSearchIdx(idx);
+                          setProductSearch(e.target.value);
+                          updateItem(idx, { product_id: null, product_name: e.target.value });
+                        }}
+                        onFocus={() => setSearchIdx(idx)}
+                        className="w-full pl-8"
+                      />
+                    </div>
+                    {searchIdx === idx && productSearch && products && (
+                      <div className="absolute z-20 mt-1 w-full card-solid max-h-48 overflow-y-auto scrollbar-thin p-1 shadow-lg">
+                        {products.filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 8).map((p) => (
+                          <button key={p.id} onClick={() => selectProduct(idx, p)} className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/30 text-left">
+                            <div>
+                              <p className="text-sm font-medium text-secondary-900 dark:text-secondary-100">{p.name}</p>
+                              <p className="text-xs text-secondary-400">{p.hsn_sac || 'No HSN'} • Stock: {p.current_stock}</p>
+                            </div>
+                            <span className="figure text-xs text-primary-600 dark:text-primary-400">{formatCurrency(p.purchase_price, sym)}</span>
+                          </button>
+                        ))}
                       </div>
-                      {searchIdx === idx && productSearch && products && (
-                        <div className="absolute z-20 mt-1 w-full card-solid max-h-48 overflow-y-auto scrollbar-thin p-1 shadow-lg">
-                          {products.filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 8).map((p) => (
-                            <button key={p.id} onClick={() => selectProduct(idx, p)} className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/30 text-left">
-                              <div>
-                                <p className="text-sm font-medium text-secondary-900 dark:text-secondary-100">{p.name}</p>
-                                <p className="text-xs text-secondary-400">{p.hsn_sac || 'No HSN'} • Stock: {p.current_stock}</p>
-                              </div>
-                              <span className="figure text-xs text-primary-600 dark:text-primary-400">{formatCurrency(p.purchase_price, sym)}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-2 py-2"><Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, { quantity: parseFloat(e.target.value) || 0 })} className="w-20 text-right figure" /></td>
-                    <td className="px-2 py-2"><Input type="number" value={item.rate} onChange={(e) => updateItem(idx, { rate: parseFloat(e.target.value) || 0 })} className="w-24 text-right figure" /></td>
-                    <td className="px-2 py-2 hidden md:table-cell"><Input type="number" value={item.discount_amount} onChange={(e) => updateItem(idx, { discount_amount: parseFloat(e.target.value) || 0 })} className="w-20 text-right figure" /></td>
-                    <td className="px-2 py-2"><Input type="number" value={item.tax_rate} onChange={(e) => updateItem(idx, { tax_rate: parseFloat(e.target.value) || 0 })} className="w-16 text-right figure" /></td>
-                    <td className="px-2 py-2 text-right tabular-nums font-medium text-secondary-900 dark:text-secondary-100 figure">{formatCurrency(item.total_amount, sym)}</td>
-                    <td className="px-2 py-2">
-                      <button onClick={() => removeItem(idx)} className="p-1 text-secondary-400 hover:text-error-600 transition-colors" title="Remove row">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    )}
+                  </div>
+                  <div className="py-2">
+                    <Input value={item.hsn_sac} onChange={(e) => updateItem(idx, { hsn_sac: e.target.value })} className="w-full text-center figure font-mono" placeholder="HSN" />
+                  </div>
+                  <div className="py-2">
+                    <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, { quantity: parseFloat(e.target.value) || 0 })} className="w-full text-center figure" />
+                  </div>
+                  <div className="py-2">
+                    <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, { rate: parseFloat(e.target.value) || 0 })} className="w-full text-center figure" />
+                  </div>
+                  <div className="py-2">
+                    <Input type="number" value={item.discount_amount} onChange={(e) => updateItem(idx, { discount_amount: parseFloat(e.target.value) || 0 })} className="w-full text-center figure" />
+                  </div>
+                  <div className="py-2">
+                    <select
+                      className="input w-full px-1.5 py-1.5 text-xs text-center"
+                      value={String(item.tax_rate)}
+                      onChange={(e) => updateItem(idx, { tax_rate: parseFloat(e.target.value) })}
+                    >
+                      {taxRateOptions.map((r) => <option key={r} value={String(r)}>{r}%</option>)}
+                    </select>
+                  </div>
+                  <div className="py-2 text-right tabular-nums font-medium text-secondary-900 dark:text-secondary-100 figure">
+                    {formatCurrency(item.total_amount, sym)}
+                  </div>
+                  <div className="py-2 flex justify-center">
+                    <button onClick={() => removeItem(idx)} className="p-1 text-secondary-400 hover:text-error-600 transition-colors" title="Remove row">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </FormSection>
 
