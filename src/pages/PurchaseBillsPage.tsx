@@ -11,11 +11,14 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { ShoppingCart, Plus, Search, Ban, CheckCircle2, Trash2, Printer } from 'lucide-react';
+import { ShoppingCart, Plus, Search, Ban, CheckCircle2, Trash2, Printer, Pencil, FileDown, Share2, Mail } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { renderDocSheetToPdf, type PrintableDocData } from '@/lib/docPrint';
+import { renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
+import { openWhatsAppShare } from '@/lib/whatsapp';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import type { PurchaseBill, PurchaseBillItem, Supplier } from '@/types/db';
+
+type BillRow = PurchaseBill & { supplier: { name: string; phone: string | null; email: string | null } | null };
 
 export function PurchaseBillsPage() {
   const { activeBusiness } = useAuth();
@@ -27,27 +30,27 @@ export function PurchaseBillsPage() {
   const [discardTarget, setDiscardTarget] = useState<PurchaseBill | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseBill | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  const printBill = async (b: PurchaseBill & { supplier: { name: string } | null }) => {
-    if (!activeBusiness) return;
-    setPrintingId(b.id);
-    try {
-      const { data: items, error } = await supabase
-        .from('purchase_bill_items')
-        .select('*')
-        .eq('bill_id', b.id)
-        .order('created_at');
-      if (error) throw error;
-      // Full supplier row for the swapped print parties: Billed By = vendor.
-      const { data: supplier, error: supplierError } = await supabase
-        .from('suppliers')
-        .select('*')
-        .eq('id', b.supplier_id)
-        .maybeSingle();
-      if (supplierError) throw supplierError;
-      const s = (supplier ?? null) as Supplier | null;
-      const supplierAddress = [s?.address, s?.city, s?.state, s?.pincode].filter(Boolean).join(', ');
-      const payload: Omit<PrintableDocData, 'businessName' | 'gstin'> = {
+  // Shared payload for both print preview and PDF download. Full supplier
+  // row for the swapped print parties: Billed By = vendor (PBS-41).
+  const fetchBillPayload = async (b: BillRow): Promise<{ blobPayload: Omit<PrintableDocData, 'businessName' | 'gstin'>; fileName: string }> => {
+    const { data: items, error } = await supabase
+      .from('purchase_bill_items')
+      .select('*')
+      .eq('bill_id', b.id)
+      .order('created_at');
+    if (error) throw error;
+    const { data: supplier, error: supplierError } = await supabase
+      .from('suppliers')
+      .select('*')
+      .eq('id', b.supplier_id)
+      .maybeSingle();
+    if (supplierError) throw supplierError;
+    const s = (supplier ?? null) as Supplier | null;
+    const supplierAddress = [s?.address, s?.city, s?.state, s?.pincode].filter(Boolean).join(', ');
+    return {
+      blobPayload: {
         docTitle: 'PURCHASE BILL',
         docNumber: b.bill_number,
         dateLabel: 'Bill Date',
@@ -70,13 +73,102 @@ export function PurchaseBillsPage() {
         roundOff: Number(b.round_off) || 0,
         grandTotal: Number(b.grand_total),
         notes: b.notes,
+      },
+      fileName: `${b.bill_number}.pdf`,
+    };
+  };
+
+  // Native print preview via hidden iframe (QuotationsPage pattern).
+  const handleDirectPrint = async (b: BillRow) => {
+    if (!activeBusiness) return;
+    setPrintingId(b.id);
+    try {
+      const { blobPayload } = await fetchBillPayload(b);
+      const blob = await renderDocSheetToPdfBlob(activeBusiness, blobPayload);
+      const blobUrl = URL.createObjectURL(blob);
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.src = blobUrl;
+      document.body.appendChild(iframe);
+      iframe.onload = () => {
+        setTimeout(() => {
+          iframe.focus();
+          try {
+            iframe.contentWindow?.print();
+          } catch {
+            window.open(blobUrl, '_blank');
+          }
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+            URL.revokeObjectURL(blobUrl);
+          }, 3000);
+        }, 300);
       };
-      await renderDocSheetToPdf(activeBusiness, payload);
     } catch (err: any) {
-      toast(err?.message || 'PDF export failed', 'error');
+      toast(err?.message || 'Print preview failed', 'error');
     } finally {
       setPrintingId(null);
     }
+  };
+
+  const handleDownloadPdf = async (b: BillRow) => {
+    if (!activeBusiness) return;
+    setDownloadingId(b.id);
+    try {
+      const { blobPayload, fileName } = await fetchBillPayload(b);
+      const blob = await renderDocSheetToPdfBlob(activeBusiness, blobPayload);
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      toast(err?.message || 'Failed to download PDF', 'error');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const shareBillWhatsApp = (b: BillRow) => {
+    const opened = openWhatsAppShare({
+      partyName: b.supplier?.name || '',
+      docNumber: b.bill_number,
+      dateDDMMYYYY: formatDate(b.bill_date),
+      amountInr: formatCurrency(b.grand_total, activeBusiness?.currency_symbol || '₹'),
+      bank: {
+        name: activeBusiness?.bank_name,
+        ifsc: activeBusiness?.bank_ifsc_code,
+        upi: activeBusiness?.upi_id,
+      },
+      partyPhone: b.supplier?.phone,
+    });
+    if (!opened) toast('Could not open WhatsApp — allow popups and try again', 'error');
+  };
+
+  const sendBillEmail = (b: BillRow) => {
+    const email = b.supplier?.email?.trim();
+    if (!email) {
+      toast('No email on file for this supplier', 'error');
+      return;
+    }
+    const subject = `Purchase Bill ${b.bill_number}`;
+    const body = [
+      `Dear ${b.supplier?.name || 'Supplier'},`,
+      ``,
+      `Purchase Bill ${b.bill_number} dated ${formatDate(b.bill_date)} for ${formatCurrency(b.grand_total, activeBusiness?.currency_symbol || '₹')}.`,
+      `Balance payable: ${formatCurrency(b.balance_amount, activeBusiness?.currency_symbol || '₹')}.`,
+      ``,
+      `— ${activeBusiness?.name || ''}`,
+    ].join('\n');
+    window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
 
   const { data: bills, isLoading, isError, refetch } = useQuery({
@@ -85,11 +177,11 @@ export function PurchaseBillsPage() {
       if (!activeBusiness) return [];
       const { data, error } = await supabase
         .from('purchase_bills')
-        .select('*, supplier:suppliers(name)')
+        .select('*, supplier:suppliers(name,phone,email)')
         .eq('business_id', activeBusiness.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data as (PurchaseBill & { supplier: { name: string } | null })[];
+      return data as BillRow[];
     },
     enabled: !!activeBusiness,
   });
@@ -206,7 +298,7 @@ export function PurchaseBillsPage() {
       // Drop the row from the query cache immediately, then refetch.
       const id = deleteTarget?.id;
       if (id) {
-        queryClient.setQueryData<(PurchaseBill & { supplier: { name: string } | null })[]>(
+        queryClient.setQueryData<BillRow[]>(
           ['purchase-bills', activeBusiness?.id],
           (old) => (old ? old.filter((b) => b.id !== id) : old),
         );
@@ -306,13 +398,45 @@ export function PurchaseBillsPage() {
                       <Badge variant={statusVariant(b.status)}>{b.status.replace('_', ' ')}</Badge>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button size="sm" variant="ghost" loading={printingId === b.id} onClick={() => printBill(b)} title="Download this bill as PDF">
-                          <Printer className="h-3 w-3" /> PDF
-                        </Button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => navigate(`/app/purchase-bills/${b.id}/edit`)}
+                          className="p-1.5 rounded-md text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                          title="Edit bill"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDirectPrint(b)}
+                          className="p-1.5 rounded-md text-secondary-400 hover:text-secondary-700 hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"
+                          title="Print bill"
+                        >
+                          <Printer className={`h-4 w-4 ${printingId === b.id ? 'animate-pulse' : ''}`} />
+                        </button>
+                        <button
+                          onClick={() => handleDownloadPdf(b)}
+                          className="p-1.5 rounded-md text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                          title="Download PDF"
+                        >
+                          <FileDown className={`h-4 w-4 ${downloadingId === b.id ? 'animate-pulse' : ''}`} />
+                        </button>
+                        <button
+                          onClick={() => shareBillWhatsApp(b)}
+                          className="p-1.5 rounded-md text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors"
+                          title="Share on WhatsApp"
+                        >
+                          <Share2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => sendBillEmail(b)}
+                          className="p-1.5 rounded-md text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                          title="Email bill"
+                        >
+                          <Mail className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => setDeleteTarget(b)}
-                          className="p-1.5 rounded-lg text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                          className="p-1.5 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
                           title="Delete bill"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -321,14 +445,14 @@ export function PurchaseBillsPage() {
                           <>
                             <button
                               onClick={() => issueDraftMutation.mutate(b.id)}
-                              className="p-1.5 rounded-lg text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors"
+                              className="p-1.5 rounded-md text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors"
                               title="Confirm bill"
                             >
                               <CheckCircle2 className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => setDiscardTarget(b)}
-                              className="p-1.5 rounded-lg text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                              className="p-1.5 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
                               title="Discard draft"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -338,7 +462,7 @@ export function PurchaseBillsPage() {
                         {['confirmed', 'partially_paid', 'paid'].includes(b.status) && (
                         <button
                           onClick={() => setCancelTarget(b)}
-                          className="p-1.5 rounded-lg text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                          className="p-1.5 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
                           title="Cancel bill"
                         >
                           <Ban className="h-4 w-4" />

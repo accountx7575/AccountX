@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -8,8 +8,10 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { ArrowLeft, Save } from 'lucide-react';
-import { buildCustomerInsert } from '@/lib/payloads';
+import { buildCustomerInsert, buildCustomerUpdate } from '@/lib/payloads';
+import type { Customer } from '@/types/db';
 
 const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Chandigarh','Puducherry'];
 
@@ -24,27 +26,82 @@ export function CustomerCreatePage() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { id: editId } = useParams<{ id: string }>();
+  const isEdit = Boolean(editId);
   const [form, setForm] = useState(emptyForm);
+
+  // Edit mode: load the existing customer (scoped to the active business)
+  // and pre-fill the form.
+  const existingQuery = useQuery({
+    queryKey: ['customer', activeBusiness?.id, editId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('business_id', activeBusiness!.id)
+        .eq('id', editId!)
+        .single();
+      if (error) throw error;
+      return data as Customer;
+    },
+    enabled: isEdit && !!activeBusiness,
+  });
+
+  useEffect(() => {
+    const c = existingQuery.data;
+    if (!c) return;
+    setForm({
+      name: c.name, company_name: c.company_name || '', phone: c.phone || '', email: c.email || '',
+      gstin: c.gstin || '', pan: c.pan || '', address: c.address || '', city: c.city || '',
+      state: c.state || 'Maharashtra', pincode: c.pincode || '',
+      opening_balance: String(c.opening_balance), credit_limit: String(c.credit_limit),
+      notes: c.notes || '',
+    });
+  }, [existingQuery.data]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!activeBusiness) throw new Error('No active business');
       if (!form.name.trim()) throw new Error('Please enter a customer name');
+      if (isEdit) {
+        const { error } = await supabase
+          .from('customers')
+          .update(buildCustomerUpdate(form))
+          .eq('business_id', activeBusiness.id)
+          .eq('id', editId!);
+        if (error) throw error;
+        return;
+      }
       const { error } = await supabase.from('customers').insert(buildCustomerInsert(activeBusiness.id, form));
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers', activeBusiness?.id] });
-      toast('Customer added successfully', 'success');
+      queryClient.invalidateQueries({ queryKey: ['customer', activeBusiness?.id, editId] });
+      toast(isEdit ? 'Customer updated successfully' : 'Customer added successfully', 'success');
       navigate('/app/customers');
     },
     onError: (err: any) => toast(err.message || 'Failed to save customer', 'error'),
   });
 
+  if (isEdit && existingQuery.isError) {
+    return (
+      <div>
+        <PageHeader
+          title="Edit Customer"
+          actions={<Button variant="secondary" onClick={() => navigate('/app/customers')}><ArrowLeft className="h-4 w-4" /> Back</Button>}
+        />
+        <ErrorState title="Unable to load this customer." onRetry={() => existingQuery.refetch()} />
+      </div>
+    );
+  }
+
+  const formLoading = isEdit && existingQuery.isLoading;
+
   return (
     <div>
       <PageHeader
-        title="New Customer"
+        title={isEdit ? 'Edit Customer' : 'New Customer'}
         actions={<Button variant="secondary" onClick={() => navigate('/app/customers')}><ArrowLeft className="h-4 w-4" /> Back</Button>}
       />
 
@@ -112,8 +169,8 @@ export function CustomerCreatePage() {
       <div className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 mt-5 border-t border-secondary-200/80 dark:border-zinc-800 bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md">
         <div className="flex items-center justify-between gap-3">
           <Button variant="secondary" onClick={() => navigate('/app/customers')}>Cancel</Button>
-          <Button onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}>
-            <Save className="h-4 w-4" /> Save Customer
+          <Button onClick={() => saveMutation.mutate()} loading={saveMutation.isPending || formLoading}>
+            <Save className="h-4 w-4" /> {isEdit ? 'Update Customer' : 'Save Customer'}
           </Button>
         </div>
       </div>

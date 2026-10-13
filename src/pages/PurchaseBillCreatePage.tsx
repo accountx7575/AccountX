@@ -1,18 +1,19 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { DatePicker } from '@/components/common/DatePicker';
 import { Input } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { Plus, Trash2, Save, ArrowLeft, Sparkles, Upload } from 'lucide-react';
 import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
 import { computeDocLine } from '@/lib/payloads';
-import type { Supplier, Product } from '@/types/db';
+import type { Supplier, Product, PurchaseBill, PurchaseBillItem } from '@/types/db';
 
 type LineItem = {
   product_id: string | null;
@@ -49,6 +50,9 @@ export function PurchaseBillCreatePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [scanning, setScanning] = useState(false);
 
+  const { id: editId } = useParams<{ id: string }>();
+  const isEdit = Boolean(editId);
+
   const [supplierId, setSupplierId] = useState('');
   const [billNumber, setBillNumber] = useState('');
   const [billDate, setBillDate] = useState(todayDateString());
@@ -78,12 +82,64 @@ export function PurchaseBillCreatePage() {
     enabled: !!activeBusiness,
   });
 
+  // Edit mode: load the existing bill + its items (scoped to the active
+  // business) and pre-fill every field. Reuses the same form layout.
+  const existingQuery = useQuery({
+    queryKey: ['purchase-bill', activeBusiness?.id, editId],
+    queryFn: async () => {
+      const { data: bill, error: billError } = await supabase
+        .from('purchase_bills')
+        .select('*')
+        .eq('business_id', activeBusiness!.id)
+        .eq('id', editId!)
+        .single();
+      if (billError) throw billError;
+      const { data: billItems, error: itemsError } = await supabase
+        .from('purchase_bill_items')
+        .select('*')
+        .eq('bill_id', editId!)
+        .order('created_at');
+      if (itemsError) throw itemsError;
+      return { bill: bill as PurchaseBill, items: (billItems || []) as PurchaseBillItem[] };
+    },
+    enabled: isEdit && !!activeBusiness,
+  });
+
+  useEffect(() => {
+    const loaded = existingQuery.data;
+    if (!loaded) return;
+    const { bill, items: loadedItems } = loaded;
+    setSupplierId(bill.supplier_id);
+    setBillNumber(bill.bill_number);
+    setBillDate(bill.bill_date);
+    setDueDate(bill.due_date || '');
+    setNotes(bill.notes || '');
+    setPaymentMethod(bill.payment_method || '');
+    if (loadedItems.length > 0) {
+      setItems(loadedItems.map((it) => ({
+        product_id: it.product_id,
+        product_name: it.product_name,
+        hsn_sac: it.hsn_sac || '',
+        quantity: Number(it.quantity),
+        unit: it.unit,
+        rate: Number(it.rate),
+        discount_amount: Number(it.discount_amount),
+        tax_rate: Number(it.tax_rate),
+        taxable_amount: Number(it.taxable_amount),
+        cgst_amount: Number(it.cgst_amount),
+        sgst_amount: Number(it.sgst_amount),
+        igst_amount: Number(it.igst_amount),
+        total_amount: Number(it.total_amount),
+      })));
+    }
+  }, [existingQuery.data]);
+
   // Pre-fetch the next auto bill number on mount so the input shows the
   // actual upcoming number (not just a placeholder). If the user clears the
   // field, the RPC generates one server-side; if they type a custom number,
-  // that is used as-is.
+  // that is used as-is. Skipped in edit mode — the loaded number stays.
   useEffect(() => {
-    if (!activeBusiness) return;
+    if (!activeBusiness || isEdit) return;
     supabase.rpc('next_document_number', {
       p_business_id: activeBusiness.id,
       p_doc_type: 'purchase_bill',
@@ -304,6 +360,64 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
       if (items.some((it) => !it.product_name || it.quantity <= 0)) throw new Error('Please fill all item details');
       setSaving(true);
 
+      // Edit mode: UPDATE the header in place and replace the line items
+      // (delete + re-insert). Status, paid/balance and postings are left
+      // untouched — no re-posting happens here.
+      if (isEdit) {
+        const loaded = existingQuery.data;
+        if (!loaded) throw new Error('Bill not loaded yet');
+        const biz = activeBusiness.id;
+        const { error: headerError } = await supabase
+          .from('purchase_bills')
+          .update({
+            supplier_id: supplierId,
+            bill_number: billNumber.trim() || loaded.bill.bill_number,
+            bill_date: billDate,
+            due_date: dueDate || null,
+            subtotal: totals.subtotal,
+            discount_amount: totals.totalDiscount,
+            taxable_amount: totals.taxableAmount,
+            cgst_amount: totals.cgst,
+            sgst_amount: totals.sgst,
+            igst_amount: totals.igst,
+            cess_amount: 0,
+            round_off: totals.roundOff,
+            grand_total: totals.grandTotal,
+            payment_method: paymentMethod || null,
+            notes: notes || null,
+          })
+          .eq('business_id', biz)
+          .eq('id', editId!);
+        if (headerError) throw headerError;
+        const { error: clearError } = await supabase
+          .from('purchase_bill_items')
+          .delete()
+          .eq('business_id', biz)
+          .eq('bill_id', editId!);
+        if (clearError) throw clearError;
+        const rows = items.map((it) => ({
+          business_id: biz,
+          bill_id: editId!,
+          product_id: it.product_id,
+          product_name: it.product_name,
+          hsn_sac: it.hsn_sac || '',
+          quantity: it.quantity,
+          unit: it.unit,
+          rate: it.rate,
+          discount_amount: it.discount_amount,
+          tax_rate: it.tax_rate,
+          taxable_amount: it.taxable_amount,
+          cgst_amount: it.cgst_amount,
+          sgst_amount: it.sgst_amount,
+          igst_amount: it.igst_amount,
+          cess_amount: 0,
+          total_amount: it.total_amount,
+        }));
+        const { error: itemsError } = await supabase.from('purchase_bill_items').insert(rows);
+        if (itemsError) throw itemsError;
+        return { billId: editId!, status: loaded.bill.status, edited: true };
+      }
+
       const p_bill: Record<string, unknown> = {
         supplier_id: supplierId,
         bill_date: billDate,
@@ -383,10 +497,11 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
       }
       const result = rpcResult!.data as unknown as { bill_id?: string }[] | { bill_id?: string } | null;
       const billId = Array.isArray(result) ? result[0]?.bill_id : result?.bill_id;
-      return { billId: billId || '', status };
+      return { billId: billId || '', status, edited: false };
     },
-    onSuccess: ({ status }) => {
+    onSuccess: ({ status, edited }) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-bills', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-bill', activeBusiness?.id, editId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats', activeBusiness?.id] });
       queryClient.invalidateQueries({ queryKey: ['payables', activeBusiness?.id] });
       queryClient.invalidateQueries({ queryKey: ['sales-purchases-series', activeBusiness?.id] });
@@ -394,12 +509,30 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
       queryClient.invalidateQueries({ queryKey: ['accounts', activeBusiness?.id] });
       queryClient.invalidateQueries({ queryKey: ['journal-entries', activeBusiness?.id] });
       queryClient.invalidateQueries({ queryKey: ['trial-balance', activeBusiness?.id] });
-      toast(status === 'draft' ? 'Draft saved — confirm it from the bills list' : 'Purchase bill confirmed successfully', 'success');
+      toast(edited ? 'Purchase bill updated successfully' : status === 'draft' ? 'Draft saved — confirm it from the bills list' : 'Purchase bill confirmed successfully', 'success');
       navigate('/app/purchase-bills');
     },
     onError: (err: any) => toast(err.message || 'Failed to save', 'error'),
     onSettled: () => setSaving(false),
   });
+
+  if (isEdit && existingQuery.isError) {
+    return (
+      <div>
+        <PageHeader
+          title="Edit Purchase Bill"
+          actions={
+            <Button variant="secondary" onClick={() => navigate('/app/purchase-bills')}>
+              <ArrowLeft className="h-4 w-4" /> Back
+            </Button>
+          }
+        />
+        <ErrorState title="Unable to load this bill." onRetry={() => existingQuery.refetch()} />
+      </div>
+    );
+  }
+
+  const formLoading = isEdit && existingQuery.isLoading;
 
   const sym = activeBusiness?.currency_symbol || '₹';
 
@@ -414,7 +547,7 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
       />
 
       <PageHeader
-        title="New Purchase Bill"
+        title={isEdit ? 'Edit Purchase Bill' : 'New Purchase Bill'}
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -590,12 +723,18 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
       <div className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 mt-5 border-t border-secondary-200/80 dark:border-zinc-800 bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md">
         <div className="flex items-center justify-between gap-3">
           <Button variant="secondary" onClick={() => navigate('/app/purchase-bills')}>Cancel</Button>
+          {isEdit ? (
+            <Button onClick={() => saveMutation.mutate('confirmed')} loading={saving || formLoading}>
+              <Save className="h-4 w-4" /> Update Bill
+            </Button>
+          ) : (
           <div className="flex items-center gap-3">
             <Button variant="secondary" onClick={() => saveMutation.mutate('draft')} loading={saving}>Save as draft</Button>
             <Button onClick={() => saveMutation.mutate('confirmed')} loading={saving}>
               <Save className="h-4 w-4" /> Confirm Purchase
             </Button>
           </div>
+          )}
         </div>
       </div>
     </div>

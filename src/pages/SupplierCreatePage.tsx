@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -8,8 +8,10 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { ArrowLeft, Save } from 'lucide-react';
-import { buildSupplierInsert } from '@/lib/payloads';
+import { buildSupplierInsert, buildSupplierUpdate } from '@/lib/payloads';
+import type { Supplier } from '@/types/db';
 
 const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Chandigarh','Puducherry'];
 
@@ -23,27 +25,81 @@ export function SupplierCreatePage() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { id: editId } = useParams<{ id: string }>();
+  const isEdit = Boolean(editId);
   const [form, setForm] = useState(emptyForm);
+
+  // Edit mode: load the existing supplier (scoped to the active business)
+  // and pre-fill the form.
+  const existingQuery = useQuery({
+    queryKey: ['supplier', activeBusiness?.id, editId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('suppliers')
+        .select('*')
+        .eq('business_id', activeBusiness!.id)
+        .eq('id', editId!)
+        .single();
+      if (error) throw error;
+      return data as Supplier;
+    },
+    enabled: isEdit && !!activeBusiness,
+  });
+
+  useEffect(() => {
+    const s = existingQuery.data;
+    if (!s) return;
+    setForm({
+      name: s.name, company_name: s.company_name || '', phone: s.phone || '', email: s.email || '',
+      gstin: s.gstin || '', pan: s.pan || '', address: s.address || '', city: s.city || '',
+      state: s.state || 'Maharashtra', pincode: s.pincode || '',
+      opening_balance: String(s.opening_balance), notes: s.notes || '',
+    });
+  }, [existingQuery.data]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!activeBusiness) throw new Error('No active business');
       if (!form.name.trim()) throw new Error('Please enter a supplier name');
+      if (isEdit) {
+        const { error } = await supabase
+          .from('suppliers')
+          .update(buildSupplierUpdate(form))
+          .eq('business_id', activeBusiness.id)
+          .eq('id', editId!);
+        if (error) throw error;
+        return;
+      }
       const { error } = await supabase.from('suppliers').insert(buildSupplierInsert(activeBusiness.id, form));
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers', activeBusiness?.id] });
-      toast('Supplier added successfully', 'success');
+      queryClient.invalidateQueries({ queryKey: ['supplier', activeBusiness?.id, editId] });
+      toast(isEdit ? 'Supplier updated successfully' : 'Supplier added successfully', 'success');
       navigate('/app/suppliers');
     },
     onError: (err: any) => toast(err.message || 'Failed to save supplier', 'error'),
   });
 
+  if (isEdit && existingQuery.isError) {
+    return (
+      <div>
+        <PageHeader
+          title="Edit Supplier"
+          actions={<Button variant="secondary" onClick={() => navigate('/app/suppliers')}><ArrowLeft className="h-4 w-4" /> Back</Button>}
+        />
+        <ErrorState title="Unable to load this supplier." onRetry={() => existingQuery.refetch()} />
+      </div>
+    );
+  }
+
+  const formLoading = isEdit && existingQuery.isLoading;
+
   return (
     <div>
       <PageHeader
-        title="New Supplier"
+        title={isEdit ? 'Edit Supplier' : 'New Supplier'}
         actions={<Button variant="secondary" onClick={() => navigate('/app/suppliers')}><ArrowLeft className="h-4 w-4" /> Back</Button>}
       />
 
@@ -108,8 +164,8 @@ export function SupplierCreatePage() {
       <div className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 mt-5 border-t border-secondary-200/80 dark:border-zinc-800 bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md">
         <div className="flex items-center justify-between gap-3">
           <Button variant="secondary" onClick={() => navigate('/app/suppliers')}>Cancel</Button>
-          <Button onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}>
-            <Save className="h-4 w-4" /> Save Supplier
+          <Button onClick={() => saveMutation.mutate()} loading={saveMutation.isPending || formLoading}>
+            <Save className="h-4 w-4" /> {isEdit ? 'Update Supplier' : 'Save Supplier'}
           </Button>
         </div>
       </div>

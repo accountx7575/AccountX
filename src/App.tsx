@@ -164,8 +164,10 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="customers/new" element={<CustomerCreatePage />} />
+        <Route path="customers/:id/edit" element={<CustomerCreatePage />} />
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="suppliers/new" element={<SupplierCreatePage />} />
+        <Route path="suppliers/:id/edit" element={<SupplierCreatePage />} />
         <Route path="products" element={<ProductsPage />} />
         <Route path="products/new" element={<ProductCreatePage />} />
         <Route path="products/:id/edit" element={<ProductCreatePage />} />
@@ -174,6 +176,7 @@ function AppRoutes() {
         <Route path="sales-invoices/:id" element={<SalesInvoiceViewPage />} />
         <Route path="purchase-bills" element={<PurchaseBillsPage />} />
         <Route path="purchase-bills/new" element={<PurchaseBillCreatePage />} />
+        <Route path="purchase-bills/:id/edit" element={<PurchaseBillCreatePage />} />
         <Route path="payments-received" element={<PaymentsReceivedPage />} />
         <Route path="credit-notes" element={<CreditNotesPage />} />
         <Route path="credit-notes/new" element={<CreditNoteCreatePage />} />
