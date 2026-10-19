@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "kira": {
+      "npm": "@ai-sdk/openai",
+      "name": "Kira AI",
+      "options": {
+        "baseURL": "https://kiraai.vn/api/v1",
+        "apiKey": "kira_cd6f3e805327368688cb5d5050e2a550"
+      },
+      "models": {
+        "glm-5.3-flash": {
+          "name": "GLM 5.3 Flash"
+        }
+      }
+    }
+  }
+}

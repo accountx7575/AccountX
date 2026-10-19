@@ -1,0 +1,413 @@
+{
+  "schema_version": 1,
+  "hallways": [
+    {
+      "id": "hallway_stanley-mt70ecwa_Gates_Michael_d6ff29b7",
+      "wing": "stanley-mt70ecwa",
+      "entity_a": "Gates",
+      "entity_b": "Michael",
+      "co_occurrence_count": 2,
+      "rooms": [
+        "general"
+      ],
+      "label": "Gates ↔ Michael (co-occur in 2 drawers across 1 room: general)",
+      "created_at": "2026-09-04T13:52:51.626842+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-08-24T17:11:35.438451+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_god_Board_Oscar_21bda472",
+      "wing": "god",
+      "entity_a": "Board",
+      "entity_b": "Oscar",
+      "co_occurrence_count": 4,
+      "rooms": [
+        "general"
+      ],
+      "label": "Board ↔ Oscar (co-occur in 4 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:19.261723+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-09-19T11:41:56.954287+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_god_Board_Standup_45d95056",
+      "wing": "god",
+      "entity_a": "Board",
+      "entity_b": "Standup",
+      "co_occurrence_count": 8,
+      "rooms": [
+        "general"
+      ],
+      "label": "Board ↔ Standup (co-occur in 8 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:19.261723+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-02T10:09:42.267120+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_god_Board_Stanley_199aa9a0",
+      "wing": "god",
+      "entity_a": "Board",
+      "entity_b": "Stanley",
+      "co_occurrence_count": 2,
+      "rooms": [
+        "general"
+      ],
+      "label": "Board ↔ Stanley (co-occur in 2 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:19.261723+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-02T14:54:07.613675+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_god_Hourly_Inbox_309209b6",
+      "wing": "god",
+      "entity_a": "Hourly",
+      "entity_b": "Inbox",
+      "co_occurrence_count": 4,
+      "rooms": [
+        "general"
+      ],
+      "label": "Hourly ↔ Inbox (co-occur in 4 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:19.261723+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-09-05T16:24:21.475902+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_god_Inbox_Phyllis_8f8effdd",
+      "wing": "god",
+      "entity_a": "Inbox",
+      "entity_b": "Phyllis",
+      "co_occurrence_count": 2,
+      "rooms": [
+        "general"
+      ],
+      "label": "Inbox ↔ Phyllis (co-occur in 2 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:19.261723+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-02T08:36:32.862793+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_god_Inbox_Standup_f4f0f2c9",
+      "wing": "god",
+      "entity_a": "Inbox",
+      "entity_b": "Standup",
+      "co_occurrence_count": 3,
+      "rooms": [
+        "general"
+      ],
+      "label": "Inbox ↔ Standup (co-occur in 3 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:19.261723+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-02T08:12:49.746154+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_god_Migration_Oscar_8c07d727",
+      "wing": "god",
+      "entity_a": "Migration",
+      "entity_b": "Oscar",
+      "co_occurrence_count": 2,
+      "rooms": [
+        "general"
+      ],
+      "label": "Migration ↔ Oscar (co-occur in 2 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:19.261723+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-09-07T20:42:05.152176+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_god_Migration_Supabase_e7c6b7e7",
+      "wing": "god",
+      "entity_a": "Migration",
+      "entity_b": "Supabase",
+      "co_occurrence_count": 2,
+      "rooms": [
+        "general"
+      ],
+      "label": "Migration ↔ Supabase (co-occur in 2 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:19.261723+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-09-07T20:42:05.152176+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_god_Oscar_Stanley_cf65a8a4",
+      "wing": "god",
+      "entity_a": "Oscar",
+      "entity_b": "Stanley",
+      "co_occurrence_count": 13,
+      "rooms": [
+        "general"
+      ],
+      "label": "Oscar ↔ Stanley (co-occur in 13 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:19.261723+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-09-19T10:29:45.236926+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_god_Oscar_Supabase_f3e969ec",
+      "wing": "god",
+      "entity_a": "Oscar",
+      "entity_b": "Supabase",
+      "co_occurrence_count": 2,
+      "rooms": [
+        "general"
+      ],
+      "label": "Oscar ↔ Supabase (co-occur in 2 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:19.261723+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-09-07T20:42:05.152176+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_oscar-mtn1o11d_Heartbeat_Idle_afd85640",
+      "wing": "oscar-mtn1o11d",
+      "entity_a": "Heartbeat",
+      "entity_b": "Idle",
+      "co_occurrence_count": 3,
+      "rooms": [
+        "general"
+      ],
+      "label": "Heartbeat ↔ Idle (co-occur in 3 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:25.664052+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-01T16:43:48.274173+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_oscar-mtn1o11d_Heartbeat_Inbox_517b4306",
+      "wing": "oscar-mtn1o11d",
+      "entity_a": "Heartbeat",
+      "entity_b": "Inbox",
+      "co_occurrence_count": 3,
+      "rooms": [
+        "general"
+      ],
+      "label": "Heartbeat ↔ Inbox (co-occur in 3 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:25.664052+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-01T16:43:48.274173+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_oscar-mtn1o11d_Heartbeat_Mempalace_69f887af",
+      "wing": "oscar-mtn1o11d",
+      "entity_a": "Heartbeat",
+      "entity_b": "Mempalace",
+      "co_occurrence_count": 3,
+      "rooms": [
+        "general"
+      ],
+      "label": "Heartbeat ↔ Mempalace (co-occur in 3 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:25.664052+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-01T16:43:48.274173+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_oscar-mtn1o11d_Idle_Inbox_e5df7dbf",
+      "wing": "oscar-mtn1o11d",
+      "entity_a": "Idle",
+      "entity_b": "Inbox",
+      "co_occurrence_count": 3,
+      "rooms": [
+        "general"
+      ],
+      "label": "Idle ↔ Inbox (co-occur in 3 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:25.664052+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-01T16:43:48.274173+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_oscar-mtn1o11d_Idle_Mempalace_c16ec1f9",
+      "wing": "oscar-mtn1o11d",
+      "entity_a": "Idle",
+      "entity_b": "Mempalace",
+      "co_occurrence_count": 3,
+      "rooms": [
+        "general"
+      ],
+      "label": "Idle ↔ Mempalace (co-occur in 3 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:25.664052+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-01T16:43:48.274173+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_oscar-mtn1o11d_Inbox_Mempalace_5fb0d3c8",
+      "wing": "oscar-mtn1o11d",
+      "entity_a": "Inbox",
+      "entity_b": "Mempalace",
+      "co_occurrence_count": 3,
+      "rooms": [
+        "general"
+      ],
+      "label": "Inbox ↔ Mempalace (co-occur in 3 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:25.664052+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-01T16:43:48.274173+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_phyllis-mtn1phyr_Breaker_Moved_3a348de5",
+      "wing": "phyllis-mtn1phyr",
+      "entity_a": "Breaker",
+      "entity_b": "Moved",
+      "co_occurrence_count": 2,
+      "rooms": [
+        "general"
+      ],
+      "label": "Breaker ↔ Moved (co-occur in 2 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:28.666286+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-02T08:36:49.265196+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_phyllis-mtn1phyr_God_Moved_590ed2dc",
+      "wing": "phyllis-mtn1phyr",
+      "entity_a": "God",
+      "entity_b": "Moved",
+      "co_occurrence_count": 4,
+      "rooms": [
+        "general"
+      ],
+      "label": "God ↔ Moved (co-occur in 4 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:28.666286+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-01T16:43:53.459268+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_phyllis-mtn1phyr_God_Status_0580a520",
+      "wing": "phyllis-mtn1phyr",
+      "entity_a": "God",
+      "entity_b": "Status",
+      "co_occurrence_count": 3,
+      "rooms": [
+        "general"
+      ],
+      "label": "God ↔ Status (co-occur in 3 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:28.666286+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-02T06:26:44.915469+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_phyllis-mtn1phyr_Moved_Status_61f1dcb2",
+      "wing": "phyllis-mtn1phyr",
+      "entity_a": "Moved",
+      "entity_b": "Status",
+      "co_occurrence_count": 2,
+      "rooms": [
+        "general"
+      ],
+      "label": "Moved ↔ Status (co-occur in 2 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:28.666286+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-02T08:47:12.573639+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_stanley-mtn1p8o2_MemPalace_Startup_0cbaac8f",
+      "wing": "stanley-mtn1p8o2",
+      "entity_a": "MemPalace",
+      "entity_b": "Startup",
+      "co_occurrence_count": 2,
+      "rooms": [
+        "general"
+      ],
+      "label": "MemPalace ↔ Startup (co-occur in 2 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:31.544081+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-10-02T08:15:30.168234+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_stanley-mtn1p8o2_Moved_Received_0dd20f5b",
+      "wing": "stanley-mtn1p8o2",
+      "entity_a": "Moved",
+      "entity_b": "Received",
+      "co_occurrence_count": 5,
+      "rooms": [
+        "general"
+      ],
+      "label": "Moved ↔ Received (co-occur in 5 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:31.544081+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-09-05T06:53:13.979968+00:00",
+      "access_count": 0
+    },
+    {
+      "id": "hallway_stanley-mtn1p8o2_Moved_Stopped_97bba96a",
+      "wing": "stanley-mtn1p8o2",
+      "entity_a": "Moved",
+      "entity_b": "Stopped",
+      "co_occurrence_count": 2,
+      "rooms": [
+        "general"
+      ],
+      "label": "Moved ↔ Stopped (co-occur in 2 drawers across 1 room: general)",
+      "created_at": "2026-10-12T15:23:31.544081+00:00",
+      "created_by": "auto",
+      "strength": 1.0,
+      "stability": 1.0,
+      "last_activated": "2026-09-05T12:33:59.285105+00:00",
+      "access_count": 0
+    }
+  ]
+}

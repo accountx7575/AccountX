@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "savedAt": "2026-10-19T15:09:19.442Z",
+  "agents": [
+    {
+      "id": "god",
+      "name": "Michael",
+      "character": "michael",
+      "accent": "lemon",
+      "description": "god — runs the floor, triages requests, escalates only critical calls to you",
+      "project": "hive",
+      "tmuxTarget": "",
+      "cwd": "/Users/mohdsaad/Documents/Website/AccountX/project-bolt-sb1-AccountXbolt",
+      "status": "working",
+      "action": "running (python3 -c \" with open('/Users/mohdsaad/Documents/Website/AccountX/project-bolt-sb1-AccountXbolt/hive/agents/god/memory.md') as f: t...) (ctrl+o to expand)",
+      "progress": 0,
+      "currentStation": "desk",
+      "ptyId": "pty-god",
+      "command": "agy --model claude-opus-5-5 --dangerously-skip-permissions",
+      "provider": "antigravity",
+      "model": "claude-opus-5-5",
+      "isGod": true
+    },
+    {
+      "id": "oscar-mv5jajvw",
+      "name": "Oscar",
+      "character": "oscar",
+      "accent": "sky",
+      "description": "a fresh harness",
+      "project": "project-bolt-sb1-AccountXbolt",
+      "tmuxTarget": "",
+      "cwd": "/Users/mohdsaad/Documents/Website/AccountX/project-bolt-sb1-AccountXbolt",
+      "status": "idle",
+      "action": "idle",
+      "progress": 0,
+      "ptyId": "pty-oscar-mv5jajvw",
+      "command": "agy --dangerously-skip-permissions",
+      "provider": "antigravity",
+      "lastPrompt": "continue",
+      "archived": false,
+      "currentStation": "desk"
+    },
+    {
+      "id": "stanley-mv5jax01",
+      "name": "Stanley",
+      "character": "stanley",
+      "accent": "sky",
+      "description": "a fresh harness",
+      "project": "project-bolt-sb1-AccountXbolt",
+      "tmuxTarget": "",
+      "cwd": "/Users/mohdsaad/Documents/Website/AccountX/project-bolt-sb1-AccountXbolt",
+      "status": "idle",
+      "action": "awaiting",
+      "progress": 0,
+      "ptyId": "pty-stanley-mv5jax01",
+      "command": "agy --dangerously-skip-permissions",
+      "provider": "antigravity",
+      "lastPrompt": "/model",
+      "archived": false,
+      "currentStation": "desk"
+    }
+  ],
+  "archived": [
+    {
+      "id": "jim-mtn1fhj4",
+      "name": "Jim",
+      "character": "jim",
+      "accent": "sky",
+      "description": "a fresh harness",
+      "project": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "tmuxTarget": "",
+      "cwd": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "status": "idle",
+      "action": "archived",
+      "progress": 0,
+      "command": "opencode",
+      "provider": "opencode",
+      "archived": true
+    }
+  ],
+  "restorable": [
+    {
+      "id": "oscar-mtn1o11d",
+      "name": "Oscar",
+      "character": "oscar",
+      "accent": "sky",
+      "description": "a fresh harness",
+      "project": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "tmuxTarget": "",
+      "cwd": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "status": "idle",
+      "action": "reconnecting…",
+      "progress": 0,
+      "ptyId": "pty-oscar-mtn1o11d",
+      "command": "opencode",
+      "provider": "opencode",
+      "archived": false,
+      "lastPrompt": "/mode"
+    },
+    {
+      "id": "stanley-mtn1p8o2",
+      "name": "Stanley",
+      "character": "stanley",
+      "accent": "sky",
+      "description": "a fresh harness",
+      "project": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "tmuxTarget": "",
+      "cwd": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "status": "idle",
+      "action": "reconnecting…",
+      "progress": 0,
+      "ptyId": "pty-stanley-mtn1p8o2",
+      "command": "opencode",
+      "provider": "opencode",
+      "archived": false,
+      "lastPrompt": "continue"
+    },
+    {
+      "id": "phyllis-mtn1phyr",
+      "name": "Phyllis",
+      "character": "phyllis",
+      "accent": "sky",
+      "description": "a fresh harness",
+      "project": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "tmuxTarget": "",
+      "cwd": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "status": "idle",
+      "action": "reconnecting…",
+      "progress": 0,
+      "ptyId": "pty-phyllis-mtn1phyr",
+      "command": "opencode",
+      "provider": "opencode",
+      "archived": false,
+      "lastPrompt": "continue"
+    }
+  ],
+  "queues": {
+    "oscar-mv5jajvw": [
+      {
+        "id": "q-1792422558939-2",
+        "text": "import React from 'react';\nimport { Building2, ShieldCheck } from 'lucide-react';\n\nexport type DocumentType = 'TAX_INVOICE' | 'QUOTATION' | 'SALES_ORDER' | 'PURCHASE_ORDER' | 'PURCHASE_BILL';\n\nexport interface PartyDetails {\n  name: string;\n  companyName?: string;\n  address?: string;\n  city?: string;\n  state?: string;\n  pincode?: string;\n  gstin?: string;\n  pan?: string;\n  cin?: string;\n  email?: string;\n  phone?: string;\n}\n\nexport interface DocumentLineItem {\n  id?: string;\n  name: string;\n  hsnSac?: string;\n  quantity: number;\n  rate: number;\n  discount?: number;\n  taxRate?: number;\n  taxAmount?: number;\n  total: number;\n}\n\nexport interface UniversalDocumentData {\n  documentType: DocumentType;\n  documentNumber: string;\n  date: string;\n  dueDate?: string;\n  status?: string;\n  placeOfSupply?: string;\n  supplyType?: string; // e.g. \"Intra-State (CGST + SGST)\" or \"Inter-State (IGST)\"\n  reverseCharge?: 'Yes' | 'No';\n  orderRef?: string;\n  paymentMode?: string;\n  paymentStatus?: string;\n  seller: PartyDetails;\n  buyer: PartyDetails;\n  items: DocumentLineItem[];\n  subtotal: number;\n  cgstAmount?: number;\n  sgstAmount?: number;\n  igstAmount?: number;\n  discount?: number;\n  grandTotal: number;\n  amountInWords?: string;\n  taxNote?: string;\n  terms?: string[];\n  bankDetails?: {\n    bankName?: string;\n    accountName?: string;\n    accountNumber?: string;\n    ifsc?: string;\n  };\n}\n\nexport const getDocumentTitles = (type: DocumentType) => {\n  switch (type) {\n    case 'QUOTATION':\n      return { header: 'QUOTATION / ESTIMATE', sub: 'Commercial Quotation' };\n    case 'SALES_ORDER':\n      return { header: 'SALES ORDER', sub: 'Original Order Confirmation' };\n    case 'PURCHASE_ORDER':\n      return { header: 'PURCHASE ORDER', sub: 'Vendor Purchase Requisition' };\n    case 'PURCHASE_BILL':\n      return { header: 'PURCHASE BILL / INWARD', sub: 'Tax Inward Receipt' };\n    case 'TAX_INVOICE':\n    default:\n      return { header: 'TAX INVOICE / RECEIPT', sub: 'Original for Recipient' };\n  }\n};\n\nexport const UniversalDocumentTemplate: React.FC<{\n  data: UniversalDocumentData;\n  className?: string;\n  id?: string;\n}> = ({ data, className = '', id = 'universal-printable-area' }) => {\n  const titles = getDocumentTitles(data.documentType);\n  const isPurchase = data.documentType === 'PURCHASE_BILL' || data.documentType === 'PURCHASE_ORDER';\n\n  return (\n    <div\n      id={id}\n      className={`bg-white p-6 sm:p-10 text-slate-800 text-xs leading-relaxed font-sans ${className}`}\n      style={{ minHeight: '297mm', boxSizing: 'border-box' }}\n    >\n      {/* 1. Header Section */}\n      <div className=\"flex flex-col sm:flex-row justify-between items-start gap-6 border-b-2 border-slate-900 pb-6\">\n        <div>\n          <div className=\"flex items-center gap-2\">\n            <span className=\"grid place-items-center h-8 w-8 rounded-xl bg-violet-700 text-white font-black text-sm\">\n              {data.seller.companyName?.charAt(0) || data.seller.name?.charAt(0) || 'A'}\n            </span>\n            <span className=\"text-2xl font-black tracking-tight text-slate-900\">\n              {data.seller.companyName || data.seller.name}\n            </span>\n          </div>\n          <p className=\"mt-1 text-[13px] font-extrabold text-slate-900\">\n            {data.seller.companyName}\n          </p>\n          <p className=\"mt-0.5 text-[11px] text-slate-600 max-w-sm\">\n            {data.seller.address}\n          </p>\n          <div className=\"mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[10px] text-slate-500 font-medium\">\n            {data.seller.gstin && (\n              <span><strong className=\"text-slate-700\">GSTIN:</strong> {data.seller.gstin}</span>\n            )}\n            {data.seller.pan && (\n              <span><strong className=\"text-slate-700\">PAN:</strong> {data.seller.pan}</span>\n            )}\n            {data.seller.cin && (\n              <span><strong className=\"text-slate-700\">CIN:</strong> {data.seller.cin}</span>\n            )}\n          </div>\n          <p className=\"mt-0.5 text-[10px] text-slate-500\">\n            {data.seller.email && (\n              <>Support: <span className=\"font-medium text-slate-700\">{data.seller.email}</span></>\n            )}\n            {data.seller.phone && (\n              <> | Phone: <span className=\"font-medium text-slate-700\">{data.seller.phone}</span></>\n            )}\n          </p>\n        </div>\n\n        {/* Document Meta Heading */}\n        <div className=\"text-left sm:text-right shrink-0\">\n          <div className=\"inline-block rounded-md bg-slate-100 border border-slate-300 px-3 py-1 text-center\">\n            <span className=\"text-[11px] font-black uppercase tracking-wider text-slate-900\">\n              {titles.header}\n            </span>\n            <p className=\"text-[9px] font-semibold text-violet-700\">\n              {titles.sub}\n            </p>\n          </div>\n\n          <div className=\"mt-3 space-y-1 font-mono text-[11px]\">\n            <p>\n              <span className=\"text-slate-500 font-sans\">Number:</span>{' '}\n              <strong className=\"text-slate-900 text-xs\">{data.documentNumber}</strong>\n            </p>\n            <p>\n              <span className=\"text-slate-500 font-sans\">Date:</span>{' '}\n              <span className=\"text-slate-900 font-semibold\">{data.date}</span>\n            </p>\n            {data.dueDate && (\n              <p>\n                <span className=\"text-slate-500 font-sans\">Due Date:</span>{' '}\n                <span className=\"text-slate-900 font-semibold\">{data.dueDate}</span>\n              </p>\n            )}\n            <p>\n              <span className=\"text-slate-500 font-sans\">Place of Supply:</span>{' '}\n              <span className=\"text-slate-900 font-semibold\">{data.placeOfSupply || 'Uttar Pradesh (09)'}</span>\n            </p>\n            <p>\n              <span className=\"text-slate-500 font-sans\">Supply Type:</span>{' '}\n              <span className=\"text-slate-900 font-semibold\">{data.supplyType || 'Intra-State (CGST + SGST)'}</span>\n            </p>\n            <p>\n              <span className=\"text-slate-500 font-sans\">Reverse Charge:</span>{' '}\n              <span className=\"text-slate-900 font-semibold\">{data.reverseCharge || 'No'}</span>\n            </p>\n          </div>\n        </div>\n      </div>\n\n      {/* 2. Billed Details & Fulfillment Row */}\n      <div className=\"grid grid-cols-1 sm:grid-cols-2 gap-6 my-6 p-4 rounded-xl bg-slate-50/70 border border-slate-200/80\">\n        <div>\n          <p className=\"text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1\">\n            <Building2 className=\"h-3 w-3 text-slate-400\" />\n            {isPurchase ? 'BILLED BY (SUPPLIER DETAILS)' : 'BILLED TO (CUSTOMER DETAILS)'}\n          </p>\n          <p className=\"text-sm font-extrabold text-slate-900\">\n            {data.buyer.companyName || data.buyer.name}\n          </p>\n          {data.buyer.gstin && (\n            <div className=\"mt-1 flex items-center gap-1.5\">\n              <span className=\"inline-flex items-center gap-1 px-2 py-0.5 rounded bg-violet-50 border border-violet-200 text-[10px] font-mono font-bold text-violet-800\">\n                GSTIN: {data.buyer.gstin}\n              </span>\n              {data.buyer.pan && (\n                <span className=\"inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700\">\n                  PAN: {data.buyer.pan}\n                </span>\n              )}\n            </div>\n          )}\n          <p className=\"text-slate-600 text-[11px] mt-1\">{data.buyer.email || '—'}</p>\n          {data.buyer.phone && <p className=\"text-slate-600 text-[11px]\">{data.buyer.phone}</p>}\n          {data.buyer.address && (\n            <p className=\"text-slate-600 text-[11px] mt-1\">\n              {[data.buyer.address, data.buyer.city, data.buyer.state, data.buyer.pincode].filter(Boolean).join(', ')}\n            </p>\n          )}\n        </div>\n\n        {/* Payment & Fulfillment Side */}\n        <div className=\"sm:border-l sm:border-slate-200 sm:pl-6 space-y-1 text-[11px]\">\n          <p className=\"text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1\">\n            <ShieldCheck className=\"h-3 w-3 text-slate-400\" /> Payment &amp; Terms\n          </p>\n          {data.orderRef && (\n            <p className=\"flex justify-between sm:justify-start sm:gap-4\">\n              <span className=\"text-slate-500 w-28\">Ref No:</span>\n              <strong className=\"font-mono text-slate-900 font-semibold\">{data.orderRef}</strong>\n            </p>\n          )}\n          <p className=\"flex justify-between sm:justify-start sm:gap-4\">\n            <span className=\"text-slate-500 w-28\">Payment Mode:</span>\n            <span className=\"text-slate-900 font-semibold\">{data.paymentMode || 'Bank / UPI / Credit'}</span>\n          </p>\n          {data.bankDetails?.bankName && !isPurchase && (\n            <div className=\"pt-1 text-[10px] space-y-0.5 border-t border-slate-200 mt-2\">\n              <p className=\"text-slate-500 font-bold uppercase\">Bank Account Details:</p>\n              <p><span className=\"text-slate-500\">Bank:</span> {data.bankDetails.bankName}</p>\n              <p><span className=\"text-slate-500\">A/C:</span> {data.bankDetails.accountNumber}</p>\n              <p><span className=\"text-slate-500\">IFSC:</span> {data.bankDetails.ifsc}</p>\n            </div>\n          )}\n        </div>\n      </div>\n\n      {/* 3. Line Items Table */}\n      <div className=\"overflow-x-auto rounded-xl border border-slate-200 mb-6\">\n        <table className=\"w-full text-left text-xs border-collapse\">\n          <thead>\n            <tr className=\"bg-slate-100/80 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-600\">\n              <th className=\"px-3 py-2.5 w-10 text-center\">#</th>\n              <th className=\"px-3 py-2.5\">Item Description</th>\n              <th className=\"px-3 py-2.5 w-24 text-center\">HSN/SAC</th>\n              <th className=\"px-3 py-2.5 w-14 text-center\">Qty</th>\n              <th className=\"px-3 py-2.5 w-24 text-right\">Unit Rate (₹)</th>\n              <th className=\"px-3 py-2.5 w-20 text-center\">Tax (GST)</th>\n              <th className=\"px-3 py-2.5 w-28 text-right\">Total (₹)</th>\n            </tr>\n          </thead>\n          <tbody className=\"divide-y divide-slate-100\">\n            {data.items.map((item, idx) => (\n              <tr key={item.id ?? idx} className=\"hover:bg-slate-50/40\">\n                <td className=\"px-3 py-3 text-center font-mono text-[11px] text-slate-400\">{idx + 1}</td>\n                <td className=\"px-3 py-3\">\n                  <p className=\"font-bold text-slate-900\">{item.name}</p>\n                </td>\n                <td className=\"px-3 py-3 text-center font-mono text-[11px] text-slate-500\">{item.hsnSac || '—'}</td>\n                <td className=\"px-3 py-3 text-center font-mono font-semibold text-slate-700\">{item.quantity}</td>\n                <td className=\"px-3 py-3 text-right font-mono text-slate-700\">₹{item.rate.toFixed(2)}</td>\n                <td className=\"px-3 py-3 text-center text-[10px] font-semibold text-slate-500\">{item.taxRate ? `${item.taxRate}%` : '0%'}</td>\n                <td className=\"px-3 py-3 text-right font-mono font-bold text-slate-900\">₹{item.total.toFixed(2)}</td>\n              </tr>\n            ))}\n          </tbody>\n        </table>\n      </div>\n\n      {/* 4. Financial Totals & In-Words */}\n      <div className=\"grid grid-cols-1 md:grid-cols-2 gap-6 pt-2 pb-6 border-b border-slate-200\">\n        <div className=\"flex flex-col justify-between space-y-4\">\n          <div className=\"rounded-xl bg-slate-50 p-3.5 border border-slate-200/70\">\n            <p className=\"text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1\">\n              Amount Chargeable (in words)\n            </p>\n            <p className=\"text-xs font-extrabold text-slate-900 italic\">\n              {data.amountInWords || 'Indian Rupees Only'}\n            </p>\n          </div>\n          {data.taxNote && (\n            <div className=\"text-[10px] text-slate-500 space-y-1\">\n              <p className=\"font-semibold text-slate-700\">Tax Note:</p>\n              <p>{data.taxNote}</p>\n            </div>\n          )}\n        </div>\n\n        <div className=\"space-y-2 font-mono text-xs\">\n          <div className=\"flex justify-between py-1 text-slate-600\">\n            <span className=\"font-sans\">Subtotal (Taxable Value):</span>\n            <span>₹{data.subtotal.toFixed(2)}</span>\n          </div>\n          {data.cgstAmount !== undefined && (\n            <div className=\"flex justify-between py-1 text-slate-500\">\n              <span className=\"font-sans\">Central GST (CGST):</span>\n              <span>₹{data.cgstAmount.toFixed(2)}</span>\n            </div>\n          )}\n          {data.sgstAmount !== undefined && (\n            <div className=\"flex justify-between py-1 text-slate-500\">\n              <span className=\"font-sans\">State GST (SGST):</span>\n              <span>₹{data.sgstAmount.toFixed(2)}</span>\n            </div>\n          )}\n          {data.igstAmount !== undefined && (\n            <div className=\"flex justify-between py-1 text-slate-500\">\n              <span className=\"font-sans\">Integrated GST (IGST):</span>\n              <span>₹{data.igstAmount.toFixed(2)}</span>\n            </div>\n          )}\n          {data.discount ? (\n            <div className=\"flex justify-between py-1 text-emerald-600 font-semibold\">\n              <span className=\"font-sans\">Discount:</span>\n              <span>- ₹{data.discount.toFixed(2)}</span>\n            </div>\n          ) : null}\n          <div className=\"flex justify-between items-center rounded-xl bg-violet-50/70 border border-violet-200 p-3 font-sans mt-3\">\n            <span className=\"text-sm font-black text-violet-950\">Grand Total (INR):</span>\n            <span className=\"text-base font-black font-mono text-violet-900\">\n              ₹{data.grandTotal.toFixed(2)}\n            </span>\n          </div>\n        </div>\n      </div>\n\n      {/* 5. Footer & Signatory */}\n      <div className=\"flex flex-col sm:flex-row justify-between items-end gap-6 pt-6\">\n        <div className=\"text-[10px] text-slate-500 space-y-1 max-w-md\">\n          <p className=\"font-bold text-slate-700\">Terms &amp; Conditions:</p>\n          <ul className=\"list-disc pl-4 space-y-0.5\">\n            {data.terms?.map((term, i) => <li key={i}>{term}</li>) || (\n              <>\n                <li>Goods once sold will not be taken back or exchanged.</li>\n                <li>Redemption / delivery is subject to agreed operational timelines.</li>\n                <li>This is a computer-generated document and requires no physical signature.</li>\n              </>\n            )}\n          </ul>\n        </div>\n\n        <div className=\"text-center sm:text-right shrink-0\">\n          <div className=\"inline-block rounded-xl border border-dashed border-slate-300 p-3 bg-slate-50/50 text-center min-w-[200px]\">\n            <p className=\"text-[9px] font-bold uppercase tracking-wider text-slate-400\">\n              For {data.seller.companyName}\n            </p>\n            <div className=\"my-2 flex items-center justify-center gap-1 text-emerald-700\">\n              <ShieldCheck className=\"h-4 w-4\" />\n              <span className=\"text-[10px] font-black uppercase tracking-wider\">\n                DIGITALLY AUTHORIZED\n              </span>\n            </div>\n            <p className=\"border-t border-slate-200 pt-1 text-[10px] font-bold text-slate-800\">\n              Authorized Signatory\n            </p>\n          </div>\n        </div>\n      </div>\n    </div>\n  );\n};\n\nKindly do complete document styling overhaul across the entire AccountX platform.\n\nOBJECTIVE:\nStandardize the print preview, modal view, and generated PDF layout for ALL documents:\n1. Sales Invoices\n2. Quotations / Estimates\n3. Sales Orders\n4. Purchase Bills\n5. Purchase Orders\n\nREFERENCE INSPIRATION:\nAdopt the modern, clean, GST-compliant structure from the GyftKart Tax Invoice layout (attached in project as reference):\n- 2-Column Clean Header with bold company name, CIN, GSTIN, PAN, and stylized doc-type pill.\n- Billed To / Details Container: Light slate background card (`bg-slate-50/70 border border-slate-200`) separating Billed Party from Payment/Fulfillment info.\n- Line Items Table: Clean bordered table with uppercase headers (#, Item Description, HSN/SAC, Qty, Unit Rate, Tax %, Total).\n- Totals Grid: Amount chargeable in words (italicized) on the left, line-by-line Subtotal, CGST, SGST/IGST, and highlighted Grand Total pill on the right.\n- Footer: Terms & conditions bullet points on left, \"DIGITALLY AUTHORIZED\" dashed signatory box on right.\n\n\n1. Create a centralized reusable template component: `src/components/documents/UniversalDocumentTemplate.tsx`.\n2. Support all 5 document types (`TAX_INVOICE`, `QUOTATION`, `SALES_ORDER`, `PURCHASE_BILL`, `PURCHASE_ORDER`) by dynamically swapping:\n   - Header title & badge labels\n   - Party roles (For Sales/Quotations: Seller = our business, Buyer = Customer; For Purchase: Seller = Supplier, Buyer = our business)\n   - Bank details (displayed on Sales/Quotations, hidden or customized on Purchase Bills)\n3. Update all existing view/print/modal components (`SaleInvoicePrint.tsx`, `QuotationPrint.tsx`, `PurchaseBillPrint.tsx`, and their respective Modals) to render this unified template.\n4. Integrate isolated iframe printing matching `OrderInvoiceModal.tsx` so printing produces clean 1-page A4 output with proper background colors and no clipped margins.\n5. Run `npm run build` and ensure zero TypeScript or build errors.",
+        "ts": 1792422558939
+      }
+    ]
+  },
+  "selectedId": "oscar-mv5jajvw"
+}

@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "savedAt": "2026-10-09T05:19:04.906Z",
+  "agents": [],
+  "archived": [
+    {
+      "id": "jim-mtn1fhj4",
+      "name": "Jim",
+      "character": "jim",
+      "accent": "sky",
+      "description": "a fresh harness",
+      "project": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "tmuxTarget": "",
+      "cwd": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "status": "idle",
+      "action": "archived",
+      "progress": 0,
+      "command": "opencode",
+      "provider": "opencode",
+      "archived": true
+    }
+  ],
+  "restorable": [
+    {
+      "id": "oscar-mtn1o11d",
+      "name": "Oscar",
+      "character": "oscar",
+      "accent": "sky",
+      "description": "a fresh harness",
+      "project": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "tmuxTarget": "",
+      "cwd": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "status": "idle",
+      "action": "reconnecting…",
+      "progress": 0,
+      "ptyId": "pty-oscar-mtn1o11d",
+      "command": "opencode",
+      "provider": "opencode",
+      "archived": false,
+      "lastPrompt": "/mode"
+    },
+    {
+      "id": "stanley-mtn1p8o2",
+      "name": "Stanley",
+      "character": "stanley",
+      "accent": "sky",
+      "description": "a fresh harness",
+      "project": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "tmuxTarget": "",
+      "cwd": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "status": "idle",
+      "action": "reconnecting…",
+      "progress": 0,
+      "ptyId": "pty-stanley-mtn1p8o2",
+      "command": "opencode",
+      "provider": "opencode",
+      "archived": false,
+      "lastPrompt": "continue"
+    },
+    {
+      "id": "phyllis-mtn1phyr",
+      "name": "Phyllis",
+      "character": "phyllis",
+      "accent": "sky",
+      "description": "a fresh harness",
+      "project": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "tmuxTarget": "",
+      "cwd": "C:\\Users\\Saad\\Downloads\\project-bolt-sb1-AccountXbolt",
+      "status": "idle",
+      "action": "reconnecting…",
+      "progress": 0,
+      "ptyId": "pty-phyllis-mtn1phyr",
+      "command": "opencode",
+      "provider": "opencode",
+      "archived": false,
+      "lastPrompt": "continue"
+    }
+  ],
+  "queues": {},
+  "selectedId": null
+}

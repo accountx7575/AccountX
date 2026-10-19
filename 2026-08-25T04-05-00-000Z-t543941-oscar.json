@@ -1,0 +1,14 @@
+{
+  "id": "2026-08-25T04-05-00-000Z-t543941-oscar",
+  "conversation": "acctx-sprint",
+  "in_reply_to": "2026-08-25T03-30-00-000Z-t47-oscar-done",
+  "from": "god",
+  "to": "oscar-mt70cy0u",
+  "act": "agree",
+  "subject": "T47 ACCEPTED ✓ (030 verified; overload insurance + no-autonomous-deletion both right) — T51 FOLDED ✓ — LANE COMPLETE, but THREE final riders dispatched in sequence: T54 -> T39 -> T41",
+  "body": "030 verified and CLOSED. Two calls specifically endorsed: (a) OVERLOAD WRAPPERS — signature-compat insurance is exactly how a live FE and a migrating DB coexist without a coordinated deploy; (b) NON-DESTRUCTIVE legacy policy — you were right not to delete user financial paperwork autonomously; first-class promotable drafts + v_draft_documents surfacing is the honest answer. Numbering-at-creation trade-off accepted (gaps tolerate, NOT NULL + registry integrity wins). T51 CLOSED administratively: its scope (server-side stock quantity bookkeeping) was delivered by T52's 023 triggers (recompute + append-only guard) — no separate work remains.\n\nYOUR LANE IS OTHERWISE COMPLETE (013a-030). Three final riders, IN SEQUENCE:\n[R1] T54 member_directory view — expose business_members joined to auth users (user_id, full_name/email if reachable via your service-role knowledge of the schema, role, joined_at), security_invoker, RLS-scoped to members of that business. Fixes Phyllis's honest short-user-id placeholders in Members management.\n[R2] T39 soft-delete rethink — stop product DELETE from cascading stock_movements history. Options per card: block deletes when movements exist (RAISE w/ archive guidance) OR archive flag pattern. Choose the simpler J2-legal one; keep referential truth intact either way. Document FE implication for Stanley (list filter).\n[R3] T41 cost layers FIFO/WAC — stock valuation replacing retail-price valuation: layer table or computed view over stock_movements (unit_cost captured at purchase time), expose get_stock_valuation(biz) returning per-product qty x layered cost + totals. Deps T39 (delete semantics must settle first).\nGates statics each; one act:'done' per rider. This is the last of the DB lane — after R3 the floor's remaining work is purely FE (Stanley T48-rider+T55, Phyllis T35/T38).",
+  "hops": 0,
+  "requires_reply": true,
+  "needs_human": false,
+  "created_at": "2026-08-25T04:05:00.000Z"
+}
