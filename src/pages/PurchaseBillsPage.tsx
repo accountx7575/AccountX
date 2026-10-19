@@ -13,7 +13,7 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ShoppingCart, Plus, Search, Ban, CheckCircle2, Trash2, Printer, Pencil, FileDown, Share2, Mail } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
+import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
 import { openWhatsAppShare } from '@/lib/whatsapp';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import type { PurchaseBill, PurchaseBillItem, Supplier } from '@/types/db';
@@ -78,37 +78,13 @@ export function PurchaseBillsPage() {
     };
   };
 
-  // Native print preview via hidden iframe (QuotationsPage pattern).
+  // Native print preview via hidden iframe (SalesOrdersPage pattern).
   const handleDirectPrint = async (b: BillRow) => {
     if (!activeBusiness) return;
     setPrintingId(b.id);
     try {
       const { blobPayload } = await fetchBillPayload(b);
-      const blob = await renderDocSheetToPdfBlob(activeBusiness, blobPayload);
-      const blobUrl = URL.createObjectURL(blob);
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = '0';
-      iframe.src = blobUrl;
-      document.body.appendChild(iframe);
-      iframe.onload = () => {
-        setTimeout(() => {
-          iframe.focus();
-          try {
-            iframe.contentWindow?.print();
-          } catch {
-            window.open(blobUrl, '_blank');
-          }
-          setTimeout(() => {
-            document.body.removeChild(iframe);
-            URL.revokeObjectURL(blobUrl);
-          }, 3000);
-        }, 300);
-      };
+      await renderDocSheetToPdf(activeBusiness, blobPayload as any);
     } catch (err: any) {
       toast(err?.message || 'Print preview failed', 'error');
     } finally {
@@ -121,7 +97,7 @@ export function PurchaseBillsPage() {
     setDownloadingId(b.id);
     try {
       const { blobPayload, fileName } = await fetchBillPayload(b);
-      const blob = await renderDocSheetToPdfBlob(activeBusiness, blobPayload);
+      const blob = await renderDocSheetToPdfBlob(activeBusiness, blobPayload as any);
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;

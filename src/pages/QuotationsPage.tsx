@@ -34,7 +34,7 @@ import {
   Download,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { renderDocSheetToPdfBlob } from '@/lib/docPrint';
+import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
 import { openWhatsAppShare } from '@/lib/whatsapp';
 import type { Quotation, QuotationItem } from '@/types/db';
 
@@ -140,7 +140,7 @@ export function QuotationsPage() {
         .order('created_at');
       if (error) throw error;
 
-      const blob = await renderDocSheetToPdfBlob(activeBusiness, {
+      const payload: PrintableDocData = {
         docTitle: 'QUOTATION',
         docNumber: q.quotation_number,
         dateLabel: 'Quote Date',
@@ -160,42 +160,16 @@ export function QuotationsPage() {
         grandTotal: Number(q.grand_total),
         notes: q.notes,
         terms: q.terms,
-      });
-
-      const blobUrl = URL.createObjectURL(blob);
-
-      // Hidden iframe for instant browser native print preview
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = '0';
-      iframe.src = blobUrl;
-
-      document.body.appendChild(iframe);
-
-      iframe.onload = () => {
-        setTimeout(() => {
-          iframe.focus();
-          try {
-            iframe.contentWindow?.print();
-          } catch {
-            window.open(blobUrl, '_blank');
-          }
-          setTimeout(() => {
-            document.body.removeChild(iframe);
-            URL.revokeObjectURL(blobUrl);
-          }, 3000);
-        }, 300);
       };
+
+      await renderDocSheetToPdf(activeBusiness, payload);
     } catch (err: any) {
       toast(err?.message || 'Print preview failed', 'error');
     } finally {
       setPrintingId(null);
     }
   };
+
   // Handle PDF Download
   const handleDownloadPdf = async (q: QuoteRow) => {
     if (!activeBusiness) return;
@@ -208,7 +182,7 @@ export function QuotationsPage() {
         .order('created_at');
       if (error) throw error;
 
-      const blob = await renderDocSheetToPdfBlob(activeBusiness, {
+      const payload: PrintableDocData = {
         docTitle: 'QUOTATION',
         docNumber: q.quotation_number,
         dateLabel: 'Quote Date',
@@ -228,8 +202,9 @@ export function QuotationsPage() {
         grandTotal: Number(q.grand_total),
         notes: q.notes,
         terms: q.terms,
-      });
+      };
 
+      const blob = await renderDocSheetToPdfBlob(activeBusiness, payload);
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;

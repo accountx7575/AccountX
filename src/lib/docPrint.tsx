@@ -1,3 +1,5 @@
+import { captureElementToPdfBlob } from '@/lib/pdfCapture';
+
 export interface PrintableDocData {
   docTitle: string;
   docNumber: string;
@@ -254,7 +256,7 @@ This is a computer-generated document and requires no physical signature.`)
   @page { size: A4 portrait; margin: 8mm; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   html, body { margin: 0; padding: 0; background: #fff; color: #1e293b; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 11px; line-height: 1.5; }
-  .doc { width: 100%; max-width: 194mm; margin: 0 auto; padding: 4mm 6mm; box-sizing: border-box; }
+  .doc { width: 100%; max-width: 194mm; margin: 0 auto; padding: 4mm 6mm; box-sizing: border-box; background: #ffffff; color: #1e293b; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 11px; line-height: 1.5; }
   
   .header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 6mm; border-bottom: 2px solid #0f172a; padding-bottom: 4mm; }
   .brand-block { display: flex; align-items: center; gap: 3mm; }
@@ -352,19 +354,29 @@ This is a computer-generated document and requires no physical signature.`)
   <!-- 2. Billed Details Card -->
   <div class="details-card">
     <div class="details-col-left">
-      <p class="card-sec-title">${isPurchase ? 'BILLED TO (BUYER DETAILS)' : 'BILLED TO (CUSTOMER DETAILS)'}</p>
+      <p class="card-sec-title">${isPurchase ? 'BILLED BY (SUPPLIER DETAILS)' : 'BILLED TO (CUSTOMER DETAILS)'}</p>
+      <p class="party-name">${esc(isPurchase ? sellerName : buyerName)}</p>
+      ${(isPurchase ? sellerGstin : buyerGstin) ? `<div><span class="gstin-pill">GSTIN: ${esc(isPurchase ? sellerGstin : buyerGstin)}</span>${(isPurchase ? sellerPan : buyerPan) ? `<span class="pan-pill">PAN: ${esc(isPurchase ? sellerPan : buyerPan)}</span>` : ''}</div>` : ''}
+      ${(isPurchase ? sellerEmail : buyerEmail) ? `<p class="party-desc">${esc(isPurchase ? sellerEmail : buyerEmail)}</p>` : ''}
+      ${(isPurchase ? sellerPhone : buyerPhone) ? `<p class="party-desc">${esc(isPurchase ? sellerPhone : buyerPhone)}</p>` : ''}
+      ${(isPurchase ? sellerAddress : buyerAddress) ? `<p class="party-desc">${esc(isPurchase ? sellerAddress : buyerAddress)}</p>` : ''}
+    </div>
+    <div class="details-col-right">
+      ${isPurchase ? `
+      <p class="card-sec-title">BILLED TO (OUR BUSINESS DETAILS)</p>
       <p class="party-name">${esc(buyerName)}</p>
       ${buyerGstin ? `<div><span class="gstin-pill">GSTIN: ${esc(buyerGstin)}</span>${buyerPan ? `<span class="pan-pill">PAN: ${esc(buyerPan)}</span>` : ''}</div>` : ''}
       ${buyerEmail ? `<p class="party-desc">${esc(buyerEmail)}</p>` : ''}
       ${buyerPhone ? `<p class="party-desc">${esc(buyerPhone)}</p>` : ''}
       ${buyerAddress ? `<p class="party-desc">${esc(buyerAddress)}</p>` : ''}
-    </div>
-    <div class="details-col-right">
+      ${doc.ewayBillNo ? `<p style="margin: 1.5mm 0 0.5mm; font-size: 10px;"><span style="color: #64748b;">e-Way Bill No:</span> <strong>${esc(doc.ewayBillNo)}</strong></p>` : ''}
+      ${doc.vehicleNo ? `<p style="margin: 0.5mm 0; font-size: 10px;"><span style="color: #64748b;">Vehicle No:</span> <strong>${esc(doc.vehicleNo)}</strong></p>` : ''}
+      ` : `
       <p class="card-sec-title">Payment &amp; Terms</p>
       ${doc.ewayBillNo ? `<p style="margin: 0.5mm 0; font-size: 10px;"><span style="color: #64748b;">e-Way Bill No:</span> <strong>${esc(doc.ewayBillNo)}</strong></p>` : ''}
       ${doc.vehicleNo ? `<p style="margin: 0.5mm 0; font-size: 10px;"><span style="color: #64748b;">Vehicle No:</span> <strong>${esc(doc.vehicleNo)}</strong></p>` : ''}
       <p style="margin: 0.5mm 0; font-size: 10px;"><span style="color: #64748b;">Payment Mode:</span> <strong>Bank / UPI / Credit</strong></p>
-      ${!isPurchase && bankName ? `
+      ${bankName ? `
       <div style="margin-top: 1.5mm; padding-top: 1.5mm; border-top: 1px solid #e2e8f0; font-size: 9.5px; line-height: 1.45;">
         <span style="color: #94a3b8; font-weight: 800; text-transform: uppercase;">Bank Account Details:</span><br/>
         <span style="color: #64748b;">Bank:</span> <strong>${esc(bankName)}</strong><br/>
@@ -373,6 +385,7 @@ This is a computer-generated document and requires no physical signature.`)
         <span style="color: #64748b;">IFSC:</span> <strong>${esc(ifsc)}</strong>
       </div>
       ` : ''}
+      `}
     </div>
   </div>
 
@@ -427,12 +440,12 @@ This is a computer-generated document and requires no physical signature.`)
       <ul>${termsList}</ul>
     </div>
     <div class="sign-box">
-      <div class="sign-for">For ${esc(sellerName)}</div>
+      <div class="sign-for">${isPurchase ? 'For ' + esc(buyerName) : 'For ' + esc(sellerName)}</div>
       <div class="sign-badge">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>
-        DIGITALLY AUTHORIZED
+        ${isPurchase ? 'VERIFIED &amp; RECEIVED' : 'DIGITALLY AUTHORIZED'}
       </div>
-      <div class="sign-line">Authorized Signatory</div>
+      <div class="sign-line">${isPurchase ? 'Received By / Verified By' : 'Authorized Signatory'}</div>
     </div>
   </div>
 </div>
@@ -1247,27 +1260,40 @@ export async function renderDocSheetToPdfBlob(
   business: any,
   doc: PrintableDocData,
 ): Promise<Blob> {
-  // Resolve uploaded artwork first (verified loadable, else vector fallback).
-  const [logoUrl, signatureUrl] = await Promise.all([
-    loadableImageUrl(
-      headerImageUrl(business?.stamp_url) ?? headerImageUrl(business?.logo_url),
-    ),
-    loadableImageUrl(headerImageUrl(business?.signature_url)),
-  ]);
-  const docDefinition = buildOmVectorDoc(business, doc, {
-    logoUrl,
-    signatureUrl,
-  });
-  const pdfMake = await loadPdfMake();
-  const blob: Blob = await new Promise<Blob>((resolve, reject) => {
-    try {
-      pdfMake.createPdf(docDefinition).getBlob((result: Blob) => {
-        // Re-wrap to guarantee the MIME type on every browser.
-        resolve(new Blob([result], { type: 'application/pdf' }));
-      });
-    } catch (err) {
-      reject(err);
+  const htmlContent = generateOmStyleHtml(business, doc);
+
+  const host = document.createElement('div');
+  host.id = 'accountx-pdf-capture-host';
+  host.style.cssText =
+    'position:fixed;left:-10000px;top:0;width:794px;background:#ffffff;z-index:-9999;';
+  host.innerHTML = htmlContent;
+  document.body.appendChild(host);
+
+  try {
+    const images = Array.from(host.querySelectorAll('img'));
+    if (images.length > 0) {
+      await Promise.all(
+        images.map(
+          (img) =>
+            new Promise<void>((resolve) => {
+              if (img.complete) resolve();
+              else {
+                img.onload = () => resolve();
+                img.onerror = () => resolve();
+              }
+            })
+        )
+      );
     }
-  });
-  return blob;
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const target = (host.querySelector('.doc') as HTMLElement) || host;
+    const blob = await captureElementToPdfBlob(target);
+    return blob;
+  } finally {
+    if (document.body.contains(host)) {
+      document.body.removeChild(host);
+    }
+  }
 }

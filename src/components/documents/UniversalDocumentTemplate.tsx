@@ -364,87 +364,142 @@ export const UniversalDocumentTemplate: React.FC<{
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
             <Building2 className="h-3 w-3 text-slate-400" />
-            {isPurchase ? 'BILLED TO (BUYER DETAILS)' : 'BILLED TO (CUSTOMER DETAILS)'}
+            {isPurchase ? 'BILLED BY (SUPPLIER DETAILS)' : 'BILLED TO (CUSTOMER DETAILS)'}
           </p>
           <p className="text-sm font-extrabold text-slate-900">
-            {buyerName}
+            {isPurchase ? sellerName : buyerName}
           </p>
-          {data.buyer.gstin && (
+          {(isPurchase ? data.seller.gstin : data.buyer.gstin) && (
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-violet-50 border border-violet-200 text-[10px] font-mono font-bold text-violet-800">
-                GSTIN: {data.buyer.gstin}
+                GSTIN: {isPurchase ? data.seller.gstin : data.buyer.gstin}
               </span>
-              {data.buyer.pan && (
+              {(isPurchase ? data.seller.pan : data.buyer.pan) && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
-                  PAN: {data.buyer.pan}
+                  PAN: {isPurchase ? data.seller.pan : data.buyer.pan}
                 </span>
               )}
             </div>
           )}
-          {data.buyer.email && (
-            <p className="text-slate-600 text-[11px] mt-1">{data.buyer.email}</p>
+          {(isPurchase ? data.seller.email : data.buyer.email) && (
+            <p className="text-slate-600 text-[11px] mt-1">{isPurchase ? data.seller.email : data.buyer.email}</p>
           )}
-          {data.buyer.phone && (
-            <p className="text-slate-600 text-[11px]">{data.buyer.phone}</p>
+          {(isPurchase ? data.seller.phone : data.buyer.phone) && (
+            <p className="text-slate-600 text-[11px]">{isPurchase ? data.seller.phone : data.buyer.phone}</p>
           )}
-          {buyerAddress && (
-            <p className="text-slate-600 text-[11px] mt-1">{buyerAddress}</p>
+          {(isPurchase ? sellerAddress : buyerAddress) && (
+            <p className="text-slate-600 text-[11px] mt-1 whitespace-pre-line">{isPurchase ? sellerAddress : buyerAddress}</p>
           )}
         </div>
 
         {/* Payment & Fulfillment Side */}
         <div className="sm:border-l sm:border-slate-200 sm:pl-6 space-y-1 text-[11px]">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
-            <ShieldCheck className="h-3 w-3 text-slate-400" /> Payment &amp; Terms
-          </p>
-          {data.orderRef && (
-            <p className="flex justify-between sm:justify-start sm:gap-4">
-              <span className="text-slate-500 w-28">Ref No:</span>
-              <strong className="font-mono text-slate-900 font-semibold">
-                {data.orderRef}
-              </strong>
-            </p>
-          )}
-          <p className="flex justify-between sm:justify-start sm:gap-4">
-            <span className="text-slate-500 w-28">Payment Mode:</span>
-            <span className="text-slate-900 font-semibold">
-              {data.paymentMode || 'Bank / UPI / Credit'}
-            </span>
-          </p>
-          {data.paymentStatus && (
-            <p className="flex justify-between sm:justify-start sm:gap-4">
-              <span className="text-slate-500 w-28">Status:</span>
-              <span className="text-slate-900 font-semibold uppercase">
-                {data.paymentStatus}
-              </span>
-            </p>
-          )}
-          {data.bankDetails?.bankName && !isPurchase && (
-            <div className="pt-1.5 text-[10px] space-y-0.5 border-t border-slate-200 mt-2">
-              <p className="text-slate-500 font-bold uppercase">Bank Account Details:</p>
-              <p>
-                <span className="text-slate-500">Bank:</span>{' '}
-                <span className="font-medium text-slate-800">{data.bankDetails.bankName}</span>
+          {isPurchase ? (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
+                <Building2 className="h-3 w-3 text-slate-400" />
+                BILLED TO (OUR BUSINESS DETAILS)
               </p>
-              {data.bankDetails.accountName && (
-                <p>
-                  <span className="text-slate-500">A/C Name:</span>{' '}
-                  <span className="font-medium text-slate-800">{data.bankDetails.accountName}</span>
-                </p>
+              <p className="text-sm font-extrabold text-slate-900">
+                {buyerName}
+              </p>
+              {data.buyer.gstin && (
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-violet-50 border border-violet-200 text-[10px] font-mono font-bold text-violet-800">
+                    GSTIN: {data.buyer.gstin}
+                  </span>
+                  {data.buyer.pan && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
+                      PAN: {data.buyer.pan}
+                    </span>
+                  )}
+                </div>
               )}
-              {data.bankDetails.accountNumber && (
-                <p>
-                  <span className="text-slate-500">A/C:</span>{' '}
-                  <span className="font-mono font-medium text-slate-800">{data.bankDetails.accountNumber}</span>
-                </p>
+              {data.buyer.email && (
+                <p className="text-slate-600 text-[11px] mt-1">{data.buyer.email}</p>
               )}
-              {data.bankDetails.ifsc && (
-                <p>
-                  <span className="text-slate-500">IFSC:</span>{' '}
-                  <span className="font-mono font-medium text-slate-800">{data.bankDetails.ifsc}</span>
-                </p>
+              {data.buyer.phone && (
+                <p className="text-slate-600 text-[11px]">{data.buyer.phone}</p>
               )}
+              {buyerAddress && (
+                <p className="text-slate-600 text-[11px] mt-1 whitespace-pre-line">{buyerAddress}</p>
+              )}
+              <div className="mt-3 pt-2 border-t border-slate-200 space-y-0.5">
+                {data.orderRef && (
+                  <p className="flex justify-between sm:justify-start sm:gap-4">
+                    <span className="text-slate-500 w-28">Ref / PO No:</span>
+                    <strong className="font-mono text-slate-900 font-semibold">{data.orderRef}</strong>
+                  </p>
+                )}
+                {data.paymentMode && (
+                  <p className="flex justify-between sm:justify-start sm:gap-4">
+                    <span className="text-slate-500 w-28">Payment Mode:</span>
+                    <span className="text-slate-900 font-semibold">{data.paymentMode}</span>
+                  </p>
+                )}
+                {data.paymentStatus && (
+                  <p className="flex justify-between sm:justify-start sm:gap-4">
+                    <span className="text-slate-500 w-28">Status:</span>
+                    <span className="text-slate-900 font-semibold uppercase">{data.paymentStatus}</span>
+                  </p>
+                )}
+              </div>
             </div>
+          ) : (
+            <>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
+                <ShieldCheck className="h-3 w-3 text-slate-400" /> Payment &amp; Terms
+              </p>
+              {data.orderRef && (
+                <p className="flex justify-between sm:justify-start sm:gap-4">
+                  <span className="text-slate-500 w-28">Ref No:</span>
+                  <strong className="font-mono text-slate-900 font-semibold">
+                    {data.orderRef}
+                  </strong>
+                </p>
+              )}
+              <p className="flex justify-between sm:justify-start sm:gap-4">
+                <span className="text-slate-500 w-28">Payment Mode:</span>
+                <span className="text-slate-900 font-semibold">
+                  {data.paymentMode || 'Bank / UPI / Credit'}
+                </span>
+              </p>
+              {data.paymentStatus && (
+                <p className="flex justify-between sm:justify-start sm:gap-4">
+                  <span className="text-slate-500 w-28">Status:</span>
+                  <span className="text-slate-900 font-semibold uppercase">
+                    {data.paymentStatus}
+                  </span>
+                </p>
+              )}
+              {data.bankDetails?.bankName && (
+                <div className="pt-1.5 text-[10px] space-y-0.5 border-t border-slate-200 mt-2">
+                  <p className="text-slate-500 font-bold uppercase">Bank Account Details:</p>
+                  <p>
+                    <span className="text-slate-500">Bank:</span>{' '}
+                    <span className="font-medium text-slate-800">{data.bankDetails.bankName}</span>
+                  </p>
+                  {data.bankDetails.accountName && (
+                    <p>
+                      <span className="text-slate-500">A/C Name:</span>{' '}
+                      <span className="font-medium text-slate-800">{data.bankDetails.accountName}</span>
+                    </p>
+                  )}
+                  {data.bankDetails.accountNumber && (
+                    <p>
+                      <span className="text-slate-500">A/C:</span>{' '}
+                      <span className="font-mono font-medium text-slate-800">{data.bankDetails.accountNumber}</span>
+                    </p>
+                  )}
+                  {data.bankDetails.ifsc && (
+                    <p>
+                      <span className="text-slate-500">IFSC:</span>{' '}
+                      <span className="font-mono font-medium text-slate-800">{data.bankDetails.ifsc}</span>
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -571,6 +626,14 @@ export const UniversalDocumentTemplate: React.FC<{
           <ul className="list-disc pl-4 space-y-0.5">
             {data.terms && data.terms.length > 0 ? (
               data.terms.map((term, i) => <li key={i}>{term}</li>)
+            ) : isPurchase ? (
+              <>
+                <li>Goods received are subject to inspection and acceptance as per the purchase order.</li>
+                <li>Please quote this bill number in all future correspondence.</li>
+                <li>
+                  This is a computer-generated document and requires no physical signature.
+                </li>
+              </>
             ) : (
               <>
                 <li>Goods once sold will not be taken back or exchanged.</li>
@@ -586,16 +649,16 @@ export const UniversalDocumentTemplate: React.FC<{
         <div className="text-center sm:text-right shrink-0">
           <div className="inline-block rounded-xl border border-dashed border-slate-300 p-3 bg-slate-50/50 text-center min-w-[200px]">
             <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
-              For {sellerName}
+              {isPurchase ? `For ${buyerName}` : `For ${sellerName}`}
             </p>
             <div className="my-2 flex items-center justify-center gap-1 text-emerald-700">
               <ShieldCheck className="h-4 w-4" />
               <span className="text-[10px] font-black uppercase tracking-wider">
-                DIGITALLY AUTHORIZED
+                {isPurchase ? 'VERIFIED & RECEIVED' : 'DIGITALLY AUTHORIZED'}
               </span>
             </div>
             <p className="border-t border-slate-200 pt-1 text-[10px] font-bold text-slate-800">
-              Authorized Signatory
+              {isPurchase ? 'Received By / Verified By' : 'Authorized Signatory'}
             </p>
           </div>
         </div>

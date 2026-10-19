@@ -19,9 +19,11 @@ import {
   Lock,
   MessageCircle,
   Mail,
+  Download,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { renderDocSheetToPdf, renderDocSheetToPdfBlob } from '@/lib/docPrint';
+import { captureElementToPdf } from '@/lib/pdfCapture';
 import {
   UniversalDocumentTemplate,
   mapQuotationToUniversalData,
@@ -147,31 +149,44 @@ export function QuotationViewPage() {
     onError: (err: any) => toast(err.message || 'Conversion failed', 'error'),
   });
 
-  const handlePrint = async () => {
+  const handleDownloadPdf = async () => {
     if (!activeBusiness || !quote) return;
     setPrinting(true);
     try {
-      await renderDocSheetToPdf(activeBusiness, {
-        docTitle: 'QUOTATION',
-        docNumber: quote.quotation_number,
-        dateLabel: 'Quote Date',
-        dateValue: formatDate(quote.quote_date),
-        expiryLabel: 'Valid Until',
-        expiryValue: quote.expiry_date,
-        partyLabel: 'Customer',
-        partyName: quote.customer?.name || '—',
-        status: quote.status,
-        items,
-        subtotal: Number(quote.subtotal),
-        taxableAmount: Number(quote.taxable_amount),
-        cgst: Number(quote.cgst_amount),
-        sgst: Number(quote.sgst_amount),
-        igst: Number(quote.igst_amount),
-        roundOff: Number(quote.round_off) || 0,
-        grandTotal: Number(quote.grand_total),
-        notes: quote.notes,
-        terms: quote.terms,
-      });
+      const el = document.getElementById('quotation-print-area');
+      if (el) {
+        await captureElementToPdf(el, `${quote.quotation_number}.pdf`);
+      } else {
+        const blob = await renderDocSheetToPdfBlob(activeBusiness, {
+          docTitle: 'QUOTATION',
+          docNumber: quote.quotation_number,
+          dateLabel: 'Quote Date',
+          dateValue: formatDate(quote.quote_date),
+          expiryLabel: 'Valid Until',
+          expiryValue: quote.expiry_date,
+          partyLabel: 'Customer',
+          partyName: quote.customer?.name || '—',
+          status: quote.status,
+          items,
+          subtotal: Number(quote.subtotal),
+          taxableAmount: Number(quote.taxable_amount),
+          cgst: Number(quote.cgst_amount),
+          sgst: Number(quote.sgst_amount),
+          igst: Number(quote.igst_amount),
+          roundOff: Number(quote.round_off) || 0,
+          grandTotal: Number(quote.grand_total),
+          notes: quote.notes,
+          terms: quote.terms,
+        });
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `${quote.quotation_number}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }
     } catch (e: any) {
       toast(e.message || 'PDF export failed', 'error');
     } finally {
@@ -236,8 +251,8 @@ export function QuotationViewPage() {
             <Button variant="secondary" onClick={() => printElementInIframe('quotation-print-area', quote.quotation_number)}>
               <Printer className="h-4 w-4" /> Print
             </Button>
-            <Button variant="secondary" onClick={handlePrint} loading={printing}>
-              <Printer className="h-4 w-4" /> Download PDF
+            <Button variant="secondary" onClick={handleDownloadPdf} loading={printing}>
+              <Download className="h-4 w-4" /> Download PDF
             </Button>
             <Button variant="secondary" onClick={handleWhatsApp}>
               <MessageCircle className="h-4 w-4 text-emerald-600" /> WhatsApp
