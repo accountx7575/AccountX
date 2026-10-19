@@ -12,9 +12,11 @@ export function invoicePdfFilename(invoiceNumber: string, partyName?: string | n
   return `Invoice_${sanitizeFilenamePart(invoiceNumber)}_${sanitizeFilenamePart(partyName || '')}.pdf`;
 }
 
-/** Browser print of the isolated #invoice-print-area (print CSS handles A4 isolation). */
+import { printElementInIframe } from '@/components/documents/UniversalDocumentTemplate';
+
+/** Isolated iframe print of #invoice-print-area for clean 1-page A4 output. */
 export function printInvoice(): void {
-  window.print();
+  printElementInIframe('invoice-print-area', 'Tax Invoice');
 }
 
 /** Capture an already-rendered sheet element (live preview / view page). */

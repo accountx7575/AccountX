@@ -211,7 +211,7 @@ export function AiAssistantPage() {
 
   const followUps = useMemo(() => {
     if (lastAnswerIdx < 0) return [];
-    const asked = new Set(messages.map((m) => m.question.toLowerCase()));
+    const asked = new Set(messages.map((m) => ('question' in m ? String((m as any).question) : m.text || '').toLowerCase()));
     return SUGGESTED_PROMPTS.filter((p) => !asked.has(p.question.toLowerCase())).slice(0, 4);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastAnswerIdx]);

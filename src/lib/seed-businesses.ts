@@ -96,28 +96,28 @@ export const seedBusinesses = [
 /**
  * Get active businesses only
  */
-export const getActiveBusinesses = (businesses) => {
+export const getActiveBusinesses = (businesses: any[]) => {
   return businesses.filter(b => b.status === 'active');
 };
 
 /**
  * Get blocked businesses only
  */
-export const getBlockedBusinesses = (businesses) => {
+export const getBlockedBusinesses = (businesses: any[]) => {
   return businesses.filter(b => b.status === 'blocked');
 };
 
 /**
  * Get business by ID
  */
-export const getBusinessById = (businesses, id) => {
+export const getBusinessById = (businesses: any[], id: string) => {
   return businesses.find(b => b.id === id) || null;
 };
 
 /**
  * Get business by GSTIN
  */
-export const getBusinessByGstin = (businesses, gstin) => {
+export const getBusinessByGstin = (businesses: any[], gstin: string) => {
   return businesses.find(b => b.gstin === gstin) || null;
 };
 

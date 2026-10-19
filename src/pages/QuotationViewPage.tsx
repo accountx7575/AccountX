@@ -22,6 +22,11 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { renderDocSheetToPdf, renderDocSheetToPdfBlob } from '@/lib/docPrint';
+import {
+  UniversalDocumentTemplate,
+  mapQuotationToUniversalData,
+  printElementInIframe,
+} from '@/components/documents/UniversalDocumentTemplate';
 import { openWhatsAppShare } from '@/lib/whatsapp';
 import { SendDialog } from '@/components/comms/SendDialog';
 import type { Quotation, QuotationItem } from '@/types/db';
@@ -228,6 +233,9 @@ export function QuotationViewPage() {
                 <Pencil className="h-4 w-4" /> Edit
               </Button>
             )}
+            <Button variant="secondary" onClick={() => printElementInIframe('quotation-print-area', quote.quotation_number)}>
+              <Printer className="h-4 w-4" /> Print
+            </Button>
             <Button variant="secondary" onClick={handlePrint} loading={printing}>
               <Printer className="h-4 w-4" /> Download PDF
             </Button>
@@ -241,8 +249,8 @@ export function QuotationViewPage() {
         }
       />
 
-      <div className="card p-6 sm:p-8 space-y-6 border border-secondary-200 dark:border-secondary-800 shadow-sm">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-secondary-200 dark:border-secondary-800">
+      <div className="space-y-6">
+        <div className="card p-4 sm:p-6 border border-secondary-200 dark:border-secondary-800 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <span className="text-xs font-semibold uppercase tracking-wider text-secondary-400">Document Status</span>
             <div className="mt-1">
@@ -283,94 +291,11 @@ export function QuotationViewPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 p-4 rounded-xl bg-secondary-50/80 dark:bg-secondary-900/50">
-          <div>
-            <p className="text-xs font-medium text-secondary-400">Customer</p>
-            <p className="text-base font-semibold text-secondary-900 dark:text-secondary-100 mt-0.5">{quote.customer?.name || '—'}</p>
-            {quote.customer?.email && <p className="text-xs text-secondary-500">{quote.customer.email}</p>}
-            {quote.customer?.phone && <p className="text-xs text-secondary-500">{quote.customer.phone}</p>}
-          </div>
-          <div>
-            <p className="text-xs font-medium text-secondary-400">Quote Date & Time</p>
-            <p className="text-base font-semibold text-secondary-900 dark:text-secondary-100 mt-0.5">{formatDate(quote.quote_date)}</p>
-            <p className="text-xs text-secondary-500">
-              {quote.created_at
-                ? new Date(quote.created_at).toLocaleTimeString('en-IN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: true,
-                  })
-                : ''}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-medium text-secondary-400">Valid Until</p>
-            <p className="text-base font-semibold text-secondary-900 dark:text-secondary-100 mt-0.5">{quote.expiry_date ? formatDate(quote.expiry_date) : '—'}</p>
-          </div>
-        </div>
-
-        <div className="border border-secondary-200 dark:border-secondary-800 rounded-xl overflow-hidden">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-secondary-100/70 dark:bg-secondary-800/60 text-secondary-600 dark:text-secondary-300 text-xs uppercase tracking-wider font-semibold">
-              <tr>
-                <th className="px-4 py-3">Item & Description</th>
-                <th className="px-4 py-3 text-right">Qty</th>
-                <th className="px-4 py-3 text-right">Rate</th>
-                <th className="px-4 py-3 text-right">Tax %</th>
-                <th className="px-4 py-3 text-right">Total Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-secondary-100 dark:divide-secondary-800/50">
-              {items.map((it) => (
-                <tr key={it.id} className="table-row-hover">
-                  <td className="px-4 py-3 font-medium text-secondary-900 dark:text-secondary-100">{it.product_name}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-secondary-600 dark:text-secondary-300">{it.quantity} {it.unit}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-secondary-600 dark:text-secondary-300">{formatCurrency(it.rate, sym)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-secondary-600 dark:text-secondary-300">{it.tax_rate}%</td>
-                  <td className="px-4 py-3 text-right tabular-nums font-semibold text-secondary-900 dark:text-secondary-100">{formatCurrency(it.total_amount, sym)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="flex flex-col sm:flex-row justify-between gap-6 pt-2">
-          <div className="flex-1 text-sm space-y-3">
-            {quote.terms && (
-              <div>
-                <p className="text-xs font-semibold text-secondary-400 uppercase tracking-wider">Terms & Conditions</p>
-                <p className="text-secondary-600 dark:text-secondary-300 mt-1 whitespace-pre-wrap">{quote.terms}</p>
-              </div>
-            )}
-          </div>
-          <div className="w-full sm:w-80 space-y-2 text-sm bg-secondary-50/50 dark:bg-secondary-900/30 p-4 rounded-xl border border-secondary-200/60 dark:border-secondary-800/60">
-            <div className="flex justify-between text-secondary-500">
-              <span>Taxable Amount</span>
-              <span className="figure font-medium">{formatCurrency(quote.taxable_amount, sym)}</span>
-            </div>
-            {Number(quote.cgst_amount) > 0 && (
-              <div className="flex justify-between text-secondary-500">
-                <span>CGST</span>
-                <span className="figure font-medium">{formatCurrency(quote.cgst_amount, sym)}</span>
-              </div>
-            )}
-            {Number(quote.sgst_amount) > 0 && (
-              <div className="flex justify-between text-secondary-500">
-                <span>SGST</span>
-                <span className="figure font-medium">{formatCurrency(quote.sgst_amount, sym)}</span>
-              </div>
-            )}
-            {Number(quote.igst_amount) > 0 && (
-              <div className="flex justify-between text-secondary-500">
-                <span>IGST</span>
-                <span className="figure font-medium">{formatCurrency(quote.igst_amount, sym)}</span>
-              </div>
-            )}
-            <div className="flex justify-between font-bold text-base border-t border-secondary-200 dark:border-secondary-700 pt-2 text-primary-600 dark:text-primary-400">
-              <span>Grand Total</span>
-              <span className="figure">{formatCurrency(quote.grand_total, sym)}</span>
-            </div>
-          </div>
+        <div id="quotation-print-area">
+          <UniversalDocumentTemplate
+            data={mapQuotationToUniversalData(activeBusiness, quote, items)}
+            className="shadow-sm border border-secondary-200/80"
+          />
         </div>
       </div>
 
