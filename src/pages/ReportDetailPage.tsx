@@ -1142,7 +1142,7 @@ export function ReportDetailPage() {
           </span>
         }
         actions={
-          <div className="flex gap-2 print:hidden">
+          <div className="flex flex-wrap gap-2 print:hidden">
             {canShareLedger && (
               <Button
                 variant="secondary"

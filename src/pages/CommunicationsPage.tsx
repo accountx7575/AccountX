@@ -158,12 +158,12 @@ export function CommunicationsPage() {
             <DatePicker value={to || undefined} onChange={(iso) => setTo(iso)} clearable placeholder="Today" max={to || undefined} />
           </FormField>
           {refFilter && (
-            <p className="text-xs text-secondary-400 pb-2">Filtered by reference “{refFilter}”</p>
+            <p className="text-xs text-secondary-500 dark:text-secondary-400 pb-2">Filtered by reference “{refFilter}”</p>
           )}
         </div>
 
         {refFilter && (
-          <div className="px-4 pt-3 -mb-1 text-xs text-secondary-400">
+          <div className="px-4 pt-3 -mb-1 text-xs text-secondary-500 dark:text-secondary-400">
             Reference filtering matches subject, template key or recipient on this page.
           </div>
         )}
@@ -198,11 +198,11 @@ export function CommunicationsPage() {
               <tbody>
                 {filtered.map((r) => (
                   <tr key={r.id} className="border-b border-secondary-100 dark:border-secondary-800/50 table-row-hover align-top">
-                    <td className="px-4 py-3 whitespace-nowrap text-secondary-500">{formatDateTime(r.created_at)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-secondary-500 dark:text-secondary-400">{formatDateTime(r.created_at)}</td>
                     <td className="px-4 py-3 max-w-[16rem]">
                       <span className="block truncate text-secondary-900 dark:text-secondary-100" title={r.recipient_address}>{r.recipient_address}</span>
                       {r.recipient_type && r.recipient_type !== 'custom' && (
-                        <span className="text-xs text-secondary-400 capitalize">{r.recipient_type}</span>
+                        <span className="text-xs text-secondary-500 dark:text-secondary-400 capitalize">{r.recipient_type}</span>
                       )}
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell text-secondary-600 dark:text-secondary-300">{CHANNEL_LABELS[r.channel] || r.channel}</td>
@@ -217,8 +217,8 @@ export function CommunicationsPage() {
                         <StatusBadge status={r.status} />
                       )}
                     </td>
-                    <td className="px-4 py-3 hidden xl:table-cell text-secondary-500">{r.provider || '—'}</td>
-                    <td className="px-4 py-3 hidden xl:table-cell whitespace-nowrap text-secondary-500">{r.sent_at ? formatDateTime(r.sent_at) : '—'}</td>
+                    <td className="px-4 py-3 hidden xl:table-cell text-secondary-500 dark:text-secondary-400">{r.provider || '—'}</td>
+                    <td className="px-4 py-3 hidden xl:table-cell whitespace-nowrap text-secondary-500 dark:text-secondary-400">{r.sent_at ? formatDateTime(r.sent_at) : '—'}</td>
                     <td className="px-4 py-3 hidden 2xl:table-cell max-w-[16rem]"><span className="block truncate text-error-600 dark:text-error-400" title={r.error_message || ''}>{r.error_message || '—'}</span></td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
@@ -292,13 +292,13 @@ export function CommunicationsPage() {
               ['Failure reason', viewing.error_message || '—'],
             ].map(([k, v]) => (
               <div key={k} className="grid grid-cols-[9rem_1fr] gap-3">
-                <dt className="text-secondary-400">{k}</dt>
+                <dt className="text-secondary-500 dark:text-secondary-400">{k}</dt>
                 <dd className="text-secondary-900 dark:text-secondary-100 break-words min-w-0">{v}</dd>
               </div>
             ))}
             {viewing.body && (
               <div className="pt-2">
-                <dt className="text-secondary-400 mb-1">Body</dt>
+                <dt className="text-secondary-500 dark:text-secondary-400 mb-1">Body</dt>
                 <dd className="rounded-lg bg-secondary-50 dark:bg-secondary-800/50 p-3 text-secondary-700 dark:text-secondary-200 whitespace-pre-wrap break-words">{viewing.body}</dd>
               </div>
             )}

@@ -81,7 +81,7 @@ export function MessageTemplatesPanel() {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-secondary-400">
+      <p className="text-xs text-secondary-500 dark:text-secondary-400">
         Seeded defaults are real rows you can edit — every send (dialog, reminders, scheduled reports) reads these live. A reset-to-default action is not available yet; keep a copy before heavy edits.
       </p>
 
@@ -99,7 +99,7 @@ export function MessageTemplatesPanel() {
             <li key={key} className="px-4 py-3 flex flex-wrap items-center gap-3 hover:bg-secondary-50/60 dark:hover:bg-secondary-800/30 transition-colors">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-secondary-900 dark:text-secondary-100 font-mono">{key}</p>
-                <p className="text-xs text-secondary-400 truncate">{rows[0]?.subject || rows[0]?.body.slice(0, 80)}</p>
+                <p className="text-xs text-secondary-500 dark:text-secondary-400 truncate">{rows[0]?.subject || rows[0]?.body.slice(0, 80)}</p>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 {rows.map((t) => {
@@ -131,7 +131,7 @@ export function MessageTemplatesPanel() {
       )}
 
       {!canEdit && (
-        <p className="text-xs text-secondary-400">{capabilityTooltip('settings.edit', activeRole)} — templates are read-only for you.</p>
+        <p className="text-xs text-secondary-500 dark:text-secondary-400">{capabilityTooltip('settings.edit', activeRole)} — templates are read-only for you.</p>
       )}
 
       <Modal open={!!editing} onClose={() => setEditing(null)} title={`Edit template — ${editing?.key ?? ''}`} size="lg">
@@ -149,7 +149,7 @@ export function MessageTemplatesPanel() {
             <Textarea ref={bodyRef} rows={8} value={draftBody} onChange={(e) => setDraftBody(e.target.value)} />
             {(editing?.variables || []).length > 0 && (
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-secondary-400 mr-1">Insert variable:</span>
+                <span className="text-xs text-secondary-500 dark:text-secondary-400 mr-1">Insert variable:</span>
                 {(editing?.variables || []).map((v) => (
                   <button
                     key={v}

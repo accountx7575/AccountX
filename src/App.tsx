@@ -1,8 +1,9 @@
-﻿import { SuperAdminPage } from '@/pages/SuperAdminPage';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { SuperAdminPage } from '@/pages/SuperAdminPage';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense } from 'react';
-import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { AuthProvider } from '@/context/AuthContext';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -72,7 +73,6 @@ const EWayBillPage = lazy(() => import('@/pages/EWayBillPage').then((m) => ({ de
 const CommunicationsPage = lazy(() => import('@/pages/CommunicationsPage').then((m) => ({ default: m.CommunicationsPage })));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const SleuthNotFoundPage = lazy(() => import('@/pages/SleuthNotFoundPage').then((m) => ({ default: m.SleuthNotFoundPage })));
-import type { ReactNode } from 'react';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -94,51 +94,6 @@ function RouteFallback() {
       </div>
     </div>
   );
-}
-
-function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { session, loading, businessesReady, businesses, user, activeBusiness } = useAuth();
-  const location = useLocation();
-
-  const hasExistingAuth = Boolean(session && (activeBusiness || businesses.length > 0));
-
-  if ((loading || (session && !businessesReady)) && !hasExistingAuth) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-secondary-50 dark:bg-secondary-950">
-        <div className="animate-pulse flex flex-col items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-primary-600 animate-bounce" />
-          <p className="text-secondary-400 text-sm">Loading AccountX...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!session) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  const isSuperAdmin =
-    Boolean(user?.app_metadata?.is_super_admin) ||
-    Boolean(user?.user_metadata?.is_super_admin);
-  const isImpersonating =
-    typeof localStorage !== 'undefined' &&
-    localStorage.getItem('super_admin_impersonating') === 'true';
-  const supportMode = isSuperAdmin && isImpersonating;
-
-  const ownerEmail = 'acc.x7575@gmail.com';
-  if (user?.email === ownerEmail && !supportMode) {
-    return <Navigate to="/super-admin" state={{ from: location }} replace />;
-  }
-
-  if (location.pathname === '/setup-business' && businesses.length > 0 && !supportMode) {
-    return <Navigate to="/app" replace />;
-  }
-
-  if (businesses.length === 0 && !supportMode && location.pathname !== '/setup-business' && !location.pathname.startsWith('/super-admin')) {
-    return <Navigate to="/setup-business" replace />;
-  }
-
-  return <>{children}</>;
 }
 
 function AppRoutes() {
@@ -174,6 +129,7 @@ function AppRoutes() {
         <Route path="sales-invoices" element={<SalesInvoicesPage />} />
         <Route path="sales-invoices/new" element={<SalesInvoiceCreatePage />} />
         <Route path="sales-invoices/:id" element={<SalesInvoiceViewPage />} />
+        <Route path="sales-invoices/:id/edit" element={<SalesInvoiceCreatePage />} />
         <Route path="purchase-bills" element={<PurchaseBillsPage />} />
         <Route path="purchase-bills/new" element={<PurchaseBillCreatePage />} />
         <Route path="purchase-bills/:id/edit" element={<PurchaseBillCreatePage />} />
@@ -220,8 +176,10 @@ function AppRoutes() {
 
         <Route path="sales-orders" element={<SalesOrdersPage />} />
         <Route path="sales-orders/new" element={<SalesOrderCreatePage />} />
+        <Route path="sales-orders/:id/edit" element={<SalesOrderCreatePage />} />
         <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
         <Route path="purchase-orders/new" element={<PurchaseOrderCreatePage />} />
+        <Route path="purchase-orders/:id/edit" element={<PurchaseOrderCreatePage />} />
         <Route path="warehouses" element={<WarehousesPage />} />
         <Route path="stock-transfer" element={<StockTransferPage />} />
         <Route path="stock-transfer/new" element={<StockTransferCreatePage />} />

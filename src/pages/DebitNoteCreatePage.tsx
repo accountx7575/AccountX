@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -45,15 +45,23 @@ export function DebitNoteCreatePage() {
   const [date, setDate] = useState(todayDateString());
   const [lines, setLines] = useState<DraftLine[]>([]);
 
-  const { data: bills } = useQuery({
+  const billsQ = useQuery({
     queryKey: ['purchase-bills', activeBusiness?.id, 'live-for-dn'],
     queryFn: async () => {
       if (!activeBusiness) return [];
-      const { data } = await supabase.from('purchase_bills').select('id, bill_number, bill_date, place_of_supply, supplier_id, supplier:suppliers(name)').eq('business_id', activeBusiness.id).in('status', ['confirmed', 'partially_paid', 'paid']).order('bill_date', { ascending: false }).limit(100);
+      const { data, error } = await supabase.from('purchase_bills').select('id, bill_number, bill_date, place_of_supply, supplier_id, supplier:suppliers(name)').eq('business_id', activeBusiness.id).in('status', ['confirmed', 'partially_paid', 'paid']).order('bill_date', { ascending: false }).limit(100);
+      if (error) throw error;
       return (data || []) as unknown as BillOptionRow[];
     },
     enabled: !!activeBusiness,
   });
+  const bills = billsQ.data;
+
+  // No silent async failures: surface bill-picker read errors.
+  const billListError = billsQ.error;
+  useEffect(() => {
+    if (billListError) toast(`Failed to load bills: ${(billListError as Error).message}`, 'error');
+  }, [billListError, toast]);
 
   const loadBillItems = async (selectedId: string) => {
     setBillId(selectedId);

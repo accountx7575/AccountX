@@ -52,7 +52,7 @@ export function ProductsPage() {
 
   const archiveMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('products').update({ is_active: false }).eq('id', id);
+      const { error } = await supabase.from('products').update({ is_active: false }).eq('id', id).eq('business_id', activeBusiness?.id!);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -140,7 +140,7 @@ export function ProductsPage() {
                         </div>
                         <div className="min-w-0">
                           <p className="font-medium text-secondary-900 dark:text-secondary-100 truncate">{p.name}</p>
-                          {p.sku && <p className="text-xs text-secondary-400">SKU: {p.sku}</p>}
+                          {p.sku && <p className="text-xs text-secondary-500 dark:text-secondary-400">SKU: {p.sku}</p>}
                         </div>
                       </div>
                     </td>
@@ -166,10 +166,10 @@ export function ProductsPage() {
                     <td className="px-4 py-3 text-center text-secondary-600 dark:text-secondary-300">{p.tax_rate}%</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEdit(p)} title="Edit product" className="p-1.5 rounded-md text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
+                        <button onClick={() => openEdit(p)} title="Edit product" aria-label="Edit product" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={() => setArchiveId(p.id)} className="p-1.5 rounded-md text-secondary-400 hover:text-warning-600 hover:bg-warning-50 dark:hover:bg-warning-900/30 transition-colors" title="Archive product">
+                        <button onClick={() => setArchiveId(p.id)} title="Archive product" aria-label="Archive product" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-warning-600 hover:bg-warning-50 dark:hover:bg-warning-900/30 transition-colors" title="Archive product">
                           <Archive className="h-3.5 w-3.5" />
                         </button>
                       </div>

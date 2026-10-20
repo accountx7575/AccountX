@@ -144,8 +144,8 @@ export function DatePicker({ value = '', onChange, className, placeholder = 'DD/
               type="button"
               tabIndex={-1}
               onClick={() => { onChange(''); setDisplay(''); }}
-              className="p-0.5 rounded text-secondary-300 hover:text-secondary-500 dark:hover:text-secondary-300 transition-colors"
-              title="Clear"
+              className="p-0.5 rounded text-secondary-500 dark:text-secondary-300 hover:text-secondary-600 dark:hover:text-secondary-200 transition-colors"
+              title="Clear" aria-label="Clear"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -155,8 +155,8 @@ export function DatePicker({ value = '', onChange, className, placeholder = 'DD/
             tabIndex={-1}
             disabled={disabled}
             onClick={() => setOpen((o) => !o)}
-            className="p-0.5 rounded text-secondary-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-            title="Open calendar"
+            className="p-0.5 rounded text-secondary-500 dark:text-secondary-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            title="Open calendar" aria-label="Open calendar"
           >
             <Calendar className="h-4 w-4" />
           </button>

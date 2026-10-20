@@ -80,9 +80,9 @@ export function useSuperAdmin() {
   const toggleTenantStatus = useCallback(async (businessId: string, currentStatus: boolean) => {
     try {
       const nextStatus = !currentStatus;
-      const { error: rpcErr } = await supabase.rpc('toggle_business_status_admin', {
+      const { error: rpcErr } = await supabase.rpc('toggle_business_active', {
         p_business_id: businessId,
-        p_is_active: nextStatus
+        p_status: nextStatus
       });
 
       if (rpcErr) {

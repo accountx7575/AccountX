@@ -6,10 +6,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AccountX — Indian Business & Accounting</title>
     <meta name="theme-color" content="#6366f1" />
+    <!-- TODO(domain): replace BASE_URL placeholder once the production domain is
+         fixed. Canonical/og:url/sitemap.xml expect the same absolute origin. -->
     <meta name="description" content="AccountX — Indian business accounting, billing, inventory and financial management platform. GST-ready invoices with CGST/SGST/IGST breakdowns, inventory tracking, double-entry accounting, and printable tax invoices." />
+    <link rel="canonical" href="https://REPLACE-WITH-YOUR-DOMAIN/" />
+    <!-- Open Graph -->
+    <meta property="og:title" content="AccountX — Indian Business & Accounting" />
+    <meta property="og:description" content="AccountX — Indian business accounting, billing, inventory and financial management platform. GST-ready invoices with CGST/SGST/IGST breakdowns, inventory tracking, double-entry accounting, and printable tax invoices." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AccountX" />
+    <meta property="og:url" content="https://REPLACE-WITH-YOUR-DOMAIN/" />
     <meta property="og:image" content="https://bolt.new/static/og_default.png">
+    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="AccountX — Indian Business & Accounting" />
+    <meta name="twitter:description" content="AccountX — Indian business accounting, billing, inventory and financial management platform. GST-ready invoices with CGST/SGST/IGST breakdowns, inventory tracking, double-entry accounting, and printable tax invoices." />
     <meta name="twitter:image" content="https://bolt.new/static/og_default.png">
+    <!-- Preconnect: Supabase API + storage hosts (ref from project/.env VITE_SUPABASE_URL) -->
+    <link rel="preconnect" href="https://zvdjpxfmhauwihuywnsn.supabase.co" crossorigin />
+    <link rel="dns-prefetch" href="https://zvdjpxfmhauwihuywnsn.supabase.co" />
     <script>
       // Dark-mode FOUC guard: apply the persisted theme class BEFORE first paint.
       // Mirrors ThemeContext.tsx (key: accountx_theme, default light).

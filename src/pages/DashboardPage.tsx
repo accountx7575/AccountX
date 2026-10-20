@@ -5,11 +5,12 @@ import {
   Settings, PackagePlus, ArrowRight, Sparkles,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
 import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/components/PageHeader';
 import { StatCard } from '@/components/ui/StatCard';
@@ -88,6 +89,7 @@ const QUICK_START_ACTIONS = [
 export function DashboardPage() {
   const { user, activeBusiness } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
@@ -99,12 +101,13 @@ export function DashboardPage() {
     queryKey: ['recent-sales-invoices', activeBusiness?.id],
     queryFn: async () => {
       if (!activeBusiness) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('sales_invoices')
         .select('id, invoice_number, customer_id, grand_total, status, invoice_date, created_at')
         .eq('business_id', activeBusiness.id)
         .order('created_at', { ascending: false })
         .limit(5);
+      if (error) throw error;
       return data || [];
     },
     enabled: !!activeBusiness,
@@ -115,12 +118,13 @@ export function DashboardPage() {
     queryKey: ['recent-purchase-bills', activeBusiness?.id],
     queryFn: async () => {
       if (!activeBusiness) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('purchase_bills')
         .select('id, bill_number, supplier_id, grand_total, status, bill_date, created_at')
         .eq('business_id', activeBusiness.id)
         .order('created_at', { ascending: false })
         .limit(5);
+      if (error) throw error;
       return data || [];
     },
     enabled: !!activeBusiness,
@@ -131,12 +135,13 @@ export function DashboardPage() {
     queryKey: ['recent-payments', activeBusiness?.id],
     queryFn: async () => {
       if (!activeBusiness) return [];
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('payments')
         .select('id, payment_number, amount, type, date, created_at')
         .eq('business_id', activeBusiness.id)
         .order('created_at', { ascending: false })
         .limit(5);
+      if (error) throw error;
       return data || [];
     },
     enabled: !!activeBusiness,
@@ -147,10 +152,11 @@ export function DashboardPage() {
     queryKey: ['low-stock-alerts', activeBusiness?.id],
     queryFn: async () => {
       if (!activeBusiness) return { total: 0, low: [] as { id: string; name: string; current_stock: number; minimum_stock: number }[] };
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('products')
         .select('id, name, current_stock, minimum_stock')
         .eq('business_id', activeBusiness.id);
+      if (error) throw error;
       const products = (data || []) as { id: string; name: string; current_stock: number; minimum_stock: number }[];
       return {
         total: products.length,
@@ -166,27 +172,36 @@ export function DashboardPage() {
   const billSupplierIds = new Set<string>();
   (recentBills || []).forEach((b: any) => b.supplier_id && billSupplierIds.add(b.supplier_id));
 
-  const { data: customerNames } = useQuery({
+  const customerNamesQ = useQuery({
     queryKey: ['customer-names', Array.from(invoiceCustomerIds)],
     queryFn: async () => {
       const ids = Array.from(invoiceCustomerIds);
       if (ids.length === 0) return {};
-      const { data } = await supabase.from('customers').select('id, name').in('id', ids);
+      const { data, error } = await supabase.from('customers').select('id, name').in('id', ids);
+      if (error) throw error;
       return Object.fromEntries((data || []).map((c) => [c.id, c.name]));
     },
     enabled: invoiceCustomerIds.size > 0,
   });
+  const customerNames = customerNamesQ.data;
 
-  const { data: supplierNames } = useQuery({
+  const supplierNamesQ = useQuery({
     queryKey: ['supplier-names', Array.from(billSupplierIds)],
     queryFn: async () => {
       const ids = Array.from(billSupplierIds);
       if (ids.length === 0) return {};
-      const { data } = await supabase.from('suppliers').select('id, name').in('id', ids);
+      const { data, error } = await supabase.from('suppliers').select('id, name').in('id', ids);
+      if (error) throw error;
       return Object.fromEntries((data || []).map((s) => [s.id, s.name]));
     },
     enabled: billSupplierIds.size > 0,
   });
+
+  // No silent async failures: surface read errors from the supporting feeds.
+  const feedError = recentInvoicesQ.error || recentBillsQ.error || recentPaymentsQ.error || lowStockFeedQ.error || customerNamesQ.error || supplierNamesQ.error;
+  useEffect(() => {
+    if (feedError) toast(`Failed to load dashboard data: ${(feedError as Error).message}`, 'error');
+  }, [feedError, toast]);
 
   const sym = activeBusiness?.currency_symbol || '₹';
 
@@ -197,13 +212,14 @@ export function DashboardPage() {
     (lowStockFeed?.low || []).length
   );
 
-  const spSeries = dash?.salesPurchasesSeries ?? [];
-  const cashflowSeries = dash?.cashflowSeries ?? [];
-  const todayPoint = spSeries.length > 0 ? spSeries[spSeries.length - 1] : null;
+  const spSeries = useMemo(() => dash?.salesPurchasesSeries ?? [], [dash]);
+  const cashflowSeries = useMemo(() => dash?.cashflowSeries ?? [], [dash]);
+  const todayPoint = useMemo(() => (spSeries.length > 0 ? spSeries[spSeries.length - 1] : null), [spSeries]);
 
   // Presentation-only slice of an existing feed: open docs among the 5 most-recent invoices.
-  const outstandingInvoices = (recentInvoices || []).filter(
-    (inv: any) => inv.status === 'issued' || inv.status === 'partially_paid'
+  const outstandingInvoices = useMemo(
+    () => (recentInvoices || []).filter((inv: any) => inv.status === 'issued' || inv.status === 'partially_paid'),
+    [recentInvoices]
   );
 
   const receivableDelta = dash?.receivables?.deltaPct ?? null;

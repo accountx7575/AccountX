@@ -279,7 +279,7 @@ export function SendDialog({
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="info">{docNumber || docType.replace(/_/g, ' ')}</Badge>
           {categoryChip && <Badge variant={categoryTone}>{categoryChip}</Badge>}
-          <span className="text-xs text-secondary-400 ml-auto">
+          <span className="text-xs text-secondary-500 dark:text-secondary-400 ml-auto">
             Delivery runs through your configured providers · history in Communications
           </span>
         </div>
@@ -332,7 +332,7 @@ export function SendDialog({
                 />
                 <span className="min-w-0">
                   <span className="block text-sm font-medium text-secondary-900 dark:text-secondary-100 truncate">{r.label}</span>
-                  <span className="block text-xs text-secondary-400 truncate">
+                  <span className="block text-xs text-secondary-500 dark:text-secondary-400 truncate">
                     {channel === 'email' ? r.email : r.phone}
                   </span>
                 </span>
@@ -377,7 +377,7 @@ export function SendDialog({
           />
           {paletteVars.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-secondary-400 mr-1">Insert variable:</span>
+              <span className="text-xs text-secondary-500 dark:text-secondary-400 mr-1">Insert variable:</span>
               {paletteVars.map((v) => (
                 <button
                   key={v}
@@ -419,11 +419,11 @@ export function SendDialog({
                     onChange={() => setAttachmentId(a.id)}
                   />
                   <span className="text-secondary-700 dark:text-secondary-200">{a.label}</span>
-                  <span className="text-xs text-secondary-400 font-mono truncate">{a.filename}</span>
+                  <span className="text-xs text-secondary-500 dark:text-secondary-400 font-mono truncate">{a.filename}</span>
                 </label>
               ))}
               {channel === 'whatsapp' && (
-                <p className="text-xs text-secondary-400">
+                <p className="text-xs text-secondary-500 dark:text-secondary-400">
                   WhatsApp document delivery is prepared by the provider adapter when configured.
                 </p>
               )}
@@ -432,7 +432,7 @@ export function SendDialog({
         )}
 
         <div className="rounded-xl border border-secondary-200 dark:border-secondary-800 bg-secondary-50/60 dark:bg-secondary-800/30 p-4">
-          <p className="text-xs uppercase tracking-wider text-secondary-400 font-medium mb-2">Preview</p>
+          <p className="text-xs uppercase tracking-wider text-secondary-500 dark:text-secondary-400 font-medium mb-2">Preview</p>
           {previewSubject && <p className="text-sm font-semibold text-secondary-900 dark:text-white mb-1">{previewSubject}</p>}
           <p className="text-sm text-secondary-600 dark:text-secondary-300 whitespace-pre-wrap">{previewBody || '—'}</p>
         </div>

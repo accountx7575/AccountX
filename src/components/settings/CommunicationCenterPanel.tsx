@@ -210,7 +210,7 @@ export function CommunicationCenterPanel() {
                 />
                 Mark email as configured{' '}
                 <Tooltip label="Tick this ONLY after the provider secret has been set on the server (see commands). Nothing else changes — no secret is ever stored here.">
-                  <Info className="h-3.5 w-3.5 text-secondary-400" />
+                  <Info className="h-3.5 w-3.5 text-secondary-500 dark:text-secondary-400" />
                 </Tooltip>
               </label>
               <button
@@ -275,7 +275,7 @@ export function CommunicationCenterPanel() {
                 />
                 Mark WhatsApp as configured{' '}
                 <Tooltip label="Tick this ONLY after WHATSAPP_TOKEN has been set on the server (see commands). The token itself is never stored or shown here.">
-                  <Info className="h-3.5 w-3.5 text-secondary-400" />
+                  <Info className="h-3.5 w-3.5 text-secondary-500 dark:text-secondary-400" />
                 </Tooltip>
               </label>
               <button
@@ -302,7 +302,7 @@ export function CommunicationCenterPanel() {
       </div>
 
       {!canEdit && (
-        <p className="text-xs text-secondary-400">{capabilityTooltip('settings.edit', activeRole)} — values are read-only for you.</p>
+        <p className="text-xs text-secondary-500 dark:text-secondary-400">{capabilityTooltip('settings.edit', activeRole)} — values are read-only for you.</p>
       )}
 
       {canEdit && (
@@ -319,7 +319,7 @@ export function CommunicationCenterPanel() {
 
       <div className="rounded-xl border border-secondary-200 dark:border-secondary-800 p-4">
         <div className="flex items-center gap-2 mb-3">
-          <Send className="h-4 w-4 text-secondary-400" />
+          <Send className="h-4 w-4 text-secondary-500 dark:text-secondary-400" />
           <h4 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">Send test message</h4>
         </div>
         <div className="flex flex-wrap items-end gap-3">
@@ -358,7 +358,7 @@ export function CommunicationCenterPanel() {
 
       <div className="rounded-xl border border-secondary-200 dark:border-secondary-800 p-4">
         <div className="flex items-center gap-2 mb-2">
-          <Settings2 className="h-4 w-4 text-secondary-400" />
+          <Settings2 className="h-4 w-4 text-secondary-500 dark:text-secondary-400" />
           <h4 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">Notification preferences</h4>
         </div>
         <div className="flex items-center gap-3 py-1">
@@ -370,7 +370,7 @@ export function CommunicationCenterPanel() {
           />
           <div>
             <p className="text-sm text-secondary-700 dark:text-secondary-200">Automatic payment reminders</p>
-            <p className="text-xs text-secondary-400">
+            <p className="text-xs text-secondary-500 dark:text-secondary-400">
               Let AccountX queue overdue-invoice reminders automatically. Default OFF — nothing is ever sent without you asking.
             </p>
           </div>

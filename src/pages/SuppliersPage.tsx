@@ -253,7 +253,7 @@ export function SuppliersPage() {
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
                       <p className="text-secondary-600 dark:text-secondary-300">{s.phone || '—'}</p>
-                      <p className="text-xs text-secondary-400">{s.email || ''}</p>
+                      <p className="text-xs text-secondary-500 dark:text-secondary-400">{s.email || ''}</p>
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell text-secondary-600 dark:text-secondary-300 font-mono text-xs">{s.gstin || '—'}</td>
                     <td className="px-4 py-3 text-right tabular-nums">
@@ -269,13 +269,13 @@ export function SuppliersPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEdit(s)} className="p-1.5 rounded-md text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
+                        <button onClick={() => openEdit(s)} title="Edit supplier" aria-label="Edit supplier" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={() => setStatementFor(s)} title="Send account statement" className="p-1.5 rounded-md text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
+                        <button onClick={() => setStatementFor(s)} title="Send account statement" aria-label="Send account statement" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
                           <Mail className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={() => setDeleteId(s.id)} className="p-1.5 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors">
+                        <button onClick={() => setDeleteId(s.id)} title="Delete supplier" aria-label="Delete supplier" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>

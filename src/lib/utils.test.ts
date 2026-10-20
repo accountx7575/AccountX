@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { amountInWordsIndian } from '@/lib/utils';
+import { amountInWordsIndian, numberToWordsIndian } from '@/lib/utils';
 
 describe('amountInWordsIndian — edge cases', () => {
   it('zero', () => {
@@ -46,5 +46,27 @@ describe('amountInWordsIndian — edge cases', () => {
 
   it('negative amounts use absolute value (display-only util)', () => {
     expect(amountInWordsIndian(-1500)).toBe('One Thousand Five Hundred Rupees Only');
+  });
+});
+
+describe('numberToWordsIndian — sign & scale', () => {
+  it('negative amounts are prefixed with Negative ', () => {
+    expect(numberToWordsIndian(-1)).toBe('Negative One');
+    expect(numberToWordsIndian(-105)).toBe('Negative One Hundred Five');
+    expect(numberToWordsIndian(-12345678)).toBe('Negative One Crore Twenty Three Lakh Forty Five Thousand Six Hundred Seventy Eight');
+  });
+
+  it('zero and crore scale stay correct at the sign boundary', () => {
+    expect(numberToWordsIndian(0)).toBe('Zero');
+    expect(numberToWordsIndian(10000000)).toBe('One Crore');
+  });
+
+  it('amountInWordsIndian keeps abs behavior (document display, positives only)', () => {
+    expect(amountInWordsIndian(-105)).toBe('One Hundred Five Rupees Only');
+    expect(amountInWordsIndian(-105)).toBe(amountInWordsIndian(105));
+  });
+
+  it('paise component is rendered from the fractional part', () => {
+    expect(amountInWordsIndian(105.5)).toBe('One Hundred Five Rupees and Fifty Paise Only');
   });
 });

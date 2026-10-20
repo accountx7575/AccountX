@@ -32,7 +32,8 @@ export function ChartOfAccountsPage() {
     queryKey: ['accounts', activeBusiness?.id],
     queryFn: async () => {
       if (!activeBusiness) return [];
-      const { data } = await supabase.from('accounts').select('*').eq('business_id', activeBusiness.id).order('group_name').order('name');
+      const { data, error } = await supabase.from('accounts').select('*').eq('business_id', activeBusiness.id).order('group_name').order('name');
+      if (error) throw error;
       return data as Account[];
     },
     enabled: !!activeBusiness,
@@ -142,8 +143,8 @@ export function ChartOfAccountsPage() {
                         <td className="px-4 py-2 text-center">{a.is_system ? <Badge variant="info">System</Badge> : <Badge variant="neutral">Custom</Badge>}</td>
                         <td className="px-4 py-2">
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => openEdit(a)} className="p-1.5 rounded-md text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30"><Pencil className="h-3.5 w-3.5" /></button>
-                            {!a.is_system && <button onClick={() => deleteMutation.mutate(a.id)} className="p-1.5 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30"><Trash2 className="h-3.5 w-3.5" /></button>}
+                            <button onClick={() => openEdit(a)} title="Edit account" aria-label="Edit account" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30"><Pencil title="Edit account" aria-label="Edit account" className="h-3.5 w-3.5" /></button>
+                            {!a.is_system && <button onClick={() => deleteMutation.mutate(a.id)} title="Delete account" aria-label="Delete account" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30"><Trash2 title="Delete account" aria-label="Delete account" className="h-3.5 w-3.5" /></button>}
                           </div>
                         </td>
                       </tr>

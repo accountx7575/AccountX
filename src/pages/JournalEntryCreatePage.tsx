@@ -117,7 +117,7 @@ export function JournalEntryCreatePage() {
                 <div className="col-span-2"><Input type="number" placeholder="Debit" value={l.debit} onChange={(e) => updateLine(idx, { debit: e.target.value, credit: '' })} className="text-right figure" /></div>
                 <div className="col-span-2"><Input type="number" placeholder="Credit" value={l.credit} onChange={(e) => updateLine(idx, { credit: e.target.value, debit: '' })} className="text-right figure" /></div>
                 <div className="col-span-2 flex justify-center">
-                  {form.lines.length > 2 && <button onClick={() => removeLine(idx)} className="p-1.5 text-secondary-400 hover:text-error-600" title="Remove line"><Trash2 className="h-3.5 w-3.5" /></button>}
+                  {form.lines.length > 2 && <button onClick={() => removeLine(idx)} className="p-1.5 text-secondary-500 dark:text-secondary-400 hover:text-error-600" title="Remove line" aria-label="Remove line"><Trash2 className="h-3.5 w-3.5" /></button>}
                 </div>
               </div>
             ))}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AccountX sitemap — static scaffold.
+     TODO(domain): the <loc> host must match index.html canonical/og:url once
+     the production domain is fixed. /app/* pages are auth-gated and crawlable
+     neither per robots.txt nor by value; only the public landing surface is listed. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://REPLACE-WITH-YOUR-DOMAIN/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>

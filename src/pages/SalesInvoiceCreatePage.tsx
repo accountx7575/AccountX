@@ -1,5 +1,5 @@
-import { useState, useMemo, useRef, type KeyboardEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo, useRef, useEffect, type KeyboardEvent } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -17,7 +17,7 @@ import { mergeBusinessExtras } from '@/lib/businessExtras';
 import { Modal } from '@/components/ui/Modal';
 import { useSubscriptionQuota } from '@/hooks/useSubscriptionQuota';
 import { printInvoice, exportPdfFromElement, exportInvoiceExcel } from '@/lib/invoiceExport';
-import type { Customer, Product, SalesInvoiceItem } from '@/types/db';
+import type { Customer, Product, SalesInvoice, SalesInvoiceItem } from '@/types/db';
 
 type LineItem = {
   product_id: string | null;
@@ -49,7 +49,11 @@ export function SalesInvoiceCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const { id: editId } = useParams<{ id: string }>();
+  const isEdit = Boolean(editId);
+
   const [customerId, setCustomerId] = useState('');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(todayDateString());
   const [dueDate, setDueDate] = useState('');
   const [items, setItems] = useState<LineItem[]>([{ ...emptyItem }]);
@@ -63,6 +67,58 @@ export function SalesInvoiceCreatePage() {
   const isSuperAdmin =
     Boolean(user?.app_metadata?.is_super_admin) ||
     Boolean(user?.user_metadata?.is_super_admin);
+
+  // Edit mode: fetch existing sales invoice + its items and populate form state
+  const existingQuery = useQuery({
+    queryKey: ['sales-invoice', activeBusiness?.id, editId],
+    queryFn: async () => {
+      const { data: inv, error: invError } = await supabase
+        .from('sales_invoices')
+        .select('*')
+        .eq('business_id', activeBusiness!.id)
+        .eq('id', editId!)
+        .single();
+      if (invError) throw invError;
+      const { data: invItems, error: itemsError } = await supabase
+        .from('sales_invoice_items')
+        .select('*')
+        .eq('invoice_id', editId!)
+        .order('created_at');
+      if (itemsError) throw itemsError;
+      return { invoice: inv as SalesInvoice, items: (invItems || []) as SalesInvoiceItem[] };
+    },
+    enabled: isEdit && !!activeBusiness,
+  });
+
+  useEffect(() => {
+    const loaded = existingQuery.data;
+    if (!loaded) return;
+    const { invoice: inv, items: loadedItems } = loaded;
+    setCustomerId(inv.customer_id);
+    setInvoiceNumber(inv.invoice_number);
+    setInvoiceDate(inv.invoice_date);
+    setDueDate(inv.due_date || '');
+    setNotes(inv.notes || '');
+    setTerms(inv.terms || '');
+    setPaymentMethod(inv.payment_method || '');
+    if (loadedItems.length > 0) {
+      setItems(loadedItems.map((it) => ({
+        product_id: it.product_id,
+        product_name: it.product_name,
+        hsn_sac: it.hsn_sac || '',
+        quantity: Number(it.quantity),
+        unit: it.unit || 'PCS',
+        rate: Number(it.rate),
+        discount_amount: Number(it.discount_amount || 0),
+        tax_rate: Number(it.tax_rate),
+        taxable_amount: Number(it.taxable_amount),
+        cgst_amount: Number(it.cgst_amount),
+        sgst_amount: Number(it.sgst_amount),
+        igst_amount: Number(it.igst_amount),
+        total_amount: Number(it.total_amount),
+      })));
+    }
+  }, [existingQuery.data]);
 
   const handleGuardedSave = (status: 'issued' | 'draft') => {
     // Maintenance sentinel: read-only mode for regular tenants. Super-admin
@@ -78,8 +134,8 @@ export function SalesInvoiceCreatePage() {
       return;
     }
     // Free-tier quota sentinel: show the upgrade modal instead of letting the
-    // save fail with an unhandled database error.
-    if (quota.exceeded) {
+    // save fail with an unhandled database error (new invoices only).
+    if (!isEdit && quota.exceeded) {
       setQuotaModalOpen(true);
       return;
     }
@@ -148,51 +204,132 @@ export function SalesInvoiceCreatePage() {
   }, [items, isInterState]);
 
   const updateItem = (idx: number, updates: Partial<LineItem>) => {
-    setItems((prev) => prev.map((it, i) => {
-      if (i !== idx) return it;
-      const updated = { ...it, ...updates };
-      const line = computeDocLine({
-        quantity: updated.quantity,
-        rate: updated.rate,
-        discount_amount: updated.discount_amount,
-        tax_rate: updated.tax_rate,
+    setItems((prev) => {
+      const next = [...prev];
+      const cur = { ...next[idx], ...updates };
+
+      const computed = computeDocLine({
+        quantity: cur.quantity,
+        rate: cur.rate,
+        discount_amount: cur.discount_amount,
+        tax_rate: cur.tax_rate,
         isInterState,
       });
-      updated.taxable_amount = line.taxable_amount;
-      updated.cgst_amount = line.cgst_amount;
-      updated.sgst_amount = line.sgst_amount;
-      updated.igst_amount = line.igst_amount;
-      updated.total_amount = line.total_amount;
-      return updated;
-    }));
+
+      next[idx] = {
+        ...cur,
+        taxable_amount: computed.taxable_amount,
+        cgst_amount: computed.cgst_amount,
+        sgst_amount: computed.sgst_amount,
+        igst_amount: computed.igst_amount,
+        total_amount: computed.total_amount,
+      };
+      return next;
+    });
   };
 
   const addItem = () => {
     setItems((prev) => [...prev, { ...emptyItem }]);
-    requestAnimationFrame(() => {
-      rowRefs.current[items.length]?.focus();
+    setTimeout(() => {
+      const last = rowRefs.current[items.length];
+      last?.focus();
+    }, 50);
+  };
+
+  const removeItem = (idx: number) => {
+    setItems((prev) => {
+      if (prev.length <= 1) {
+        return [{ ...emptyItem }];
+      }
+      return prev.filter((_, i) => i !== idx);
     });
   };
-  const removeItem = (idx: number) => setItems((prev) => prev.length === 1 ? [{ ...emptyItem }] : prev.filter((_, i) => i !== idx));
 
-  const handleRowKeyDown = (e: KeyboardEvent, idx: number) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      rowRefs.current[idx + 1]?.focus();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      rowRefs.current[idx - 1]?.focus();
+  const handleRowKeyDown = (e: KeyboardEvent<HTMLSelectElement>, idx: number) => {
+    if (e.key === 'Tab' && !e.shiftKey && idx === items.length - 1) {
+      if (items[idx].product_id) {
+        e.preventDefault();
+        addItem();
+      }
     }
   };
 
   const saveMutation = useMutation({
-    mutationFn: async (status: 'issued' | 'draft' = 'issued') => {
+    mutationFn: async (status: 'issued' | 'draft') => {
       if (!activeBusiness) throw new Error('No active business');
       if (!customerId) throw new Error('Please select a customer');
-      if (items.some((it) => !it.product_name || it.quantity <= 0)) throw new Error('Please fill all item details');
+      if (items.some((it) => !it.product_name || it.quantity <= 0)) {
+        throw new Error('Please fill in all item details');
+      }
 
       setSaving(true);
 
+      // Edit mode: UPDATE existing sales invoice header and replace line items
+      if (isEdit) {
+        const loaded = existingQuery.data;
+        if (!loaded) throw new Error('Invoice not loaded yet');
+        const biz = activeBusiness.id;
+        const newBalance = Math.max(0, totals.grandTotal - Number(loaded.invoice.paid_amount || 0));
+        const paymentStatus = newBalance <= 0 ? 'paid' : Number(loaded.invoice.paid_amount || 0) > 0 ? 'partially_paid' : 'unpaid';
+
+        const { error: headerError } = await supabase
+          .from('sales_invoices')
+          .update({
+            customer_id: customerId,
+            invoice_date: invoiceDate,
+            due_date: dueDate || null,
+            place_of_supply: selectedCustomer?.state || activeBusiness.state,
+            subtotal: totals.subtotal,
+            discount_amount: totals.totalDiscount,
+            taxable_amount: totals.taxableAmount,
+            cgst_amount: totals.cgst,
+            sgst_amount: totals.sgst,
+            igst_amount: totals.igst,
+            cess_amount: 0,
+            round_off: totals.roundOff,
+            grand_total: totals.grandTotal,
+            balance_amount: newBalance,
+            payment_status: paymentStatus,
+            payment_method: paymentMethod || null,
+            notes: notes || null,
+            terms: terms || null,
+          })
+          .eq('business_id', biz)
+          .eq('id', editId!);
+        if (headerError) throw headerError;
+
+        const { error: clearError } = await supabase
+          .from('sales_invoice_items')
+          .delete()
+          .eq('invoice_id', editId!);
+        if (clearError) throw clearError;
+
+        const rows = items.map((it) => ({
+          invoice_id: editId!,
+          product_id: it.product_id,
+          product_name: it.product_name,
+          hsn_sac: it.hsn_sac || '',
+          quantity: it.quantity,
+          unit: it.unit || 'PCS',
+          rate: it.rate,
+          discount_amount: it.discount_amount,
+          tax_rate: it.tax_rate,
+          taxable_amount: it.taxable_amount,
+          cgst_amount: it.cgst_amount,
+          sgst_amount: it.sgst_amount,
+          igst_amount: it.igst_amount,
+          cess_amount: 0,
+          total_amount: it.total_amount,
+        }));
+        const { error: itemsError } = await supabase
+          .from('sales_invoice_items')
+          .insert(rows);
+        if (itemsError) throw itemsError;
+
+        return { invoiceId: editId!, status: loaded.invoice.status, edited: true };
+      }
+
+      // Create mode
       const p_invoice = {
         customer_id: customerId,
         invoice_date: invoiceDate,
@@ -239,10 +376,11 @@ export function SalesInvoiceCreatePage() {
 
       const result = data as unknown as { invoice_id?: string }[] | { invoice_id?: string } | null;
       const invoiceId = Array.isArray(result) ? result[0]?.invoice_id : result?.invoice_id;
-      return { invoiceId: invoiceId || '', status };
+      return { invoiceId: invoiceId || '', status, edited: false };
     },
-    onSuccess: ({ invoiceId, status }) => {
+    onSuccess: ({ invoiceId, status, edited }: any) => {
       queryClient.invalidateQueries({ queryKey: ['sales-invoices', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['sales-invoice', activeBusiness?.id, editId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats', activeBusiness?.id] });
       queryClient.invalidateQueries({ queryKey: ['receivables', activeBusiness?.id] });
       queryClient.invalidateQueries({ queryKey: ['sales-purchases-series', activeBusiness?.id] });
@@ -250,8 +388,13 @@ export function SalesInvoiceCreatePage() {
       queryClient.invalidateQueries({ queryKey: ['accounts', activeBusiness?.id] });
       queryClient.invalidateQueries({ queryKey: ['journal-entries', activeBusiness?.id] });
       queryClient.invalidateQueries({ queryKey: ['trial-balance', activeBusiness?.id] });
-      toast(status === 'draft' ? 'Draft saved — issue it from the invoices list' : 'Invoice issued successfully', 'success');
-      navigate(status === 'draft' ? '/app/sales-invoices' : invoiceId ? `/app/sales-invoices/${invoiceId}` : '/app/sales-invoices');
+      if (edited) {
+        toast('Invoice updated successfully', 'success');
+        navigate(`/app/sales-invoices/${invoiceId}`);
+      } else {
+        toast(status === 'draft' ? 'Draft saved — issue it from the invoices list' : 'Invoice issued successfully', 'success');
+        navigate(status === 'draft' ? '/app/sales-invoices' : invoiceId ? `/app/sales-invoices/${invoiceId}` : '/app/sales-invoices');
+      }
     },
     onError: (err: any) => toast(err.message || 'Failed to save invoice', 'error'),
     onSettled: () => setSaving(false),
@@ -284,10 +427,10 @@ export function SalesInvoiceCreatePage() {
     }));
 
   const previewInvoice = {
-    id: 'preview',
+    id: editId || 'preview',
     business_id: activeBusiness?.id || '',
     customer_id: customerId,
-    invoice_number: `${activeBusiness?.invoice_prefix || 'INV'}/…/PREVIEW`,
+    invoice_number: invoiceNumber || `${activeBusiness?.invoice_prefix || 'INV'}/…/PREVIEW`,
     invoice_date: invoiceDate,
     due_date: dueDate || null,
     place_of_supply: selectedCustomer?.state || activeBusiness?.state || null,
@@ -300,10 +443,10 @@ export function SalesInvoiceCreatePage() {
     cess_amount: 0,
     round_off: totals.roundOff,
     grand_total: totals.grandTotal,
-    paid_amount: 0,
-    balance_amount: totals.grandTotal,
-    payment_status: 'unpaid' as const,
-    status: 'draft' as const,
+    paid_amount: existingQuery.data?.invoice.paid_amount || 0,
+    balance_amount: totals.grandTotal - Number(existingQuery.data?.invoice.paid_amount || 0),
+    payment_status: (existingQuery.data?.invoice.payment_status || 'unpaid') as any,
+    status: (existingQuery.data?.invoice.status || 'draft') as any,
     payment_method: paymentMethod || null,
     notes: notes || null,
     terms: terms || null,
@@ -312,12 +455,6 @@ export function SalesInvoiceCreatePage() {
     updated_at: '',
     customer: selectedCustomer,
   } as unknown as InvoiceWithCustomer;
-
-  const taxRateOptions = useMemo(() => {
-    const used = new Set<number>(GST_SLABS);
-    items.forEach((it) => used.add(Number(it.tax_rate)));
-    return Array.from(used).sort((a, b) => a - b);
-  }, [items]);
 
   const totalRows = (
     <div className="w-full sm:w-80 ml-auto space-y-2">
@@ -368,9 +505,12 @@ export function SalesInvoiceCreatePage() {
   return (
     <div>
       <PageHeader
-        title="New Sale Invoice"
+        title={isEdit ? `Edit Invoice #${invoiceNumber || existingQuery.data?.invoice.invoice_number || ''}` : 'New Sale Invoice'}
+        subtitle={isEdit ? 'Update invoice details and line items' : 'Create and issue a GST compliant invoice'}
         actions={
-          <Button variant="secondary" onClick={() => navigate('/app/sales-invoices')}><ArrowLeft className="h-4 w-4" /> Back</Button>
+          <Button variant="secondary" onClick={() => navigate(isEdit ? `/app/sales-invoices/${editId}` : '/app/sales-invoices')}>
+            <ArrowLeft className="h-4 w-4" /> Back
+          </Button>
         }
       />
 
@@ -450,72 +590,100 @@ export function SalesInvoiceCreatePage() {
                         <option value="">-- Select Product --</option>
                         {products?.map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.name} · {formatCurrency(p.selling_price, sym)} · Stock {p.current_stock}
+                            {p.name} {p.selling_price ? `(₹${p.selling_price})` : ''} {p.current_stock !== undefined ? `[Stock: ${p.current_stock}]` : ''}
                           </option>
                         ))}
                       </select>
                     </div>
                     <div className="py-2">
-                      <Input value={item.hsn_sac} onChange={(e) => updateItem(idx, { hsn_sac: e.target.value })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-center figure font-mono" placeholder="HSN" />
+                      <Input
+                        value={item.hsn_sac}
+                        onChange={(e) => updateItem(idx, { hsn_sac: e.target.value })}
+                        placeholder="HSN/SAC"
+                        className="text-center font-mono text-xs"
+                      />
                     </div>
                     <div className="py-2">
-                      <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, { quantity: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-center figure" />
+                      <Input
+                        type="number"
+                        min="1"
+                        value={item.quantity}
+                        onChange={(e) => updateItem(idx, { quantity: Math.max(1, Number(e.target.value)) })}
+                        className="text-center font-mono"
+                      />
                     </div>
                     <div className="py-2">
-                      <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, { rate: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-center figure" />
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.rate}
+                        onChange={(e) => updateItem(idx, { rate: Math.max(0, Number(e.target.value)) })}
+                        className="text-center font-mono"
+                      />
                     </div>
                     <div className="py-2">
-                      <Input type="number" value={item.discount_amount} onChange={(e) => updateItem(idx, { discount_amount: parseFloat(e.target.value) || 0 })} onKeyDown={(e) => handleRowKeyDown(e, idx)} className="w-full text-center figure" />
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.discount_amount}
+                        onChange={(e) => updateItem(idx, { discount_amount: Math.max(0, Number(e.target.value)) })}
+                        className="text-center font-mono"
+                      />
                     </div>
                     <div className="py-2">
                       <select
-                        className="input w-full px-1.5 py-1.5 text-xs text-center"
-                        value={String(item.tax_rate)}
-                        onChange={(e) => updateItem(idx, { tax_rate: parseFloat(e.target.value) })}
-                        onKeyDown={(e) => handleRowKeyDown(e, idx)}
+                        value={item.tax_rate}
+                        onChange={(e) => updateItem(idx, { tax_rate: Number(e.target.value) })}
+                        className="input w-full text-center font-mono text-xs px-1"
                       >
-                        {taxRateOptions.map((r) => <option key={r} value={String(r)}>{r}%</option>)}
+                        {Array.from(new Set([...GST_SLABS, Number(item.tax_rate)])).sort((a, b) => a - b).map((r) => (
+                          <option key={r} value={r}>{r}%</option>
+                        ))}
                       </select>
                     </div>
-                    <div className="py-2 text-right tabular-nums font-medium text-secondary-900 dark:text-secondary-100 figure">
+                    <div className="py-2 text-right font-medium figure">
                       {formatCurrency(item.total_amount, sym)}
                     </div>
-                    <div className="py-2 flex justify-center">
-                      <button onClick={() => removeItem(idx)} className="p-1 text-secondary-400 hover:text-error-600 transition-colors" title="Remove row">
-                        <Trash2 className="h-3.5 w-3.5" />
+                    <div className="py-2 text-center">
+                      <button
+                        type="button"
+                        onClick={() => removeItem(idx)}
+                        className="p-1 rounded text-secondary-500 dark:text-secondary-400 hover:text-error-500 hover:bg-error-50 dark:hover:bg-error-900/20"
+                        title="Delete item"
+                        aria-label="Delete item"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-secondary-400">
-              <span><kbd className="kbd">↑↓</kbd> move between rows</span>
-              <span>Rate, HSN &amp; tax autofill on product select</span>
-            </div>
           </FormSection>
 
-          <FormSection title="Payment, Notes & Terms">
-            <div className="space-y-4">
-              <div className="max-w-48">
+          <FormSection title="Payment & Notes" description="Payment method and notes printed on the invoice">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
                 <label className="label">Payment Method</label>
                 <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-                  <option value="">—</option>
-                  <option value="cash">Cash</option>
-                  <option value="upi">UPI</option>
-                  <option value="bank">Bank</option>
-                  <option value="card">Card</option>
-                  <option value="credit">Credit</option>
+                  <option value="">Select payment method...</option>
+                  <option value="Cash">Cash</option>
+                  <option value="UPI">UPI / QR</option>
+                  <option value="Bank Transfer">Bank Transfer (NEFT/RTGS/IMPS)</option>
+                  <option value="Cheque">Cheque</option>
+                  <option value="Credit / Pending">Credit / Pending</option>
                 </select>
               </div>
-              <div>
+              <div className="sm:col-span-2">
                 <label className="label">Notes</label>
-                <textarea className="input resize-none" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes..." />
+                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Terms, delivery instructions, or notes for the customer..." />
               </div>
-              <div>
-                <label className="label">Terms &amp; Conditions</label>
-                <textarea className="input resize-none" rows={2} value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="Terms and conditions..." />
-              </div>
+            </div>
+            <div className="mt-4">
+              <label className="label">Terms &amp; Conditions</label>
+              <Input value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="Custom terms and conditions (one per line or comma-separated)..." />
             </div>
           </FormSection>
 
@@ -536,10 +704,12 @@ export function SalesInvoiceCreatePage() {
         </div>
       </div>
 
-      {/* Sticky action footer — secondary left, primary right */}
+      {/* Sticky action footer */}
       <div className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 mt-5 border-t border-secondary-200/80 dark:border-zinc-800 bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md print:hidden">
         <div className="flex items-center justify-between gap-3">
-          <Button variant="ghost" onClick={() => navigate('/app/sales-invoices')}>Cancel</Button>
+          <Button variant="ghost" onClick={() => navigate(isEdit ? `/app/sales-invoices/${editId}` : '/app/sales-invoices')}>
+            Cancel
+          </Button>
           <div className="flex items-center gap-2">
             <Button variant="secondary" className="h-10" onClick={printInvoice} title="Print this invoice (A4)">
               <Printer className="h-4 w-4" /> Print Invoice
@@ -572,16 +742,28 @@ export function SalesInvoiceCreatePage() {
             >
               <FileSpreadsheet className="h-4 w-4" /> Export to Excel
             </Button>
-            <Button variant="secondary" className="h-10" onClick={() => handleGuardedSave('draft')} loading={saving}>
-              <Save className="h-4 w-4" /> Save as draft
-            </Button>
-            <button
-              onClick={() => handleGuardedSave('issued')}
-              disabled={saving}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 h-10 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />} Save &amp; Issue
-            </button>
+            {isEdit ? (
+              <button
+                onClick={() => handleGuardedSave('issued')}
+                disabled={saving}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 h-10 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Update Invoice
+              </button>
+            ) : (
+              <>
+                <Button variant="secondary" className="h-10" onClick={() => handleGuardedSave('draft')} loading={saving}>
+                  <Save className="h-4 w-4" /> Save as draft
+                </Button>
+                <button
+                  onClick={() => handleGuardedSave('issued')}
+                  disabled={saving}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 h-10 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />} Save &amp; Issue
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -600,24 +782,24 @@ export function SalesInvoiceCreatePage() {
           <Button variant="secondary" onClick={() => setQuotaModalOpen(false)}>
             Close
           </Button>
-          <Button onClick={() => { setQuotaModalOpen(false); navigate('/app/settings'); }}>
-            Upgrade plan
+          <Button onClick={() => navigate('/app/settings')}>
+            Upgrade Plan
           </Button>
         </div>
       </Modal>
       <Modal
         open={maintenanceModalOpen}
         onClose={() => setMaintenanceModalOpen(false)}
-        title="Maintenance mode"
+        title="System maintenance in progress"
         size="sm"
       >
         <p className="text-sm text-secondary-600 dark:text-secondary-300">
-          The platform is in read-only maintenance mode. Invoice creation is
-          temporarily paused for tenants. Please try again once maintenance ends.
+          AccountX is undergoing scheduled maintenance. Invoice creation is
+          temporarily paused for regular users. Please check back shortly.
         </p>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="mt-4 flex justify-end">
           <Button variant="secondary" onClick={() => setMaintenanceModalOpen(false)}>
-            Close
+            Understood
           </Button>
         </div>
       </Modal>

@@ -580,6 +580,7 @@ export function QuotationsPage() {
                           onClick={() => navigate(`/app/quotations/${q.id}`)}
                           className="p-1.5 rounded-md text-secondary-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
                           title="View Quotation"
+                          aria-label="View Quotation"
                         >
                           <Eye className="h-4 w-4" />
                         </button>
@@ -589,6 +590,7 @@ export function QuotationsPage() {
                             onClick={() => navigate(`/app/quotations/${q.id}/edit`)}
                             className="p-1.5 rounded-md text-secondary-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
                             title="Edit Quotation"
+                            aria-label="Edit Quotation"
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
@@ -617,7 +619,7 @@ export function QuotationsPage() {
                         </Button>
 
                         {LOCKED[q.status] && (
-                          <span className="inline-flex items-center gap-1 text-xs text-secondary-400">
+                          <span className="inline-flex items-center gap-1 text-xs text-secondary-500 dark:text-secondary-400">
                             <Lock className="h-3 w-3" /> Locked
                           </span>
                         )}
@@ -676,8 +678,9 @@ export function QuotationsPage() {
 
                         <button
                           onClick={() => setConfirmDelete(q)}
-                          className="p-1.5 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
                           title="Delete Quotation"
+                          aria-label="Delete Quotation"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>

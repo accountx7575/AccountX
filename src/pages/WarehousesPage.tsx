@@ -192,12 +192,12 @@ export function WarehousesPage() {
                     <td className="px-4 py-3">
                       <div className="flex justify-end items-center gap-1.5">
                         <Button size="sm" variant="secondary" onClick={() => setStockViewing(w)}>Stock</Button>
-                        <button onClick={() => openEdit(w)} title="Edit warehouse"
-                          className="p-1.5 rounded-md text-secondary-400 hover:text-secondary-600 dark:hover:text-secondary-200 hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors">
+                        <button onClick={() => openEdit(w)} title="Edit warehouse" aria-label="Edit warehouse"
+                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-secondary-600 dark:hover:text-secondary-200 hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors">
                           <Pencil className="h-4 w-4" />
                         </button>
-                        <button onClick={() => { setDeleteBlockedMsg(null); setConfirmDelete(w); }} title="Delete warehouse"
-                          className="p-1.5 rounded-md text-secondary-400 hover:text-error-600 dark:hover:text-error-400 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors">
+                        <button onClick={() => { setDeleteBlockedMsg(null); setConfirmDelete(w); }} title="Delete warehouse" aria-label="Delete warehouse"
+                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 dark:hover:text-error-400 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors">
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
@@ -230,7 +230,7 @@ export function WarehousesPage() {
             <input type="checkbox" checked={form.is_default} onChange={(e) => setForm({ ...form, is_default: e.target.checked })} className="accent-indigo-600" />
             Set as default warehouse
             {form.is_default && editing?.is_default === false ? (
-              <span className="text-xs text-secondary-400">(current default will be cleared)</span>
+              <span className="text-xs text-secondary-500 dark:text-secondary-400">(current default will be cleared)</span>
             ) : null}
           </label>
           <div className="flex justify-end gap-2 pt-2">

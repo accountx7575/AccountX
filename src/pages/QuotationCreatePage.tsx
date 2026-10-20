@@ -205,7 +205,8 @@ export function QuotationCreatePage() {
 
       const { data: userData } = await supabase.auth.getUser();
 
-      let targetQuoteId = editId;
+      let targetQuoteId: string | undefined = editId;
+      let createdNewQuote = false;
 
       if (isEdit && targetQuoteId) {
         const { error: updateErr } = await supabase
@@ -230,45 +231,71 @@ export function QuotationCreatePage() {
 
         await supabase.from('quotation_items').delete().eq('quotation_id', targetQuoteId);
       } else {
-        let docNumber = `QT-${Date.now().toString().slice(-6)}`;
-        try {
-          const { data: generated } = await supabase.rpc('next_document_number', {
-            p_business_id: activeBusiness.id,
-            p_doc_type: 'quotation',
-            p_date: quoteDate,
-          });
-          if (generated) docNumber = String(generated);
-        } catch (rpcErr) {
-          console.warn('RPC fallback', rpcErr);
+        // Insert with ONE retry on duplicate key (23505): fetch a fresh
+        // number and retry before falling back to the error path.
+        let createdQuote: { id: string } | null = null;
+        let insertErr: any = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          let docNumber = '';
+          let counterUnavailable = false;
+          try {
+            const { data: generated } = await supabase.rpc('next_document_number', {
+              p_business_id: activeBusiness.id,
+              p_doc_type: 'quotation',
+              p_date: quoteDate,
+            });
+            if (generated) docNumber = String(generated);
+          } catch (rpcErr) {
+            console.warn('RPC fallback', rpcErr);
+            counterUnavailable = true;
+          }
+          if (!docNumber) docNumber = `QT-${Date.now().toString().slice(-6)}${counterUnavailable ? '' : `-${attempt}`}`;
+
+          const res = await supabase
+            .from('quotations')
+            .insert({
+              business_id: activeBusiness.id,
+              quotation_number: docNumber,
+              customer_id: chosenCustomer.id,
+              quote_date: quoteDate,
+              expiry_date: expiryDate || null,
+              subtotal: totals.subtotal,
+              discount_amount: 0,
+              taxable_amount: totals.taxableAmount,
+              cgst_amount: totals.cgst,
+              sgst_amount: totals.sgst,
+              igst_amount: totals.igst,
+              cess_amount: 0,
+              round_off: 0,
+              grand_total: totals.grandTotal,
+              status: 'draft',
+              terms: terms.trim() || null,
+              notes: terms.trim() || null,
+              created_by: userData?.user?.id || null,
+            })
+            .select('id')
+            .single();
+
+          if (!res.error) {
+            createdQuote = res.data;
+            break;
+          }
+          insertErr = res.error;
+          if (res.error.code !== '23505') break;
+          if (counterUnavailable && attempt === 0) {
+            // Counter RPC is down and the timestamp fallback collided — retry
+            // gives a fresh Date.now() suffix, which is enough on its own.
+            continue;
+          }
         }
-
-        const { data: newQuote, error: insertErr } = await supabase
-          .from('quotations')
-          .insert({
-            business_id: activeBusiness.id,
-            quotation_number: docNumber,
-            customer_id: chosenCustomer.id,
-            quote_date: quoteDate,
-            expiry_date: expiryDate || null,
-            subtotal: totals.subtotal,
-            discount_amount: 0,
-            taxable_amount: totals.taxableAmount,
-            cgst_amount: totals.cgst,
-            sgst_amount: totals.sgst,
-            igst_amount: totals.igst,
-            cess_amount: 0,
-            round_off: 0,
-            grand_total: totals.grandTotal,
-            status: 'draft',
-            terms: terms.trim() || null,
-            notes: terms.trim() || null,
-            created_by: userData?.user?.id || null,
-          })
-          .select('id')
-          .single();
-
-        if (insertErr) throw insertErr;
-        targetQuoteId = newQuote.id;
+        if (insertErr || !createdQuote) {
+          if (insertErr?.code === '23505') {
+            throw new Error('Could not allocate a unique quotation number — please try again');
+          }
+          throw insertErr;
+        }
+        targetQuoteId = createdQuote.id;
+        createdNewQuote = true;
       }
 
       const itemsRecord = validLines.map((l) => {
@@ -292,7 +319,14 @@ export function QuotationCreatePage() {
       });
 
       const { error: itemsError } = await supabase.from('quotation_items').insert(itemsRecord);
-      if (itemsError) throw itemsError;
+      if (itemsError) {
+        // Client rollback: only newly created quotations can be orphaned
+        // (an edited parent already existed before this save).
+        if (createdNewQuote && targetQuoteId) {
+          await supabase.from('quotations').delete().eq('id', targetQuoteId);
+        }
+        throw itemsError;
+      }
 
       return targetQuoteId;
     },
@@ -455,8 +489,9 @@ export function QuotationCreatePage() {
                     onClick={() =>
                       setLines((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)))
                     }
-                    className="mt-6 p-2 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                    className="mt-6 p-2 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
                     title="Remove line"
+                    aria-label="Remove line"
                   >
                     <X className="h-4 w-4" />
                   </button>

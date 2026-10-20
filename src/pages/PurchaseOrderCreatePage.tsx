@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -12,7 +12,7 @@ import { FormSection } from '@/components/ui/FormSection';
 import { ArrowLeft, Save } from 'lucide-react';
 import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
-import type { Supplier, Product } from '@/types/db';
+import type { Supplier, Product, PurchaseOrder, PurchaseOrderItem } from '@/types/db';
 
 type LineItem = {
   product_id: string | null;
@@ -20,9 +20,14 @@ type LineItem = {
   quantity: number;
   rate: number;
   tax_rate: number;
+  unit?: string;
+  hsn_sac?: string | null;
 };
 
 const emptyLine: LineItem = { product_id: null, product_name: '', quantity: 1, rate: 0, tax_rate: 18 };
+
+// Terminal-state orders are immutable — mirrors PurchaseOrdersPage LOCKED semantics.
+const EDITABLE_STATUSES = new Set(['draft', 'confirmed']);
 
 export function PurchaseOrderCreatePage() {
   const { activeBusiness } = useAuth();
@@ -30,11 +35,56 @@ export function PurchaseOrderCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const { id: editId } = useParams<{ id: string }>();
+  const isEdit = Boolean(editId);
+
   const [supplierId, setSupplierId] = useState('');
   const [orderDate, setOrderDate] = useState(todayDateString());
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<LineItem[]>([{ ...emptyLine }]);
+
+  // Edit mode: fetch the existing order + its line items and populate form state
+  const existingQuery = useQuery({
+    queryKey: ['purchase-order', activeBusiness?.id, editId],
+    queryFn: async () => {
+      const { data: order, error } = await supabase
+        .from('purchase_orders')
+        .select('*')
+        .eq('business_id', activeBusiness!.id)
+        .eq('id', editId!)
+        .single();
+      if (error) throw error;
+      const { data: items, error: itemsError } = await supabase
+        .from('purchase_order_items')
+        .select('*')
+        .eq('purchase_order_id', editId!)
+        .order('created_at');
+      if (itemsError) throw itemsError;
+      return { order: order as PurchaseOrder, items: (items || []) as PurchaseOrderItem[] };
+    },
+    enabled: isEdit && !!activeBusiness,
+  });
+
+  useEffect(() => {
+    const loaded = existingQuery.data;
+    if (!loaded) return;
+    setSupplierId(loaded.order.supplier_id);
+    setOrderDate(loaded.order.order_date);
+    setExpectedDate(loaded.order.expected_date || '');
+    setNotes(loaded.order.notes || '');
+    if (loaded.items.length > 0) {
+      setLines(loaded.items.map((it) => ({
+        product_id: it.product_id,
+        product_name: it.product_name,
+        quantity: Number(it.quantity),
+        rate: Number(it.rate),
+        tax_rate: Number(it.tax_rate),
+        unit: it.unit || 'PCS',
+        hsn_sac: it.hsn_sac || null,
+      })));
+    }
+  }, [existingQuery.data]);
 
   const { data: suppliers } = useQuery({
     queryKey: ['customers', activeBusiness?.id],
@@ -87,34 +137,111 @@ export function PurchaseOrderCreatePage() {
       if (!supplierId) throw new Error('Please select a supplier');
       const validLines = lines.filter((l) => l.product_name.trim() && l.quantity > 0);
       if (!validLines.length) throw new Error('Add at least one line with a description and quantity');
-      const { data: userData } = await supabase.auth.getUser();
-      const { data: number, error: numberError } = await supabase.rpc('next_document_number', {
-        p_business_id: activeBusiness.id,
-        p_doc_type: 'purchase_order',
-        p_date: orderDate,
-      });
-      if (numberError) throw numberError;
 
-      const { data: order, error } = await supabase.from('purchase_orders').insert({
-        business_id: activeBusiness.id,
-        order_number: String(number),
-        supplier_id: supplierId,
-        order_date: orderDate,
-        expected_date: expectedDate || null,
-        subtotal: totals.taxableAmount,
-        discount_amount: 0,
-        taxable_amount: totals.taxableAmount,
-        cgst_amount: totals.cgst,
-        sgst_amount: totals.sgst,
-        igst_amount: totals.igst,
-        cess_amount: 0,
-        round_off: 0,
-        grand_total: totals.grandTotal,
-        status: 'draft',
-        notes: notes || null,
-        created_by: userData.user?.id,
-      }).select('id').single();
-      if (error) throw error;
+      // Edit mode: UPDATE the existing order header (status and order_number
+      // untouched) and replace its line items, mirroring the sales-invoice edit path.
+      if (isEdit) {
+        const loaded = existingQuery.data;
+        if (!loaded) throw new Error('Order not loaded yet');
+        if (!EDITABLE_STATUSES.has(loaded.order.status)) {
+          throw new Error('This order is in a terminal state and can no longer be edited');
+        }
+        const { error: headerError } = await supabase
+          .from('purchase_orders')
+          .update({
+            supplier_id: supplierId,
+            order_date: orderDate,
+            expected_date: expectedDate || null,
+            subtotal: totals.taxableAmount,
+            discount_amount: 0,
+            taxable_amount: totals.taxableAmount,
+            cgst_amount: totals.cgst,
+            sgst_amount: totals.sgst,
+            igst_amount: totals.igst,
+            cess_amount: 0,
+            round_off: 0,
+            grand_total: totals.grandTotal,
+            notes: notes || null,
+          })
+          .eq('business_id', activeBusiness.id)
+          .eq('id', editId!);
+        if (headerError) throw headerError;
+
+        const { error: clearError } = await supabase
+          .from('purchase_order_items')
+          .delete()
+          .eq('purchase_order_id', editId!);
+        if (clearError) throw clearError;
+
+        const rows = validLines.map((l) => {
+          const taxable = roundTo2(l.quantity * l.rate);
+          const gst = calculateGstAmounts(taxable, l.tax_rate, isInterState);
+          return {
+            business_id: activeBusiness.id,
+            purchase_order_id: editId!,
+            product_id: l.product_id,
+            product_name: l.product_name.trim(),
+            hsn_sac: l.hsn_sac ?? null,
+            quantity: l.quantity,
+            unit: l.unit || 'PCS',
+            rate: l.rate,
+            tax_rate: l.tax_rate,
+            taxable_amount: taxable,
+            total_amount: roundTo2(taxable + gst.total_tax),
+          };
+        });
+        const { error: itemsError } = await supabase.from('purchase_order_items').insert(rows);
+        if (itemsError) throw itemsError;
+        return { edited: true };
+      }
+
+      const { data: userData } = await supabase.auth.getUser();
+
+      // Number + insert with ONE retry on duplicate key (23505): a second
+      // tab/RPC can race the shared counter — refetch a fresh number and retry.
+      let createdOrder: { id: string } | null = null;
+      let insertError: any = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const { data: number, error: numberError } = await supabase.rpc('next_document_number', {
+          p_business_id: activeBusiness.id,
+          p_doc_type: 'purchase_order',
+          p_date: orderDate,
+        });
+        if (numberError) throw numberError;
+        const orderNumber = String(number);
+
+        const res = await supabase.from('purchase_orders').insert({
+          business_id: activeBusiness.id,
+          order_number: orderNumber,
+          supplier_id: supplierId,
+          order_date: orderDate,
+          expected_date: expectedDate || null,
+          subtotal: totals.taxableAmount,
+          discount_amount: 0,
+          taxable_amount: totals.taxableAmount,
+          cgst_amount: totals.cgst,
+          sgst_amount: totals.sgst,
+          igst_amount: totals.igst,
+          cess_amount: 0,
+          round_off: 0,
+          grand_total: totals.grandTotal,
+          status: 'draft',
+          notes: notes || null,
+          created_by: userData.user?.id,
+        }).select('id').single();
+        if (!res.error) {
+          createdOrder = res.data;
+          break;
+        }
+        insertError = res.error;
+        if (res.error.code !== '23505') break;
+      }
+      if (insertError || !createdOrder) {
+        if (insertError?.code === '23505') {
+          throw new Error('Could not allocate a unique order number — please try again');
+        }
+        throw insertError;
+      }
 
       const { error: itemsError } = await supabase.from('purchase_order_items').insert(
         validLines.map((l) => {
@@ -122,12 +249,12 @@ export function PurchaseOrderCreatePage() {
           const gst = calculateGstAmounts(taxable, l.tax_rate, isInterState);
           return {
             business_id: activeBusiness.id,
-            purchase_order_id: order.id,
+            purchase_order_id: createdOrder.id,
             product_id: l.product_id,
             product_name: l.product_name.trim(),
-            hsn_sac: null,
+            hsn_sac: l.hsn_sac ?? null,
             quantity: l.quantity,
-            unit: 'PCS',
+            unit: l.unit || 'PCS',
             rate: l.rate,
             tax_rate: l.tax_rate,
             taxable_amount: taxable,
@@ -136,15 +263,22 @@ export function PurchaseOrderCreatePage() {
         })
       );
       if (itemsError) {
-        await supabase.from('purchase_orders').delete().eq('id', order.id);
+        // Client rollback: never leave an orphaned header behind.
+        await supabase.from('purchase_orders').delete().eq('id', createdOrder.id);
         throw itemsError;
       }
-      return order.id;
+      return { edited: false };
     },
-    onSuccess: () => {
+    onSuccess: ({ edited }: { edited: boolean }) => {
       ['purchase-orders', 'dashboard-stats'].forEach((k) =>
         queryClient.invalidateQueries({ queryKey: [k, activeBusiness?.id] })
       );
+      if (edited) {
+        queryClient.invalidateQueries({ queryKey: ['purchase-order', activeBusiness?.id, editId] });
+        toast('Purchase order updated', 'success');
+        navigate('/app/purchase-orders');
+        return;
+      }
       toast('Purchase order draft saved', 'success');
       navigate('/app/purchase-orders');
     },
@@ -156,7 +290,7 @@ export function PurchaseOrderCreatePage() {
   return (
     <div>
       <PageHeader
-        title="New Purchase Order"
+        title={isEdit ? `Edit Purchase Order #${existingQuery.data?.order.order_number || ''}` : 'New Purchase Order'}
         actions={<Button variant="secondary" onClick={() => navigate('/app/purchase-orders')}><ArrowLeft className="h-4 w-4" /> Back</Button>}
       />
 
@@ -236,7 +370,7 @@ export function PurchaseOrderCreatePage() {
         <div className="flex items-center justify-between gap-3">
           <Button variant="secondary" onClick={() => navigate('/app/purchase-orders')}>Cancel</Button>
           <Button onClick={() => createMutation.mutate()} loading={createMutation.isPending}>
-            <Save className="h-4 w-4" /> Save Draft
+            <Save className="h-4 w-4" /> {isEdit ? 'Save Changes' : 'Save Draft'}
           </Button>
         </div>
       </div>

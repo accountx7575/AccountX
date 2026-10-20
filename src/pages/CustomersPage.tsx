@@ -51,14 +51,45 @@ export function CustomersPage() {
   const customers = data?.rows ?? [];
   const totalCustomers = data?.total ?? 0;
 
+  // Two-path delete (audit P3-4): probe linked documents first — they are
+  // revenue records that must NOT be cascaded away. No links => hard delete;
+  // any link (or an FK 23503 race) => deactivate, history preserved.
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('customers').delete().eq('id', id);
-      if (error) throw error;
+      if (!activeBusiness) throw new Error('No active business');
+      const biz = activeBusiness.id;
+      const [invoicesRes, ordersRes, quotationsRes, paymentsRes] = await Promise.all([
+        supabase.from('sales_invoices').select('id').eq('business_id', biz).eq('customer_id', id).limit(1),
+        supabase.from('sales_orders').select('id').eq('business_id', biz).eq('customer_id', id).limit(1),
+        supabase.from('quotations').select('id').eq('business_id', biz).eq('customer_id', id).limit(1),
+        supabase.from('payments').select('id').eq('business_id', biz).eq('party_type', 'customer').eq('party_id', id).limit(1),
+      ]);
+      for (const r of [invoicesRes, ordersRes, quotationsRes, paymentsRes]) if (r.error) throw r.error;
+      const hasLinkedDocs = [invoicesRes, ordersRes, quotationsRes, paymentsRes].some((r) => (r.data ?? []).length > 0);
+
+      const deactivate = async () => {
+        const { error } = await supabase.from('customers').update({ status: 'inactive' }).eq('id', id).eq('business_id', biz);
+        if (error) throw error;
+      };
+
+      if (hasLinkedDocs) {
+        await deactivate();
+        return { deactivated: true };
+      }
+      try {
+        const { error } = await supabase.from('customers').delete().eq('id', id).eq('business_id', biz);
+        if (error) throw error;
+        return { deactivated: false };
+      } catch (err: any) {
+        // FK race fallback: a linked document appeared between probe and delete.
+        if (!/\b23503\b|foreign[_\s-]?key/i.test(err?.message || '')) throw err;
+        await deactivate();
+        return { deactivated: true };
+      }
     },
-    onSuccess: () => {
+    onSuccess: ({ deactivated }: { deactivated: boolean }) => {
       queryClient.invalidateQueries({ queryKey: ['customers', activeBusiness?.id] });
-      toast('Customer deleted', 'success');
+      toast(deactivated ? 'Customer has linked documents — deactivated instead' : 'Customer deleted', 'success');
       setDeleteId(null);
     },
     onError: (err: any) => toast(err.message || 'Failed to delete customer', 'error'),
@@ -117,7 +148,31 @@ export function CustomersPage() {
             action={<Button onClick={() => navigate('/app/customers/new')}><Plus className="h-4 w-4" /> Add Customer</Button>}
           />
         ) : (
-          <div className="overflow-x-auto scrollbar-thin">
+          <>
+          <div className="md:hidden space-y-3">
+            {customers.map((c) => (
+              <div key={c.id} className="card-solid p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-section-title truncate">{c.name}</p>
+                    <p className="text-xs text-secondary-500 dark:text-secondary-400 truncate">{c.company_name || c.phone || c.email || '—'}</p>
+                  </div>
+                  <Badge variant={c.status === 'active' ? 'success' : 'neutral'}>{c.status}</Badge>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className={Number(c.current_balance) > 0 ? 'text-warning-600 dark:text-warning-400 font-medium tabular-nums' : 'text-secondary-500 dark:text-secondary-400 tabular-nums'}>
+                    {formatCurrency(c.current_balance, activeBusiness?.currency_symbol)}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => openEdit(c)} title="Edit customer" aria-label="Edit customer" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => setStatementFor(c)} title="Send account statement" aria-label="Send account statement" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"><Mail className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => setDeleteId(c.id)} title="Delete customer" aria-label="Delete customer" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block overflow-x-auto scrollbar-thin">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
@@ -146,7 +201,7 @@ export function CustomersPage() {
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
                       <p className="text-secondary-600 dark:text-secondary-300">{c.phone || '—'}</p>
-                      <p className="text-xs text-secondary-400">{c.email || ''}</p>
+                      <p className="text-xs text-secondary-500 dark:text-secondary-400">{c.email || ''}</p>
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell text-secondary-600 dark:text-secondary-300 font-mono text-xs">{c.gstin || '—'}</td>
                     <td className="px-4 py-3 text-right tabular-nums">
@@ -162,13 +217,13 @@ export function CustomersPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEdit(c)} className="p-1.5 rounded-md text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
+                        <button onClick={() => openEdit(c)} title="Edit customer" aria-label="Edit customer" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={() => setStatementFor(c)} title="Send account statement" className="p-1.5 rounded-md text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
+                        <button onClick={() => setStatementFor(c)} title="Send account statement" aria-label="Send account statement" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
                           <Mail className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={() => setDeleteId(c.id)} className="p-1.5 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors">
+                        <button onClick={() => setDeleteId(c.id)} title="Delete customer" aria-label="Delete customer" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -178,6 +233,7 @@ export function CustomersPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         <ListPagination
@@ -195,7 +251,7 @@ export function CustomersPage() {
         onClose={() => setDeleteId(null)}
         onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
         title="Delete Customer?"
-        message="This will permanently remove the customer. This action cannot be undone."
+        message="This will permanently remove the customer if they have no linked documents. If documents exist, the customer is deactivated instead — history is preserved."
         confirmText="Delete"
         loading={deleteMutation.isPending}
       />

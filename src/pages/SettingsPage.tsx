@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { GSTIN_REGEX, PAN_REGEX } from '@/lib/validation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -24,8 +25,6 @@ import { DRIFTED_EXTRAS_KEYS, isMissingColumnError, stashBusinessExtras, type Bu
 
 const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Chandigarh','Puducherry'];
 
-const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
-const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const UPI_ID_REGEX = /^[A-Za-z0-9.@-]{2,60}$/;
 const IFSC_REGEX = /^[A-Za-z]{4}0[A-Za-z0-9]{6}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -87,7 +86,7 @@ function StampSignatureSlot({
         {value ? (
           <img src={value} alt={title} className="max-h-full max-w-full object-contain" />
         ) : (
-          <span className="text-[11px] text-secondary-300 px-4 text-center leading-tight">No image uploaded</span>
+          <span className="text-[11px] text-secondary-500 px-4 text-center leading-tight">No image uploaded</span>
         )}
       </div>
       <div className="flex items-center gap-2">

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { GSTIN_REGEX, PAN_REGEX, PHONE_REGEX } from '@/lib/validation';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -14,6 +15,8 @@ import { buildSupplierInsert, buildSupplierUpdate } from '@/lib/payloads';
 import type { Supplier } from '@/types/db';
 
 const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Chandigarh','Puducherry'];
+
+// Shared with SettingsPage.tsx:27 — keep the patterns in sync.
 
 const emptyForm = {
   name: '', company_name: '', phone: '', email: '', gstin: '', pan: '',
@@ -61,6 +64,18 @@ export function SupplierCreatePage() {
     mutationFn: async () => {
       if (!activeBusiness) throw new Error('No active business');
       if (!form.name.trim()) throw new Error('Please enter a supplier name');
+      const gstin = form.gstin.trim().toUpperCase();
+      if (gstin && !GSTIN_REGEX.test(gstin)) {
+        throw new Error('Invalid GSTIN — expected 15 chars: 2-digit state code + PAN + entity number + Z + checksum');
+      }
+      const pan = form.pan.trim().toUpperCase();
+      if (pan && !PAN_REGEX.test(pan)) {
+        throw new Error('Invalid PAN — expected 10 chars like ABCDE1234F');
+      }
+      const phone = form.phone.replace(/[\s-]/g, '');
+      if (form.phone.trim() && !PHONE_REGEX.test(phone)) {
+        toast('Phone number looks unusual — saving anyway (7-15 digits, optional +)', 'warning');
+      }
       if (isEdit) {
         const { error } = await supabase
           .from('suppliers')

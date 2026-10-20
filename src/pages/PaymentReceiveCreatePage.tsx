@@ -40,7 +40,11 @@ export function PaymentReceiveCreatePage() {
       supabase.from('sales_invoices').select('*')
         .eq('business_id', activeBusiness.id).eq('customer_id', form.customerId)
         .in('status', ['issued', 'partially_paid']).gt('balance_amount', 0).order('invoice_date', { ascending: false })
-        .then(({ data }) => setInvoices((data || []) as SalesInvoice[]));
+        .then(({ data, error }) => {
+          if (error) throw error;
+          setInvoices((data || []) as SalesInvoice[]);
+        })
+        .catch((err: any) => toast(err?.message || 'Failed to load open invoices', 'error'));
     } else {
       setInvoices([]);
     }

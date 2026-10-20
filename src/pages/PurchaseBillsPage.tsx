@@ -341,7 +341,34 @@ export function PurchaseBillsPage() {
             action={<Button onClick={() => navigate('/app/purchase-bills/new')}><Plus className="h-4 w-4" /> New Purchase</Button>}
           />
         ) : (
-          <div className="overflow-x-auto scrollbar-thin">
+          <>
+          <div className="md:hidden space-y-3">
+            {filtered.map((b) => (
+              <div key={b.id} className="card-solid p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-section-title truncate">{b.bill_number}</p>
+                    <p className="text-xs text-secondary-500 dark:text-secondary-400 truncate">{b.supplier?.name || '—'} · {formatDate(b.bill_date)}</p>
+                  </div>
+                  <Badge variant={statusVariant(b.status)}>{b.status.replace('_', ' ')}</Badge>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="tabular-nums font-medium text-secondary-900 dark:text-secondary-100">
+                    {formatCurrency(b.grand_total, activeBusiness?.currency_symbol)}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => navigate(`/app/purchase-bills/${b.id}/edit`)} title="Edit bill" aria-label="Edit bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"><Pencil className="h-4 w-4" /></button>
+                    <button onClick={() => handleDirectPrint(b)} title="Print bill" aria-label="Print bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-secondary-700 hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"><Printer className="h-4 w-4" /></button>
+                    <button onClick={() => handleDownloadPdf(b)} disabled={downloadingId === b.id} title="Download PDF" aria-label="Download PDF" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors disabled:opacity-40"><FileDown className="h-4 w-4" /></button>
+                    {b.status === 'draft' && <button onClick={() => issueDraftMutation.mutate(b.id)} title="Confirm bill" aria-label="Confirm bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors"><CheckCircle2 className="h-4 w-4" /></button>}
+                    {['confirmed', 'partially_paid', 'paid'].includes(b.status) && <button onClick={() => setCancelTarget(b)} title="Cancel bill" aria-label="Cancel bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"><Ban className="h-4 w-4" /></button>}
+                    <button onClick={() => setDeleteTarget(b)} title="Delete bill" aria-label="Delete bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block overflow-x-auto scrollbar-thin">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
@@ -377,43 +404,49 @@ export function PurchaseBillsPage() {
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => navigate(`/app/purchase-bills/${b.id}/edit`)}
-                          className="p-1.5 rounded-md text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
                           title="Edit bill"
+                          aria-label="Edit bill"
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => handleDirectPrint(b)}
-                          className="p-1.5 rounded-md text-secondary-400 hover:text-secondary-700 hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"
+                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-secondary-700 hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"
                           title="Print bill"
+                          aria-label="Print bill"
                         >
                           <Printer className={`h-4 w-4 ${printingId === b.id ? 'animate-pulse' : ''}`} />
                         </button>
                         <button
                           onClick={() => handleDownloadPdf(b)}
-                          className="p-1.5 rounded-md text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
                           title="Download PDF"
+                          aria-label="Download PDF"
                         >
                           <FileDown className={`h-4 w-4 ${downloadingId === b.id ? 'animate-pulse' : ''}`} />
                         </button>
                         <button
                           onClick={() => shareBillWhatsApp(b)}
-                          className="p-1.5 rounded-md text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors"
+                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors"
                           title="Share on WhatsApp"
+                          aria-label="Share on WhatsApp"
                         >
                           <Share2 className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => sendBillEmail(b)}
-                          className="p-1.5 rounded-md text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
                           title="Email bill"
+                          aria-label="Email bill"
                         >
                           <Mail className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => setDeleteTarget(b)}
-                          className="p-1.5 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
                           title="Delete bill"
+                          aria-label="Delete bill"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -421,15 +454,17 @@ export function PurchaseBillsPage() {
                           <>
                             <button
                               onClick={() => issueDraftMutation.mutate(b.id)}
-                              className="p-1.5 rounded-md text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors"
+                              className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors"
                               title="Confirm bill"
+                              aria-label="Confirm bill"
                             >
                               <CheckCircle2 className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => setDiscardTarget(b)}
-                              className="p-1.5 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                              className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
                               title="Discard draft"
+                              aria-label="Discard draft"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -438,8 +473,9 @@ export function PurchaseBillsPage() {
                         {['confirmed', 'partially_paid', 'paid'].includes(b.status) && (
                         <button
                           onClick={() => setCancelTarget(b)}
-                          className="p-1.5 rounded-md text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
                           title="Cancel bill"
+                          aria-label="Cancel bill"
                         >
                           <Ban className="h-4 w-4" />
                         </button>
@@ -451,6 +487,7 @@ export function PurchaseBillsPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 

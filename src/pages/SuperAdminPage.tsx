@@ -84,7 +84,7 @@ class SuperAdminBoundary extends React.Component<{ children: React.ReactNode }, 
   componentDidCatch(err: unknown) { console.error('SuperAdmin boundary:', err); }
   render() {
     if (this.state.failed) {
-      return <div className="p-6 text-sm text-slate-500 dark:text-zinc-400">Something went wrong rendering this panel. Refresh to retry — no data was lost.</div>;
+      return <div className="p-6 text-sm text-secondary-500 dark:text-secondary-400">Something went wrong rendering this panel. Refresh to retry — no data was lost.</div>;
     }
     return this.props.children;
   }
@@ -111,7 +111,7 @@ function severityStyles(sev: Severity): string {
 
 function bannerPreviewStyles(sev: Severity): string {
   if (sev === 'Critical') return 'bg-rose-600 text-white';
-  if (sev === 'Warning') return 'bg-amber-400 text-zinc-900';
+  if (sev === 'Warning') return 'bg-amber-400 text-secondary-900';
   return 'bg-blue-600 text-white';
 }
 
@@ -126,7 +126,7 @@ function roleBadge(role: MemberRole): string {
   if (role === 'Manager') return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900';
   if (role === 'Accountant') return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900';
   if (role === 'Billing Staff') return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900';
-  return 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700';
+  return 'bg-secondary-100 text-secondary-600 border-secondary-200 dark:bg-secondary-800 dark:text-secondary-300 dark:border-secondary-700';
 }
 
 const ROLE_MATRIX: Record<MemberRole, Record<string, boolean>> = {
@@ -586,16 +586,16 @@ export function SuperAdminPage() {
   }, [members, memberSearch]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 p-4 sm:p-6 lg:p-10">
+    <div className="min-h-screen bg-secondary-50 dark:bg-secondary-950 p-4 sm:p-6 lg:p-10">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Top Header */}
-        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between pb-6 border-b border-slate-200 dark:border-zinc-800 gap-4">
+        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between pb-6 border-b border-secondary-200 dark:border-secondary-800 gap-4">
           <div>
             <div className="flex items-center gap-3 flex-wrap">
               <div className="p-2 bg-primary-100 dark:bg-primary-950/50 rounded-lg text-primary-600 dark:text-primary-400">
                 <ShieldCheck className="w-6 h-6" />
               </div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Super Admin Control Center</h1>
+              <h1 className="text-page-title sm:text-2xl">Super Admin Control Center</h1>
               <Badge variant="primary">Production Live</Badge>
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
                 pingStatus === 'checking'
@@ -606,7 +606,7 @@ export function SuperAdminPage() {
                 DB {pingStatus === 'checking' ? 'pinging…' : `ping ${pingMs ?? '—'}ms`}
               </span>
             </div>
-            <p className="text-sm text-slate-500 dark:text-zinc-400 mt-1">
+            <p className="text-sm text-secondary-500 dark:text-secondary-400 mt-1">
               Enterprise multi-tenant management{activeBusiness ? ` · viewing as ${(activeBusiness as any).legal_name || (activeBusiness as any).name || ''}` : ''}
             </p>
           </div>
@@ -627,14 +627,14 @@ export function SuperAdminPage() {
         {/* Metric cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { label: 'Total Businesses', value: String(tenants.length), icon: <Building2 className="w-5 h-5" />, wrap: 'bg-blue-50 dark:bg-blue-950/50 text-blue-600', text: 'text-slate-900 dark:text-white' },
+            { label: 'Total Businesses', value: String(tenants.length), icon: <Building2 className="w-5 h-5" />, wrap: 'bg-blue-50 dark:bg-blue-950/50 text-blue-600', text: 'text-secondary-900 dark:text-white' },
             { label: 'Active Tenants', value: String(activeCount), icon: <CheckCircle className="w-5 h-5" />, wrap: 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600', text: 'text-emerald-600 dark:text-emerald-400' },
             { label: 'Suspended / Blocked', value: String(blockedCount), icon: <Ban className="w-5 h-5" />, wrap: 'bg-rose-50 dark:bg-rose-950/50 text-rose-600', text: 'text-rose-600 dark:text-rose-400' },
-            { label: 'Registered Tenants', value: String(tenants.length), icon: <Users className="w-5 h-5" />, wrap: 'bg-purple-50 dark:bg-purple-950/50 text-purple-600', text: 'text-slate-900 dark:text-white' },
+            { label: 'Registered Tenants', value: String(tenants.length), icon: <Users className="w-5 h-5" />, wrap: 'bg-purple-50 dark:bg-purple-950/50 text-purple-600', text: 'text-secondary-900 dark:text-white' },
           ].map(c => (
-            <div key={c.label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm">
+            <div key={c.label} className="card-solid p-5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400">{c.label}</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-secondary-500 dark:text-secondary-400">{c.label}</span>
                 <div className={`p-2 rounded-lg ${c.wrap}`}>{c.icon}</div>
               </div>
               <div className={`text-2xl font-bold mt-3 ${c.text}`}>{c.value}</div>
@@ -653,17 +653,17 @@ export function SuperAdminPage() {
         {/* TAB 1: Tenants */}
         {activeTab === 'tenants' && (
           <div className="space-y-4">
-            <div className="bg-white dark:bg-zinc-900 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-zinc-800 flex flex-col lg:flex-row gap-3 lg:items-center">
+            <div className="card-solid p-4 flex flex-col lg:flex-row gap-3 lg:items-center">
               <div className="relative flex-1 min-w-0">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400" />
                 <Input placeholder="Search legal name, trade name, GSTIN, owner email…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
               </div>
               <select value={tierFilter} onChange={e => setTierFilter(e.target.value as 'All' | Plan)}
-                className="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm text-slate-700 dark:text-zinc-200">
+                className="input text-sm text-secondary-700 dark:text-secondary-200">
                 <option value="All">All tiers</option>{PLANS.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
               <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'All' | 'Active' | 'Blocked')}
-                className="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm text-slate-700 dark:text-zinc-200">
+                className="input text-sm text-secondary-700 dark:text-secondary-200">
                 <option value="All">All statuses</option><option value="Active">Active</option><option value="Blocked">Blocked</option>
               </select>
               <Button variant="secondary" size="sm" onClick={() => setOnboardOpen(true)} className="flex items-center gap-2 whitespace-nowrap">
@@ -682,10 +682,10 @@ export function SuperAdminPage() {
               </div>
             )}
 
-            <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 overflow-hidden">
+            <div className="card-solid overflow-hidden">
               <div className="flex-wrap">
                 <table className="w-full text-left text-sm min-w-[900px]">
-                  <thead className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-200 dark:border-zinc-800 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <thead className="bg-secondary-50 dark:bg-secondary-800/50 border-b border-secondary-200 dark:border-secondary-800 text-xs font-semibold text-secondary-500 uppercase tracking-wider">
                     <tr>
                       <th className="px-4 py-4"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label="Select all" /></th>
                       <th className="px-4 py-4">Business</th>
@@ -697,22 +697,22 @@ export function SuperAdminPage() {
                       <th className="px-4 py-4 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                  <tbody className="divide-y divide-secondary-100 dark:divide-secondary-800">
                     {loading ? (
-                      <tr><td colSpan={8} className="px-6 py-10 text-center text-slate-400">Syncing live tenants from Supabase…</td></tr>
+                      <tr><td colSpan={8} className="px-6 py-10 text-center text-secondary-400">Syncing live tenants from Supabase…</td></tr>
                     ) : filteredTenants.length === 0 ? (
-                      <tr><td colSpan={8} className="px-6 py-10 text-center text-slate-400">No tenants match the current filters.</td></tr>
+                      <tr><td colSpan={8} className="px-6 py-10 text-center text-secondary-400">No tenants match the current filters.</td></tr>
                     ) : filteredTenants.map(t => (
-                      <tr key={t.id} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/30 transition-colors">
+                      <tr key={t.id} className="bg-secondary-100/60 dark:bg-secondary-800/50 table-row-hover transition-colors">
                         <td className="px-4 py-4"><input type="checkbox" checked={selectedIds.includes(t.id)} onChange={() => toggleSelect(t.id)} aria-label={`Select ${t.name}`} /></td>
                         <td className="px-4 py-4">
-                          <div className="font-semibold text-slate-900 dark:text-white">{t.name}</div>
-                          <div className="text-xs text-slate-400">{t.tradeName} · {t.type}</div>
+                          <div className="font-semibold text-secondary-900 dark:text-white">{t.name}</div>
+                          <div className="text-xs text-secondary-400">{t.tradeName} · {t.type}</div>
                         </td>
-                        <td className="px-4 py-4 text-slate-600 dark:text-zinc-300 font-mono text-xs">{t.ownerEmail}</td>
-                        <td className="px-4 py-4 text-slate-600 dark:text-zinc-300 font-mono text-xs">{t.gstin}</td>
-                        <td className="px-4 py-4"><span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 border border-slate-200 dark:border-zinc-700">{t.plan}</span></td>
-                        <td className="px-4 py-4 text-slate-500 text-xs whitespace-nowrap">{t.createdAt}</td>
+                        <td className="px-4 py-4 text-secondary-600 dark:text-secondary-300 font-mono text-xs">{t.ownerEmail}</td>
+                        <td className="px-4 py-4 text-secondary-600 dark:text-secondary-300 font-mono text-xs">{t.gstin}</td>
+                        <td className="px-4 py-4"><span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-secondary-100 dark:bg-secondary-800 text-secondary-700 dark:text-secondary-200 border border-secondary-200 dark:border-secondary-700">{t.plan}</span></td>
+                        <td className="px-4 py-4 text-secondary-500 text-xs whitespace-nowrap">{t.createdAt}</td>
                         <td className="px-4 py-4">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
                             t.isActive
@@ -742,32 +742,32 @@ export function SuperAdminPage() {
         {/* TAB 2: Broadcasts */}
         {activeTab === 'broadcasts' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 p-5 space-y-4">
+            <div className="card-solid p-5 space-y-4">
               <div className="flex items-center gap-2">
-                <Megaphone className="w-4 h-4 text-slate-400" />
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Create Announcement</h3>
+                <Megaphone className="w-4 h-4 text-secondary-400" />
+                <h3 className="text-sm font-semibold text-secondary-900 dark:text-white">Create Announcement</h3>
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Title</label>
+                <label className="text-xs font-medium text-secondary-500 dark:text-secondary-400">Title</label>
                 <Input value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="e.g. Scheduled maintenance" className="mt-1" />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Message</label>
+                <label className="text-xs font-medium text-secondary-500 dark:text-secondary-400">Message</label>
                 <textarea value={draft.message} onChange={e => setDraft({ ...draft, message: e.target.value })} rows={4} placeholder="Markdown/text supported…"
-                  className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm text-slate-800 dark:text-zinc-100" />
+                  className="mt-1 w-full input text-sm text-secondary-800 dark:text-zinc-100" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Severity</label>
+                  <label className="text-xs font-medium text-secondary-500 dark:text-secondary-400">Severity</label>
                   <select value={draft.severity} onChange={e => setDraft({ ...draft, severity: e.target.value as Severity })}
-                    className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm">
+                    className="mt-1 w-full input text-sm">
                     <option value="Info">Info — Blue</option>
                     <option value="Warning">Warning — Amber</option>
                     <option value="Critical">Critical — Red</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Expiry date</label>
+                  <label className="text-xs font-medium text-secondary-500 dark:text-secondary-400">Expiry date</label>
                   <Input type="date" value={draft.expiresAt} onChange={e => setDraft({ ...draft, expiresAt: e.target.value })} className="mt-1" />
                 </div>
               </div>
@@ -775,32 +775,32 @@ export function SuperAdminPage() {
                 Publish Announcement
               </Button>
               <div>
-                <p className="text-xs font-medium text-slate-500 dark:text-zinc-400 mb-2">Live Preview — customer dashboard banner</p>
+                <p className="text-xs font-medium text-secondary-500 dark:text-secondary-400 mb-2">Live Preview — customer dashboard banner</p>
                 <div className={`rounded-xl px-4 py-3 text-sm font-medium ${bannerPreviewStyles(previewSev)}`}>
                   {draft.title || 'Announcement title'} — {draft.message.slice(0, 90) || 'Message preview appears here…'}
                 </div>
               </div>
             </div>
-            <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-200 dark:border-zinc-800">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Active Announcements</h3>
+            <div className="card-solid overflow-hidden">
+              <div className="px-5 py-4 border-b border-secondary-200 dark:border-secondary-800">
+                <h3 className="text-sm font-semibold text-secondary-900 dark:text-white">Active Announcements</h3>
               </div>
               <div className="flex-wrap">
                 <table className="w-full text-left text-sm min-w-[520px]">
-                  <thead className="bg-slate-50 dark:bg-zinc-800/50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <thead className="bg-secondary-50 dark:bg-secondary-800/50 text-xs font-semibold text-secondary-500 uppercase tracking-wider">
                     <tr><th className="px-5 py-3">Title</th><th className="px-5 py-3">Severity</th><th className="px-5 py-3">Created</th><th className="px-5 py-3 text-right">Actions</th></tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                  <tbody className="divide-y divide-secondary-100 dark:divide-secondary-800">
                     {announcements.length === 0 ? (
-                      <tr><td colSpan={4} className="px-5 py-8 text-center text-slate-400 text-sm">No announcements yet.</td></tr>
+                      <tr><td colSpan={4} className="px-5 py-8 text-center text-secondary-400 text-sm">No announcements yet.</td></tr>
                     ) : announcements.map(a => (
                       <tr key={a.id}>
                         <td className="px-5 py-3">
-                          <div className="font-medium text-slate-900 dark:text-white">{a.title}</div>
-                          <div className="text-xs text-slate-400">Expires: {a.expiresAt}</div>
+                          <div className="font-medium text-secondary-900 dark:text-white">{a.title}</div>
+                          <div className="text-xs text-secondary-400">Expires: {a.expiresAt}</div>
                         </td>
                         <td className="px-5 py-3"><span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${severityStyles(a.severity)}`}>{a.severity}</span></td>
-                        <td className="px-5 py-3 text-xs text-slate-500">{a.createdAt}</td>
+                        <td className="px-5 py-3 text-xs text-secondary-500">{a.createdAt}</td>
                         <td className="px-5 py-3">
                           <div className="flex justify-end gap-1.5">
                             <Button variant="secondary" size="sm" className="text-xs"
@@ -827,9 +827,9 @@ export function SuperAdminPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {PLANS.map(p => (
-                <div key={p} className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 p-5 shadow-sm">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400">{p} tier</p>
-                  <p className="text-xs text-slate-400 mt-1">Monthly invoice quota</p>
+                <div key={p} className="card-solid p-5">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-secondary-500 dark:text-secondary-400">{p} tier</p>
+                  <p className="text-xs text-secondary-400 mt-1">Monthly invoice quota</p>
                   <div className="flex items-center gap-2 mt-3">
                     <Input type="number" min={0} value={tierDefaults[p]}
                       onChange={e => setTierDefaults({ ...tierDefaults, [p]: Math.max(0, Number(e.target.value) || 0) })} />
@@ -837,31 +837,31 @@ export function SuperAdminPage() {
                 </div>
               ))}
             </div>
-            <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Tenant Quota Usage</h3>
-                <span className="text-xs text-slate-400">{tenants.length} tenants</span>
+            <div className="card-solid overflow-hidden">
+              <div className="px-5 py-4 border-b border-secondary-200 dark:border-secondary-800 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-secondary-900 dark:text-white">Tenant Quota Usage</h3>
+                <span className="text-xs text-secondary-400">{tenants.length} tenants</span>
               </div>
               <div className="flex-wrap">
                 <table className="w-full text-left text-sm min-w-[640px]">
-                  <thead className="bg-slate-50 dark:bg-zinc-800/50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <thead className="bg-secondary-50 dark:bg-secondary-800/50 text-xs font-semibold text-secondary-500 uppercase tracking-wider">
                     <tr><th className="px-5 py-3">Business</th><th className="px-5 py-3">Plan</th><th className="px-5 py-3">Usage</th><th className="px-5 py-3 text-right">Edit</th></tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                  <tbody className="divide-y divide-secondary-100 dark:divide-secondary-800">
                     {tenants.length === 0 ? (
-                      <tr><td colSpan={4} className="px-5 py-8 text-center text-slate-400">No tenants to show.</td></tr>
+                      <tr><td colSpan={4} className="px-5 py-8 text-center text-secondary-400">No tenants to show.</td></tr>
                     ) : tenants.slice(0, 50).map(t => {
                       const pct = t.quota > 0 ? Math.min(100, Math.round((t.quotaUsed / t.quota) * 100)) : 0;
                       return (
                         <tr key={t.id}>
-                          <td className="px-5 py-3 font-medium text-slate-900 dark:text-white">{t.name}</td>
-                          <td className="px-5 py-3 text-xs"><span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700">{t.plan}</span></td>
+                          <td className="px-5 py-3 font-medium text-secondary-900 dark:text-white">{t.name}</td>
+                          <td className="px-5 py-3 text-xs"><span className="px-2 py-0.5 rounded-full bg-secondary-100 dark:bg-secondary-800 border border-secondary-200 dark:border-secondary-700">{t.plan}</span></td>
                           <td className="px-5 py-3">
                             <div className="flex items-center gap-2">
-                              <div className="h-2 flex-1 rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden">
+                              <div className="h-2 flex-1 rounded-full bg-secondary-100 dark:bg-secondary-800 overflow-hidden">
                                 <div className={`h-full rounded-full ${pct >= 85 ? 'bg-rose-500' : pct >= 60 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
                               </div>
-                              <span className="text-xs text-slate-500 whitespace-nowrap">{t.quotaUsed}/{t.quota}</span>
+                              <span className="text-xs text-secondary-500 whitespace-nowrap">{t.quotaUsed}/{t.quota}</span>
                             </div>
                           </td>
                           <td className="px-5 py-3 text-right">
@@ -880,13 +880,13 @@ export function SuperAdminPage() {
         {/* TAB 4: Telemetry */}
         {activeTab === 'telemetry' && (
           <div className="space-y-4">
-            <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 p-5">
+            <div className="card-solid p-5">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 rounded-lg"><Server className="w-5 h-5" /></div>
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Supabase Connection</h3>
-                    <p className="text-xs text-slate-500 dark:text-zinc-400">{pingMs != null ? `Ping ${pingMs}ms` : 'Live status check'}</p>
+                    <h3 className="text-sm font-semibold text-secondary-900 dark:text-white">Supabase Connection</h3>
+                    <p className="text-xs text-secondary-500 dark:text-secondary-400">{pingMs != null ? `Ping ${pingMs}ms` : 'Live status check'}</p>
                   </div>
                 </div>
                 <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400">
@@ -897,21 +897,21 @@ export function SuperAdminPage() {
             <DisasterRecoveryStudio />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <AuditTrailTable />
-              <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 p-5 space-y-5">
-                <div className="flex items-center gap-2"><Database className="w-4 h-4 text-slate-400" />
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Capacity Usage</h3></div>
+              <div className="card-solid p-5 space-y-5">
+                <div className="flex items-center gap-2"><Database className="w-4 h-4 text-secondary-400" />
+                  <h3 className="text-sm font-semibold text-secondary-900 dark:text-white">Capacity Usage</h3></div>
                 {[['Database', '68%', '6.8 / 10 GB', 68, 'bg-blue-500'], ['Storage', '42%', '21 / 50 GB', 42, 'bg-emerald-500']].map(([label, pct, detail, w, bar]) => (
                   <div key={label as string}>
                     <div className="flex items-center justify-between text-xs mb-1.5">
-                      <span className="text-slate-500 dark:text-zinc-400">{label}</span>
-                      <span className="font-medium text-slate-700 dark:text-zinc-300">{pct} · {detail}</span>
+                      <span className="text-secondary-500 dark:text-secondary-400">{label}</span>
+                      <span className="font-medium text-secondary-700 dark:text-secondary-300">{pct} · {detail}</span>
                     </div>
-                    <div className="h-2 rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden">
+                    <div className="h-2 rounded-full bg-secondary-100 dark:bg-secondary-800 overflow-hidden">
                       <div className={`h-full rounded-full ${bar}`} style={{ width: `${w}%` }} />
                     </div>
                   </div>
                 ))}
-                <p className="text-xs text-slate-400 dark:text-zinc-500 flex items-center gap-1.5"><HardDrive className="w-3.5 h-3.5" /> Threshold alerts at 85% capacity.</p>
+                <p className="text-xs text-secondary-400 dark:text-zinc-500 flex items-center gap-1.5"><HardDrive className="w-3.5 h-3.5" /> Threshold alerts at 85% capacity.</p>
               </div>
             </div>
           </div>
@@ -921,20 +921,20 @@ export function SuperAdminPage() {
         {activeTab === 'rbac' && (
           <SuperAdminBoundary>
           <div className="space-y-4">
-            <div className="bg-white dark:bg-zinc-900 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-zinc-800 flex flex-col sm:flex-row gap-3 sm:items-center">
+            <div className="card-solid p-4 flex flex-col sm:flex-row gap-3 sm:items-center">
               <div className="relative flex-1 min-w-0">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400" />
                 <Input placeholder="Search staff by email, business, or role…" value={memberSearch} onChange={e => setMemberSearch(e.target.value)} className="pl-9" />
               </div>
               <Button variant="secondary" size="sm" onClick={loadMembers} className="flex items-center gap-2 whitespace-nowrap">
                 <RefreshCw className={`w-4 h-4 ${membersLoading ? 'animate-spin' : ''}`} /> Refresh Staff
               </Button>
-              <span className="text-xs text-slate-400">{filteredMembers.length} members</span>
+              <span className="text-xs text-secondary-400">{filteredMembers.length} members</span>
             </div>
-            <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm border border-slate-200 dark:border-zinc-800 overflow-hidden">
+            <div className="card-solid overflow-hidden">
               <div className="flex-wrap">
                 <table className="w-full text-left text-sm min-w-[860px]">
-                  <thead className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-200 dark:border-zinc-800 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <thead className="bg-secondary-50 dark:bg-secondary-800/50 border-b border-secondary-200 dark:border-secondary-800 text-xs font-semibold text-secondary-500 uppercase tracking-wider">
                     <tr>
                       <th className="px-5 py-3">Member</th>
                       <th className="px-5 py-3">Business</th>
@@ -944,24 +944,24 @@ export function SuperAdminPage() {
                       <th className="px-5 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                  <tbody className="divide-y divide-secondary-100 dark:divide-secondary-800">
                     {membersLoading ? (
-                      <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-400 text-sm">Loading staff directory…</td></tr>
+                      <tr><td colSpan={6} className="px-5 py-8 text-center text-secondary-400 text-sm">Loading staff directory…</td></tr>
                     ) : filteredMembers.length === 0 ? (
-                      <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-400 text-sm">No staff members found.</td></tr>
+                      <tr><td colSpan={6} className="px-5 py-8 text-center text-secondary-400 text-sm">No staff members found.</td></tr>
                     ) : filteredMembers.map(m => (
-                      <tr key={m.id} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/30">
+                      <tr key={m.id} className="bg-secondary-100/60 dark:bg-secondary-800/50 table-row-hover">
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-2.5">
                             <span className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold flex items-center justify-center shrink-0">
                               {(m.email?.[0] || 'M').toUpperCase()}
                             </span>
-                            <span className="font-mono text-xs text-slate-700 dark:text-zinc-200 break-all">{m.email}</span>
+                            <span className="font-mono text-xs text-secondary-700 dark:text-secondary-200 break-all">{m.email}</span>
                           </div>
                         </td>
-                        <td className="px-5 py-3 text-slate-700 dark:text-zinc-200">{m.businessName}</td>
+                        <td className="px-5 py-3 text-secondary-700 dark:text-secondary-200">{m.businessName}</td>
                         <td className="px-5 py-3"><span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${roleBadge(m.role)}`}>{m.role}</span></td>
-                        <td className="px-5 py-3 text-xs text-slate-500 whitespace-nowrap">{m.joinedAt}</td>
+                        <td className="px-5 py-3 text-xs text-secondary-500 whitespace-nowrap">{m.joinedAt}</td>
                         <td className="px-5 py-3">
                           <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${
                             m.isActive
@@ -997,43 +997,43 @@ export function SuperAdminPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { label: 'Platform GMV', value: inr(revenue.gmv), sub: '6-month invoiced volume ▲ 12.4%', tone: 'text-slate-900 dark:text-white' },
+                { label: 'Platform GMV', value: inr(revenue.gmv), sub: '6-month invoiced volume ▲ 12.4%', tone: 'text-secondary-900 dark:text-white' },
                 { label: 'Platform MRR', value: inr(revenue.mrr), sub: '▲ 8.1% vs last month', tone: 'text-emerald-600 dark:text-emerald-400' },
                 { label: 'Platform ARR', value: inr(revenue.arr), sub: '▲ 9.6% YoY trajectory', tone: 'text-blue-600 dark:text-blue-400' },
                 { label: 'GST Tax Vault', value: inr(revenue.cgst + revenue.sgst + revenue.igst), sub: `CGST ${inr(revenue.cgst)} · SGST ${inr(revenue.sgst)} · IGST ${inr(revenue.igst)}`, tone: 'text-purple-600 dark:text-purple-400' },
               ].map(c => (
-                <div key={c.label} className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400 flex items-center gap-1.5">
+                <div key={c.label} className="card-solid p-5">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-secondary-500 dark:text-secondary-400 flex items-center gap-1.5">
                     <TrendingUp className="w-3.5 h-3.5" />{c.label}
                   </p>
                   <p className={`text-2xl font-bold mt-2 ${c.tone}`}>{c.value}</p>
-                  <p className="text-xs text-slate-400 mt-1">{c.sub}</p>
+                  <p className="text-xs text-secondary-400 mt-1">{c.sub}</p>
                 </div>
               ))}
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">6-Month Transaction Trend</h3>
-                <p className="text-xs text-slate-400 mb-4">CSS/SVG bars — no heavy chart libs</p>
+              <div className="card-solid p-5">
+                <h3 className="text-sm font-semibold text-secondary-900 dark:text-white mb-1">6-Month Transaction Trend</h3>
+                <p className="text-xs text-secondary-400 mb-4">CSS/SVG bars — no heavy chart libs</p>
                 <div className="flex items-end gap-2 h-40" role="img" aria-label="6 month volume bars">
                   {revenue.trend.map(r => {
                     const max = Math.max(...revenue.trend.map(x => x.volume));
                     const h = Math.round((r.volume / max) * 100);
                     return (
                       <div key={r.month} className="flex-1 flex flex-col items-center gap-1.5 min-w-0">
-                        <span className="text-[10px] font-medium text-slate-500 dark:text-zinc-400">{inr(r.volume)}</span>
+                        <span className="text-[10px] font-medium text-secondary-500 dark:text-secondary-400">{inr(r.volume)}</span>
                         <div className="w-full rounded-t-lg bg-gradient-to-t from-blue-600 to-blue-300 dark:from-blue-500 dark:to-blue-800" style={{ height: `${Math.max(h, 8)}%`, minHeight: 12 }} />
-                        <span className="text-[10px] font-semibold text-slate-500">{r.month}</span>
+                        <span className="text-[10px] font-semibold text-secondary-500">{r.month}</span>
                       </div>
                     );
                   })}
                 </div>
               </div>
-              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 p-5 shadow-sm">
+              <div className="card-solid p-5">
                 <div className="flex items-center justify-between mb-2">
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Revenue Trajectory</h3>
-                    <p className="text-xs text-slate-400">SVG line — GMV momentum</p>
+                    <h3 className="text-sm font-semibold text-secondary-900 dark:text-white">Revenue Trajectory</h3>
+                    <p className="text-xs text-secondary-400">SVG line — GMV momentum</p>
                   </div>
                   <Button variant="secondary" size="sm" onClick={downloadGstCsv} className="flex items-center gap-2 text-xs">
                     <Download className="w-3.5 h-3.5" /> GST Audit CSV
@@ -1071,9 +1071,9 @@ export function SuperAdminPage() {
                 </svg>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                   {[['CGST', revenue.cgst], ['SGST', revenue.sgst], ['IGST', revenue.igst]].map(([l, v]) => (
-                    <div key={l as string} className="rounded-lg bg-slate-50 dark:bg-zinc-800/60 border border-slate-200 dark:border-zinc-800 px-2 py-2">
-                      <p className="text-[10px] uppercase tracking-wider text-slate-400">{l}</p>
-                      <p className="text-sm font-bold text-slate-800 dark:text-zinc-100">{inr(Number(v))}</p>
+                    <div key={l as string} className="rounded-lg bg-secondary-50 dark:bg-zinc-800/60 border border-secondary-200 dark:border-secondary-800 px-2 py-2">
+                      <p className="text-[10px] uppercase tracking-wider text-secondary-400">{l}</p>
+                      <p className="text-sm font-bold text-secondary-800 dark:text-zinc-100">{inr(Number(v))}</p>
                     </div>
                   ))}
                 </div>
@@ -1086,24 +1086,24 @@ export function SuperAdminPage() {
         {/* Profile drawer */}
         {profileTenant && (
           <div className="fixed inset-0 z-50 overflow-hidden">
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setProfileTenant(null)} />
+            <div className="absolute inset-0 bg-secondary-900/40 backdrop-blur-sm" onClick={() => setProfileTenant(null)} />
             <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-              <div className="w-screen max-w-md bg-white dark:bg-zinc-900 shadow-2xl border-l border-slate-200 dark:border-zinc-800 p-6 overflow-y-auto">
-                <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-zinc-800">
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">Tenant Profile</h2>
-                  <button onClick={() => setProfileTenant(null)} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white" aria-label="Close profile"><X className="w-5 h-5" /></button>
+              <div className="w-screen max-w-md bg-white dark:bg-zinc-900 shadow-2xl border-l border-secondary-200 dark:border-secondary-800 p-6 overflow-y-auto">
+                <div className="flex items-center justify-between pb-4 border-b border-secondary-200 dark:border-secondary-800">
+                  <h2 className="text-lg font-bold text-secondary-900 dark:text-white">Tenant Profile</h2>
+                  <button onClick={() => setProfileTenant(null)} className="p-1 rounded-lg text-secondary-400 hover:text-secondary-600 dark:hover:text-white" aria-label="Close profile"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="mt-6 space-y-4 text-sm">
-                  <div><h3 className="text-xl font-bold text-slate-900 dark:text-white">{profileTenant.name}</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Trade: {profileTenant.tradeName} · {profileTenant.plan} plan</p></div>
-                  <div className="p-4 bg-slate-50 dark:bg-zinc-800/50 rounded-xl space-y-2 text-slate-600 dark:text-zinc-300">
-                    <p><span className="text-xs text-slate-400">Full address: </span>{profileTenant.address}, {profileTenant.state}</p>
-                    <p><span className="text-xs text-slate-400">Phone: </span>{profileTenant.phone}</p>
-                    <p className="font-mono text-xs"><span className="font-sans text-xs text-slate-400">GSTIN (state code {stateCodeFromGstin(profileTenant.gstin)}): </span>{profileTenant.gstin}</p>
-                    <p><span className="text-xs text-slate-400">Owner: </span><span className="font-mono text-xs">{profileTenant.ownerEmail}</span></p>
-                    <p><span className="text-xs text-slate-400">Created: </span>{profileTenant.createdAt}</p>
-                    <p><span className="text-xs text-slate-400">Subscription expires: </span>{profileTenant.validity}</p>
-                    <p><span className="text-xs text-slate-400">Quota: </span>{profileTenant.quotaUsed}/{profileTenant.quota} invoices</p>
+                  <div><h3 className="text-xl font-bold text-secondary-900 dark:text-white">{profileTenant.name}</h3>
+                    <p className="text-xs text-secondary-400 mt-0.5">Trade: {profileTenant.tradeName} · {profileTenant.plan} plan</p></div>
+                  <div className="p-4 bg-secondary-50 dark:bg-secondary-800/50 rounded-xl space-y-2 text-secondary-600 dark:text-secondary-300">
+                    <p><span className="text-xs text-secondary-400">Full address: </span>{profileTenant.address}, {profileTenant.state}</p>
+                    <p><span className="text-xs text-secondary-400">Phone: </span>{profileTenant.phone}</p>
+                    <p className="font-mono text-xs"><span className="font-sans text-xs text-secondary-400">GSTIN (state code {stateCodeFromGstin(profileTenant.gstin)}): </span>{profileTenant.gstin}</p>
+                    <p><span className="text-xs text-secondary-400">Owner: </span><span className="font-mono text-xs">{profileTenant.ownerEmail}</span></p>
+                    <p><span className="text-xs text-secondary-400">Created: </span>{profileTenant.createdAt}</p>
+                    <p><span className="text-xs text-secondary-400">Subscription expires: </span>{profileTenant.validity}</p>
+                    <p><span className="text-xs text-secondary-400">Quota: </span>{profileTenant.quotaUsed}/{profileTenant.quota} invoices</p>
                   </div>
                   <Button variant="secondary" size="sm" className="w-full text-indigo-600 border-indigo-200" onClick={() => { impersonate(profileTenant); }}>Access Dashboard</Button>
                   <Button variant="secondary" size="sm" className="w-full" onClick={() => setProfileTenant(null)}>Close</Button>
@@ -1115,21 +1115,21 @@ export function SuperAdminPage() {
 
         {/* Plan edit modal */}
         {planEdit && (
-          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPlanEdit(null)}>
+          <div className="fixed inset-0 z-50 bg-secondary-900/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPlanEdit(null)}>
             <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Edit Plan — {planEdit.name}</h2>
-                <button onClick={() => setPlanEdit(null)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white" aria-label="Close plan editor"><X className="w-5 h-5" /></button>
+                <h2 className="text-lg font-bold text-secondary-900 dark:text-white">Edit Plan — {planEdit.name}</h2>
+                <button onClick={() => setPlanEdit(null)} className="p-1 text-secondary-400 hover:text-secondary-600 dark:hover:text-white" aria-label="Close plan editor"><X className="w-5 h-5" /></button>
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Subscription tier</label>
+                <label className="text-xs font-medium text-secondary-500 dark:text-secondary-400">Subscription tier</label>
                 <select value={planDraft} onChange={e => { const p = e.target.value as Plan; setPlanDraft(p); setQuotaDraft(tierDefaults[p]); }}
-                  className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm">
+                  className="mt-1 w-full input text-sm">
                   {PLANS.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Monthly invoice quota</label>
+                <label className="text-xs font-medium text-secondary-500 dark:text-secondary-400">Monthly invoice quota</label>
                 <Input type="number" min={0} value={quotaDraft} onChange={e => setQuotaDraft(Math.max(0, Number(e.target.value) || 0))} className="mt-1" />
               </div>
               <div className="flex justify-end gap-2">
@@ -1142,16 +1142,16 @@ export function SuperAdminPage() {
 
         {/* Block confirm modal */}
         {blockTarget && (
-          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setBlockTarget(null)}>
+          <div className="fixed inset-0 z-50 bg-secondary-900/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setBlockTarget(null)}>
             <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
               <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400"><AlertTriangle className="w-5 h-5" />
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white">{blockTarget.isActive ? 'Block tenant?' : 'Activate tenant?'}</h2></div>
-              <p className="text-sm text-slate-500 dark:text-zinc-400">
+                <h2 className="text-lg font-bold text-secondary-900 dark:text-white">{blockTarget.isActive ? 'Block tenant?' : 'Activate tenant?'}</h2></div>
+              <p className="text-sm text-secondary-500 dark:text-secondary-400">
                 {blockTarget.isActive
                   ? `This will immediately suspend ${blockTarget.name}. Users will lose dashboard access. This is destructive — confirm to proceed.`
                   : `This will restore access for ${blockTarget.name}.`}
               </p>
-              <p className="text-xs font-mono text-slate-500">{blockTarget.name} · {blockTarget.gstin}</p>
+              <p className="text-xs font-mono text-secondary-500">{blockTarget.name} · {blockTarget.gstin}</p>
               <div className="flex justify-end gap-2">
                 <Button variant="secondary" size="sm" onClick={() => setBlockTarget(null)}>Cancel</Button>
                 <Button variant="secondary" size="sm" onClick={() => { toggleStatus(blockTarget.id, blockTarget.isActive); setBlockTarget(null); }}
@@ -1165,30 +1165,30 @@ export function SuperAdminPage() {
 
         {/* Onboard modal */}
         {onboardOpen && (
-          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setOnboardOpen(false)}>
+          <div className="fixed inset-0 z-50 bg-secondary-900/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setOnboardOpen(false)}>
             <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Onboard New Business</h2>
-                <button onClick={() => setOnboardOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white" aria-label="Close onboarding"><X className="w-5 h-5" /></button>
+                <h2 className="text-lg font-bold text-secondary-900 dark:text-white">Onboard New Business</h2>
+                <button onClick={() => setOnboardOpen(false)} className="p-1 text-secondary-400 hover:text-secondary-600 dark:hover:text-white" aria-label="Close onboarding"><X className="w-5 h-5" /></button>
               </div>
               {formError && <p className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-lg px-3 py-2">{formError}</p>}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Legal Name *</label>
+                <div><label className="text-xs font-medium text-secondary-500 dark:text-secondary-400">Legal Name *</label>
                   <Input value={form.legalName} onChange={e => setForm({ ...form, legalName: e.target.value })} className="mt-1" placeholder="Avadh Boring Company" /></div>
-                <div><label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Trade Name</label>
+                <div><label className="text-xs font-medium text-secondary-500 dark:text-secondary-400">Trade Name</label>
                   <Input value={form.tradeName} onChange={e => setForm({ ...form, tradeName: e.target.value })} className="mt-1" placeholder="Avadh Boring" /></div>
-                <div><label className="text-xs font-medium text-slate-500 dark:text-zinc-400">GSTIN (15-digit) *</label>
+                <div><label className="text-xs font-medium text-secondary-500 dark:text-secondary-400">GSTIN (15-digit) *</label>
                   <Input value={form.gstin} onChange={e => setForm({ ...form, gstin: e.target.value.toUpperCase() })} className="mt-1 font-mono" placeholder="09ABCDE1234F1Z5" maxLength={15} /></div>
-                <div><label className="text-xs font-medium text-slate-500 dark:text-zinc-400">State *</label>
+                <div><label className="text-xs font-medium text-secondary-500 dark:text-secondary-400">State *</label>
                   <select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })}
-                    className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm">
+                    className="mt-1 w-full input text-sm">
                     {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select></div>
-                <div><label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Owner Email *</label>
+                <div><label className="text-xs font-medium text-secondary-500 dark:text-secondary-400">Owner Email *</label>
                   <Input type="email" value={form.ownerEmail} onChange={e => setForm({ ...form, ownerEmail: e.target.value })} className="mt-1" placeholder="owner@company.com" /></div>
-                <div><label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Plan</label>
+                <div><label className="text-xs font-medium text-secondary-500 dark:text-secondary-400">Plan</label>
                   <select value={form.plan} onChange={e => setForm({ ...form, plan: e.target.value as Plan })}
-                    className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm">
+                    className="mt-1 w-full input text-sm">
                     {PLANS.map(p => <option key={p} value={p}>{p} — {tierDefaults[p]}/mo</option>)}
                   </select></div>
               </div>
@@ -1226,7 +1226,7 @@ export function SuperAdminPage() {
           <div key={t.id} className={`rounded-xl border px-4 py-3 text-sm shadow-xl flex items-start gap-2 ${
             t.kind === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/80 dark:text-emerald-200 dark:border-emerald-900'
             : t.kind === 'danger' ? 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-900'
-            : 'bg-white text-slate-700 border-slate-200 dark:bg-zinc-900 dark:text-zinc-200 dark:border-zinc-700'
+            : 'bg-white text-secondary-700 border-secondary-200 dark:bg-secondary-900 dark:text-secondary-200 dark:border-secondary-700'
           }`}>
             {t.kind === 'success' ? <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" /> : t.kind === 'danger' ? <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" /> : <Activity className="w-4 h-4 mt-0.5 shrink-0" />}
             <span>{t.msg}</span>
@@ -1236,28 +1236,28 @@ export function SuperAdminPage() {
 
       {/* Role permissions matrix modal */}
       {roleModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setRoleModal(null)}>
+        <div className="fixed inset-0 z-50 bg-secondary-900/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setRoleModal(null)}>
           <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Role Permissions — {roleModal.email}</h2>
-              <button onClick={() => setRoleModal(null)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white" aria-label="Close permissions"><X className="w-5 h-5" /></button>
+              <h2 className="text-lg font-bold text-secondary-900 dark:text-white">Role Permissions — {roleModal.email}</h2>
+              <button onClick={() => setRoleModal(null)} className="p-1 text-secondary-400 hover:text-secondary-600 dark:hover:text-white" aria-label="Close permissions"><X className="w-5 h-5" /></button>
             </div>
-            <p className="text-xs text-slate-400">{roleModal.businessName} · joined {roleModal.joinedAt}</p>
+            <p className="text-xs text-secondary-400">{roleModal.businessName} · joined {roleModal.joinedAt}</p>
             <div>
-              <label className="text-xs font-medium text-slate-500 dark:text-zinc-400">Assigned role</label>
+              <label className="text-xs font-medium text-secondary-500 dark:text-secondary-400">Assigned role</label>
               <select value={roleDraft} onChange={e => setRoleDraft(e.target.value as MemberRole)}
-                className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm">
+                className="mt-1 w-full input text-sm">
                 {MEMBER_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
-            <div className="rounded-xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
+            <div className="rounded-xl border border-secondary-200 dark:border-secondary-800 overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 dark:bg-zinc-800/60 text-xs text-slate-500 uppercase"><tr><th className="px-4 py-2 text-left">Capability</th><th className="px-4 py-2 text-center">{roleDraft}</th></tr></thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                <thead className="bg-secondary-50 dark:bg-zinc-800/60 text-xs text-secondary-500 uppercase"><tr><th className="px-4 py-2 text-left">Capability</th><th className="px-4 py-2 text-center">{roleDraft}</th></tr></thead>
+                <tbody className="divide-y divide-secondary-100 dark:divide-secondary-800">
                   {Object.entries(ROLE_MATRIX[roleDraft]).map(([cap, allowed]) => (
                     <tr key={cap}>
-                      <td className="px-4 py-2 text-slate-700 dark:text-zinc-200">{cap}</td>
-                      <td className="px-4 py-2 text-center">{allowed ? <CheckCircle className="w-4 h-4 text-emerald-500 inline" /> : <Ban className="w-4 h-4 text-slate-300 dark:text-zinc-600 inline" />}</td>
+                      <td className="px-4 py-2 text-secondary-700 dark:text-secondary-200">{cap}</td>
+                      <td className="px-4 py-2 text-center">{allowed ? <CheckCircle className="w-4 h-4 text-emerald-500 inline" /> : <Ban className="w-4 h-4 text-secondary-300 dark:text-secondary-600 inline" />}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1279,11 +1279,11 @@ export function SuperAdminPage() {
 
       {/* Revoke confirm */}
       {revokeTarget && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setRevokeTarget(null)}>
+        <div className="fixed inset-0 z-50 bg-secondary-900/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setRevokeTarget(null)}>
           <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 text-rose-600"><ShieldAlert className="w-5 h-5" />
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Revoke access?</h2></div>
-            <p className="text-sm text-slate-500 dark:text-zinc-400">This immediately revokes <span className="font-mono">{revokeTarget.email}</span> from <span className="font-medium">{revokeTarget.businessName}</span>. Active sessions are invalidated.</p>
+              <h2 className="text-lg font-bold text-secondary-900 dark:text-white">Revoke access?</h2></div>
+            <p className="text-sm text-secondary-500 dark:text-secondary-400">This immediately revokes <span className="font-mono">{revokeTarget.email}</span> from <span className="font-medium">{revokeTarget.businessName}</span>. Active sessions are invalidated.</p>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" size="sm" onClick={() => setRevokeTarget(null)}>Cancel</Button>
               <Button variant="secondary" size="sm" className="text-white bg-rose-600 hover:bg-rose-700 border-rose-600" onClick={async () => {

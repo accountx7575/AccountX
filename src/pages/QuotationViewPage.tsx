@@ -265,7 +265,7 @@ export function QuotationViewPage() {
       />
 
       <div className="space-y-6">
-        <div className="card p-4 sm:p-6 border border-secondary-200 dark:border-secondary-800 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="card p-4 sm:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <span className="text-xs font-semibold uppercase tracking-wider text-secondary-400">Document Status</span>
             <div className="mt-1">

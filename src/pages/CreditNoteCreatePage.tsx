@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -45,15 +45,23 @@ export function CreditNoteCreatePage() {
   const [date, setDate] = useState(todayDateString());
   const [lines, setLines] = useState<DraftLine[]>([]);
 
-  const { data: invoices } = useQuery({
+  const invoicesQ = useQuery({
     queryKey: ['sales-invoices', activeBusiness?.id, 'live-for-cn'],
     queryFn: async () => {
       if (!activeBusiness) return [];
-      const { data } = await supabase.from('sales_invoices').select('id, invoice_number, invoice_date, place_of_supply, customer_id, customer:customers(name)').eq('business_id', activeBusiness.id).in('status', ['issued', 'partially_paid', 'paid']).order('invoice_date', { ascending: false }).limit(100);
+      const { data, error } = await supabase.from('sales_invoices').select('id, invoice_number, invoice_date, place_of_supply, customer_id, customer:customers(name)').eq('business_id', activeBusiness.id).in('status', ['issued', 'partially_paid', 'paid']).order('invoice_date', { ascending: false }).limit(100);
+      if (error) throw error;
       return (data || []) as unknown as InvoiceOptionRow[];
     },
     enabled: !!activeBusiness,
   });
+  const invoices = invoicesQ.data;
+
+  // No silent async failures: surface invoice-picker read errors.
+  const invoiceListError = invoicesQ.error;
+  useEffect(() => {
+    if (invoiceListError) toast(`Failed to load invoices: ${(invoiceListError as Error).message}`, 'error');
+  }, [invoiceListError, toast]);
 
   const loadInvoiceItems = async (invId: string) => {
     setInvoiceId(invId);

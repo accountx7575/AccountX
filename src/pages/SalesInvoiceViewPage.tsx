@@ -11,7 +11,7 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { InvoiceSheet, type InvoiceWithCustomer } from '@/components/invoice/InvoiceSheet';
 import { mergeBusinessExtras } from '@/lib/businessExtras';
 import { SendDialog } from '@/components/comms/SendDialog';
-import { ArrowLeft, Printer, FileDown, Ban, FileSpreadsheet, Share2, Send, History, Truck } from 'lucide-react';
+import { ArrowLeft, Printer, FileDown, Ban, FileSpreadsheet, Share2, Send, History, Truck, Pencil } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { printInvoice, exportPdfFromElement, exportInvoiceExcel } from '@/lib/invoiceExport';
 import { EWayBillModal } from '@/components/eway/EWayBillModal';
@@ -128,10 +128,15 @@ export function SalesInvoiceViewPage() {
         title={`Invoice ${invoice.invoice_number}`}
         subtitle={`${formatDate(invoice.invoice_date)}${invoice.due_date ? ` • Due ${formatDate(invoice.due_date)}` : ''}`}
         actions={
-          <div className="flex gap-2 print:hidden">
+          <div className="flex flex-wrap gap-2 print:hidden">
             <Button variant="secondary" onClick={() => navigate('/app/sales-invoices')}>
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
+            {invoice.status !== 'cancelled' && (
+              <Button variant="secondary" onClick={() => navigate(`/app/sales-invoices/${invoice.id}/edit`)}>
+                <Pencil className="h-4 w-4" /> Edit
+              </Button>
+            )}
             <Button variant="secondary" onClick={exportPdf} loading={exporting}>
               <FileDown className="h-4 w-4" /> Save as PDF
             </Button>

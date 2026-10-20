@@ -40,7 +40,11 @@ export function PaymentMakeCreatePage() {
       supabase.from('purchase_bills').select('*')
         .eq('business_id', activeBusiness.id).eq('supplier_id', form.supplierId)
         .in('status', ['confirmed', 'partially_paid']).gt('balance_amount', 0).order('bill_date', { ascending: false })
-        .then(({ data }) => setBills((data || []) as PurchaseBill[]));
+        .then(({ data, error }) => {
+          if (error) throw error;
+          setBills((data || []) as PurchaseBill[]);
+        })
+        .catch((err: any) => toast(err?.message || 'Failed to load open bills', 'error'));
     } else { setBills([]); }
   }, [form.supplierId, activeBusiness]);
 

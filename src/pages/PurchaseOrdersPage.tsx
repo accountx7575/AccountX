@@ -13,10 +13,15 @@ import { Modal } from '@/components/ui/Modal';
 import { Input, FormField } from '@/components/ui/Input';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
-import { PackageCheck, Plus, Lock, CheckCircle2, PackageOpen, Printer } from 'lucide-react';
+import { PackageCheck, Plus, Lock, CheckCircle2, PackageOpen, Printer, Eye, Download, Pencil } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { renderDocSheetToPdf, type PrintableDocData } from '@/lib/docPrint';
-import type { PurchaseOrder, PurchaseOrderItem } from '@/types/db';
+import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
+import {
+  OrderInvoiceModal,
+  mapPurchaseOrderToUniversalData,
+  type UniversalDocumentData,
+} from '@/components/documents';
+import type { PurchaseOrder, PurchaseOrderItem, Supplier } from '@/types/db';
 
 type LineItem = {
   product_id: string | null;
@@ -25,9 +30,6 @@ type LineItem = {
   rate: number;
   tax_rate: number;
 };
-
-
-const emptyLine: LineItem = { product_id: null, product_name: '', quantity: 1, rate: 0, tax_rate: 18 };
 
 const statusStyles: Record<string, string> = {
   draft: 'bg-secondary-100 text-secondary-600 dark:bg-secondary-800 dark:text-secondary-300',
@@ -55,6 +57,9 @@ export function PurchaseOrdersPage() {
   const list = usePagedList();
   const [confirmCancel, setConfirmCancel] = useState<PurchaseOrder | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<UniversalDocumentData | null>(null);
   const [convertTarget, setConvertTarget] = useState<(PurchaseOrder & { supplier: { name: string } | null }) | null>(null);
   const [convertDate, setConvertDate] = useState('');
   const [convertDue, setConvertDue] = useState('');
@@ -65,36 +70,80 @@ export function PurchaseOrdersPage() {
     setConvertDue('');
   };
 
-  const printOrder = async (o: PurchaseOrder & { supplier: { name: string } | null }) => {
+  const fetchOrderDetails = async (o: PurchaseOrder) => {
+    const { data: items, error } = await supabase
+      .from('purchase_order_items')
+      .select('*')
+      .eq('purchase_order_id', o.id)
+      .order('created_at');
+    if (error) throw error;
+
+    let supplier: Partial<Supplier> | null = (o as any).supplier ?? null;
+    if (o.supplier_id && (!supplier || !supplier.address)) {
+      const { data: s } = await supabase
+        .from('suppliers')
+        .select('*')
+        .eq('id', o.supplier_id)
+        .maybeSingle();
+      if (s) supplier = s;
+    }
+
+    const supplierAddress = [supplier?.address, supplier?.city, supplier?.state, supplier?.pincode]
+      .filter(Boolean)
+      .join(', ');
+
+    const payload: PrintableDocData = {
+      docTitle: 'PURCHASE ORDER',
+      docNumber: o.order_number,
+      dateLabel: 'Order Date',
+      dateValue: formatDate(o.order_date),
+      expiryLabel: 'Expected On',
+      expiryValue: o.expected_date,
+      partyLabel: 'Supplier',
+      partyName: supplier?.company_name || supplier?.name || (o as any).supplier?.name || '—',
+      partyAddress: supplierAddress || undefined,
+      partyGstin: supplier?.gstin || undefined,
+      partyPhone: supplier?.phone || undefined,
+      partyPlaceOfSupply: activeBusiness?.state || 'Uttar Pradesh',
+      isPurchaseBill: true,
+      status: o.status,
+      items: (items || []) as PurchaseOrderItem[],
+      subtotal: Number(o.subtotal),
+      taxableAmount: Number(o.taxable_amount),
+      cgst: Number(o.cgst_amount),
+      sgst: Number(o.sgst_amount),
+      igst: Number(o.igst_amount),
+      roundOff: Number(o.round_off) || 0,
+      grandTotal: Number(o.grand_total),
+      notes: o.notes,
+    };
+
+    return { items: (items || []) as PurchaseOrderItem[], supplier, payload };
+  };
+
+  const handlePreviewOrder = async (o: PurchaseOrder) => {
+    if (!activeBusiness) return;
+    setPreviewLoadingId(o.id);
+    try {
+      const { items, supplier } = await fetchOrderDetails(o);
+      const universal = mapPurchaseOrderToUniversalData(
+        activeBusiness,
+        { ...o, supplier },
+        items
+      );
+      setPreviewData(universal);
+    } catch (err: any) {
+      toast(err?.message || 'Failed to load order preview', 'error');
+    } finally {
+      setPreviewLoadingId(null);
+    }
+  };
+
+  const printOrder = async (o: PurchaseOrder) => {
     if (!activeBusiness) return;
     setPrintingId(o.id);
     try {
-      const { data: items, error } = await supabase
-        .from('purchase_order_items')
-        .select('*')
-        .eq('purchase_order_id', o.id)
-        .order('created_at');
-      if (error) throw error;
-      const payload: Omit<PrintableDocData, 'businessName' | 'gstin'> = {
-        docTitle: 'PURCHASE ORDER',
-        docNumber: o.order_number,
-        dateLabel: 'Order Date',
-        dateValue: formatDate(o.order_date),
-        expiryLabel: 'Expected On',
-        expiryValue: o.expected_date,
-        partyLabel: 'Supplier',
-        partyName: o.supplier?.name || '—',
-        status: o.status,
-        items: (items || []) as PurchaseOrderItem[],
-        subtotal: Number(o.subtotal),
-        taxableAmount: Number(o.taxable_amount),
-        cgst: Number(o.cgst_amount),
-        sgst: Number(o.sgst_amount),
-        igst: Number(o.igst_amount),
-        roundOff: Number(o.round_off) || 0,
-        grandTotal: Number(o.grand_total),
-        notes: o.notes,
-      };
+      const { payload } = await fetchOrderDetails(o);
       await renderDocSheetToPdf(activeBusiness, payload);
     } catch (err: any) {
       toast(err?.message || 'PDF export failed', 'error');
@@ -103,14 +152,35 @@ export function PurchaseOrdersPage() {
     }
   };
 
+  const handleDownloadPdf = async (o: PurchaseOrder) => {
+    if (!activeBusiness) return;
+    setDownloadingId(o.id);
+    try {
+      const { payload } = await fetchOrderDetails(o);
+      const blob = await renderDocSheetToPdfBlob(activeBusiness, payload);
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `${o.order_number}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      toast(err?.message || 'Download PDF failed', 'error');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['purchase-orders', activeBusiness?.id, { q: list.debouncedSearch, page: list.page, pageSize: list.pageSize }],
     queryFn: async () => {
-      if (!activeBusiness) return { rows: [] as (PurchaseOrder & { supplier: { name: string } | null })[], total: 0 };
+      if (!activeBusiness) return { rows: [] as (PurchaseOrder & { supplier: { name: string; phone?: string | null; company_name?: string | null; address?: string | null; city?: string | null; state?: string | null; pincode?: string | null; gstin?: string | null } | null })[], total: 0 };
       const pattern = list.debouncedSearch ? likePattern(list.debouncedSearch) : null;
       const run = async (withJoin: boolean) => {
         let q = supabase.from('purchase_orders')
-          .select((withJoin ? '*, supplier:suppliers(name)' : '*') as string, { count: 'exact' })
+          .select((withJoin ? '*, supplier:suppliers(name,phone,company_name,address,city,state,pincode,gstin)' : '*') as string, { count: 'exact' })
           .eq('business_id', activeBusiness.id);
         if (pattern) {
           q = withJoin
@@ -145,7 +215,7 @@ export function PurchaseOrdersPage() {
     },
     onSuccess: (status) => {
       invalidateAll();
-      toast(status === 'confirmed' ? 'Purchase order confirmed' : status === 'received' ? 'Goods marked received' : 'Purchase order cancelled', 'success');
+      toast(status === 'confirmed' ? 'Purchase order confirmed' : status === 'received' ? 'Purchase order marked as received' : 'Purchase order cancelled', 'success');
       setConfirmCancel(null);
     },
     onError: (err: any) => { setConfirmCancel(null); toast(err.message || 'Status update failed', 'error'); },
@@ -161,9 +231,9 @@ export function PurchaseOrdersPage() {
           p_bill_date: convertDate,
           p_due_date: convertDue || null,
         });
-      let res = await attempt('p_order_id');
+      let res = await attempt('p_purchase_order_id');
       if (res.error && /could not find function|candidate function/i.test(res.error.message)) {
-        res = await attempt('p_purchase_order_id');
+        res = await attempt('p_order_id');
       }
       if (res.error) throw res.error;
       return res.data as { new_doc_id: string; new_doc_number: string } | null;
@@ -179,7 +249,7 @@ export function PurchaseOrdersPage() {
 
   return (
     <div>
-      <PageHeader title="Purchase Orders" subtitle={`${totalOrders} order${totalOrders !== 1 ? 's' : ''} placed`}
+      <PageHeader title="Purchase Orders" subtitle={`${totalOrders} order${totalOrders !== 1 ? 's' : ''} placed with suppliers`}
         actions={<Button onClick={() => navigate('/app/purchase-orders/new')}><Plus className="h-4 w-4" /> New Purchase Order</Button>} />
 
       <div className="card">
@@ -220,8 +290,42 @@ export function PurchaseOrdersPage() {
                     <td className="px-4 py-3"><span className={`badge ${statusStyles[o.status]}`}>{o.status}</span></td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5" title={LOCKED[o.status] ? `Terminal state (${o.status}) — immutable` : undefined}>
-                        <Button size="sm" variant="ghost" loading={printingId === o.id} onClick={() => printOrder(o)} title="Download this purchase order as PDF">
-                          <Printer className="h-3 w-3" /> PDF
+                        {!LOCKED[o.status] && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => navigate(`/app/purchase-orders/${o.id}/edit`)}
+                            title="Edit Purchase Order"
+                          >
+                            <Pencil className="h-3 w-3" /> Edit
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={previewLoadingId === o.id}
+                          onClick={() => handlePreviewOrder(o)}
+                          title="Preview Purchase Order in GST format"
+                        >
+                          <Eye className="h-3 w-3" /> View
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={printingId === o.id}
+                          onClick={() => printOrder(o)}
+                          title="Print Purchase Order in clean A4 format"
+                        >
+                          <Printer className="h-3 w-3" /> Print
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={downloadingId === o.id}
+                          onClick={() => handleDownloadPdf(o)}
+                          title="Download Purchase Order as PDF"
+                        >
+                          <Download className="h-3 w-3" /> PDF
                         </Button>
                         {LOCKED[o.status] && (
                           <span className="inline-flex items-center gap-1 text-xs text-secondary-400"><Lock className="h-3 w-3" /> Locked</span>
@@ -295,6 +399,13 @@ export function PurchaseOrdersPage() {
           <Button onClick={() => convertMutation.mutate()} loading={convertMutation.isPending} disabled={!convertDate}>Convert</Button>
         </div>
       </Modal>
+
+      <OrderInvoiceModal
+        open={!!previewData}
+        onClose={() => setPreviewData(null)}
+        data={previewData}
+        title={previewData ? `Purchase Order - ${previewData.documentNumber}` : 'Purchase Order'}
+      />
     </div>
   );
 }

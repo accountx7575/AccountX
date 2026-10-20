@@ -127,7 +127,7 @@ export function UserProfileModal({ open, onClose }: { open: boolean; onClose: ()
                   {can(activeRole, cap) ? (
                     <Check className="h-4 w-4 text-success-600 shrink-0" />
                   ) : (
-                    <X className="h-4 w-4 text-secondary-300 shrink-0" />
+                    <X className="h-4 w-4 text-secondary-400 dark:text-secondary-300 shrink-0" />
                   )}
                   <span className={can(activeRole, cap)
                     ? 'text-secondary-700 dark:text-secondary-200'

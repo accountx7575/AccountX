@@ -13,10 +13,15 @@ import { Modal } from '@/components/ui/Modal';
 import { Input, FormField } from '@/components/ui/Input';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
-import { ShoppingCart, Plus, Lock, CheckCircle2, Printer } from 'lucide-react';
+import { ShoppingCart, Plus, Lock, CheckCircle2, Printer, Eye, Download, Pencil } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { renderDocSheetToPdf, type PrintableDocData } from '@/lib/docPrint';
-import type { SalesOrder, SalesOrderItem } from '@/types/db';
+import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
+import {
+  OrderInvoiceModal,
+  mapSalesOrderToUniversalData,
+  type UniversalDocumentData,
+} from '@/components/documents';
+import type { SalesOrder, SalesOrderItem, Customer } from '@/types/db';
 
 type LineItem = {
   product_id: string | null;
@@ -25,9 +30,6 @@ type LineItem = {
   rate: number;
   tax_rate: number;
 };
-
-
-const emptyLine: LineItem = { product_id: null, product_name: '', quantity: 1, rate: 0, tax_rate: 18 };
 
 const statusStyles: Record<string, string> = {
   draft: 'bg-secondary-100 text-secondary-600 dark:bg-secondary-800 dark:text-secondary-300',
@@ -55,6 +57,9 @@ export function SalesOrdersPage() {
   const list = usePagedList();
   const [confirmCancel, setConfirmCancel] = useState<SalesOrder | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<UniversalDocumentData | null>(null);
   const [convertTarget, setConvertTarget] = useState<(SalesOrder & { customer: { name: string } | null }) | null>(null);
   const [convertDate, setConvertDate] = useState('');
   const [convertDue, setConvertDue] = useState('');
@@ -65,36 +70,79 @@ export function SalesOrdersPage() {
     setConvertDue('');
   };
 
-  const printOrder = async (o: SalesOrder & { customer: { name: string } | null }) => {
+  const fetchOrderDetails = async (o: SalesOrder) => {
+    const { data: items, error } = await supabase
+      .from('sales_order_items')
+      .select('*')
+      .eq('sales_order_id', o.id)
+      .order('created_at');
+    if (error) throw error;
+
+    let customer: Partial<Customer> | null = (o as any).customer ?? null;
+    if (o.customer_id && (!customer || !customer.address)) {
+      const { data: c } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('id', o.customer_id)
+        .maybeSingle();
+      if (c) customer = c;
+    }
+
+    const custAddress = [customer?.address, customer?.city, customer?.state, customer?.pincode]
+      .filter(Boolean)
+      .join(', ');
+
+    const payload: PrintableDocData = {
+      docTitle: 'SALES ORDER',
+      docNumber: o.order_number,
+      dateLabel: 'Order Date',
+      dateValue: formatDate(o.order_date),
+      expiryLabel: 'Expected On',
+      expiryValue: o.expected_date,
+      partyLabel: 'Customer',
+      partyName: customer?.company_name || customer?.name || (o as any).customer?.name || '—',
+      partyAddress: custAddress || undefined,
+      partyGstin: customer?.gstin || undefined,
+      partyPhone: customer?.phone || undefined,
+      partyPlaceOfSupply: customer?.state || activeBusiness?.state,
+      status: o.status,
+      items: (items || []) as SalesOrderItem[],
+      subtotal: Number(o.subtotal),
+      taxableAmount: Number(o.taxable_amount),
+      cgst: Number(o.cgst_amount),
+      sgst: Number(o.sgst_amount),
+      igst: Number(o.igst_amount),
+      roundOff: Number(o.round_off) || 0,
+      grandTotal: Number(o.grand_total),
+      notes: o.notes,
+    };
+
+    return { items: (items || []) as SalesOrderItem[], customer, payload };
+  };
+
+  const handlePreviewOrder = async (o: SalesOrder) => {
+    if (!activeBusiness) return;
+    setPreviewLoadingId(o.id);
+    try {
+      const { items, customer } = await fetchOrderDetails(o);
+      const universal = mapSalesOrderToUniversalData(
+        activeBusiness,
+        { ...o, customer },
+        items
+      );
+      setPreviewData(universal);
+    } catch (err: any) {
+      toast(err?.message || 'Failed to load order preview', 'error');
+    } finally {
+      setPreviewLoadingId(null);
+    }
+  };
+
+  const printOrder = async (o: SalesOrder) => {
     if (!activeBusiness) return;
     setPrintingId(o.id);
     try {
-      const { data: items, error } = await supabase
-        .from('sales_order_items')
-        .select('*')
-        .eq('sales_order_id', o.id)
-        .order('created_at');
-      if (error) throw error;
-      const payload: Omit<PrintableDocData, 'businessName' | 'gstin'> = {
-        docTitle: 'SALES ORDER',
-        docNumber: o.order_number,
-        dateLabel: 'Order Date',
-        dateValue: formatDate(o.order_date),
-        expiryLabel: 'Expected On',
-        expiryValue: o.expected_date,
-        partyLabel: 'Customer',
-        partyName: o.customer?.name || '—',
-        status: o.status,
-        items: (items || []) as SalesOrderItem[],
-        subtotal: Number(o.subtotal),
-        taxableAmount: Number(o.taxable_amount),
-        cgst: Number(o.cgst_amount),
-        sgst: Number(o.sgst_amount),
-        igst: Number(o.igst_amount),
-        roundOff: Number(o.round_off) || 0,
-        grandTotal: Number(o.grand_total),
-        notes: o.notes,
-      };
+      const { payload } = await fetchOrderDetails(o);
       await renderDocSheetToPdf(activeBusiness, payload);
     } catch (err: any) {
       toast(err?.message || 'PDF export failed', 'error');
@@ -103,14 +151,35 @@ export function SalesOrdersPage() {
     }
   };
 
+  const handleDownloadPdf = async (o: SalesOrder) => {
+    if (!activeBusiness) return;
+    setDownloadingId(o.id);
+    try {
+      const { payload } = await fetchOrderDetails(o);
+      const blob = await renderDocSheetToPdfBlob(activeBusiness, payload);
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `${o.order_number}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      toast(err?.message || 'Download PDF failed', 'error');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['sales-orders', activeBusiness?.id, { q: list.debouncedSearch, page: list.page, pageSize: list.pageSize }],
     queryFn: async () => {
-      if (!activeBusiness) return { rows: [] as (SalesOrder & { customer: { name: string } | null })[], total: 0 };
+      if (!activeBusiness) return { rows: [] as (SalesOrder & { customer: { name: string; phone?: string | null; company_name?: string | null; address?: string | null; city?: string | null; state?: string | null; pincode?: string | null; gstin?: string | null } | null })[], total: 0 };
       const pattern = list.debouncedSearch ? likePattern(list.debouncedSearch) : null;
       const run = async (withJoin: boolean) => {
         let q = supabase.from('sales_orders')
-          .select((withJoin ? '*, customer:customers(name)' : '*') as string, { count: 'exact' })
+          .select((withJoin ? '*, customer:customers(name,phone,company_name,address,city,state,pincode,gstin)' : '*') as string, { count: 'exact' })
           .eq('business_id', activeBusiness.id);
         if (pattern) {
           q = withJoin
@@ -220,8 +289,42 @@ export function SalesOrdersPage() {
                     <td className="px-4 py-3"><span className={`badge ${statusStyles[o.status]}`}>{o.status}</span></td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5" title={LOCKED[o.status] ? `Terminal state (${o.status}) — immutable` : undefined}>
-                        <Button size="sm" variant="ghost" loading={printingId === o.id} onClick={() => printOrder(o)} title="Download this sales order as PDF">
-                          <Printer className="h-3 w-3" /> PDF
+                        {!LOCKED[o.status] && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => navigate(`/app/sales-orders/${o.id}/edit`)}
+                            title="Edit Sales Order"
+                          >
+                            <Pencil className="h-3 w-3" /> Edit
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={previewLoadingId === o.id}
+                          onClick={() => handlePreviewOrder(o)}
+                          title="Preview Sales Order in GST format"
+                        >
+                          <Eye className="h-3 w-3" /> View
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={printingId === o.id}
+                          onClick={() => printOrder(o)}
+                          title="Print Sales Order in clean A4 format"
+                        >
+                          <Printer className="h-3 w-3" /> Print
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={downloadingId === o.id}
+                          onClick={() => handleDownloadPdf(o)}
+                          title="Download Sales Order as PDF"
+                        >
+                          <Download className="h-3 w-3" /> PDF
                         </Button>
                         {LOCKED[o.status] && (
                           <span className="inline-flex items-center gap-1 text-xs text-secondary-400"><Lock className="h-3 w-3" /> Locked</span>
@@ -293,6 +396,13 @@ export function SalesOrdersPage() {
           <Button onClick={() => convertMutation.mutate()} loading={convertMutation.isPending} disabled={!convertDate}>Convert</Button>
         </div>
       </Modal>
+
+      <OrderInvoiceModal
+        open={!!previewData}
+        onClose={() => setPreviewData(null)}
+        data={previewData}
+        title={previewData ? `Sales Order - ${previewData.documentNumber}` : 'Sales Order'}
+      />
     </div>
   );
 }

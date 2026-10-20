@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -25,15 +25,23 @@ export function ExpenseCreatePage() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(emptyForm);
 
-  const { data: categories } = useQuery({
+  const categoriesQ = useQuery({
     queryKey: ['expense-categories', activeBusiness?.id],
     queryFn: async () => {
       if (!activeBusiness) return [];
-      const { data } = await supabase.from('expense_categories').select('*').eq('business_id', activeBusiness.id).order('name');
+      const { data, error } = await supabase.from('expense_categories').select('*').eq('business_id', activeBusiness.id).order('name');
+      if (error) throw error;
       return data as ExpenseCategory[];
     },
     enabled: !!activeBusiness,
   });
+  const categories = categoriesQ.data;
+
+  // No silent async failures: surface category read errors.
+  const categoryError = categoriesQ.error;
+  useEffect(() => {
+    if (categoryError) toast(`Failed to load categories: ${(categoryError as Error).message}`, 'error');
+  }, [categoryError, toast]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {

@@ -667,7 +667,7 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
                     {formatCurrency(item.total_amount, sym)}
                   </div>
                   <div className="py-2 flex justify-center">
-                    <button onClick={() => removeItem(idx)} className="p-1 text-secondary-400 hover:text-error-600 transition-colors" title="Remove row">
+                    <button onClick={() => removeItem(idx)} className="p-1 text-secondary-500 dark:text-secondary-400 hover:text-error-600 transition-colors" title="Remove row" aria-label="Remove row">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>

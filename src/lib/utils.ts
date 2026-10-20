@@ -98,6 +98,7 @@ function threeDigits(n: number): string {
 }
 
 export function numberToWordsIndian(num: number): string {
+  const prefix = num < 0 ? 'Negative ' : '';
   const n = Math.floor(Math.abs(num));
   if (n === 0) return 'Zero';
   const crore = Math.floor(n / 10000000);
@@ -109,7 +110,7 @@ export function numberToWordsIndian(num: number): string {
   if (lakh) parts.push(`${twoDigits(lakh)} Lakh`);
   if (thousand) parts.push(`${twoDigits(thousand)} Thousand`);
   if (hundred) parts.push(threeDigits(hundred));
-  return parts.join(' ');
+  return prefix + parts.join(' ');
 }
 
 export function amountInWordsIndian(amount: number): string {
