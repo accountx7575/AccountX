@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
 import { FileMinus, Plus, Lock } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -51,11 +52,12 @@ export function CreditNotesPage() {
   const queryClient = useQueryClient();
 
   const list = usePagedList();
+  const [statusFilter, setStatusFilter] = useState('all');
   const [confirmAction, setConfirmAction] = useState<{ kind: 'cancel' | 'apply'; note: CreditNote } | null>(null);
   const [refundMethod, setRefundMethod] = useState('bank');
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['credit-notes', activeBusiness?.id, { q: list.debouncedSearch, page: list.page, pageSize: list.pageSize }],
+    queryKey: ['credit-notes', activeBusiness?.id, { q: list.debouncedSearch, page: list.page, pageSize: list.pageSize, status: statusFilter }],
     queryFn: async () => {
       if (!activeBusiness) return { rows: [] as (CreditNote & { customer: { name: string } | null; invoice: { invoice_number: string } | null })[], total: 0 };
       const pattern = list.debouncedSearch ? likePattern(list.debouncedSearch) : null;
@@ -63,6 +65,7 @@ export function CreditNotesPage() {
         let q = supabase.from('credit_notes')
           .select((withJoin ? '*, customer:customers(name), invoice:sales_invoices(invoice_number)' : '*') as string, { count: 'exact' })
           .eq('business_id', activeBusiness.id);
+        if (statusFilter !== 'all') q = q.eq('status', statusFilter);
         if (pattern) {
           q = withJoin
             ? q.or(`credit_note_number.ilike."${pattern}",customer.name.ilike."${pattern}",invoice.invoice_number.ilike."${pattern}"`)
@@ -123,10 +126,41 @@ export function CreditNotesPage() {
         <ListToolbar
           search={list.search}
           onSearchChange={list.setSearch}
-          placeholder="Search by number, customer, invoice..."
+          placeholder="Search by number, customer, or invoice reference..."
           pageSize={list.pageSize}
           onPageSizeChange={list.setPageSize}
-        />
+          leftAddon={(
+            <div className="max-w-[15rem] min-w-[9.5rem]">
+              <select
+                className="input h-9 py-0 leading-none text-sm cursor-pointer"
+                aria-label="Credit note status filter"
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); list.setPage(1); }}
+              >
+                <option value="all">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="issued">Issued</option>
+                <option value="applied">Applied</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          )}
+        >
+          <DataTableExportToolbar
+            columns={[
+              { key: 'number', label: 'Note No.', getText: (n) => n.credit_note_number },
+              { key: 'date', label: 'Date', getText: (n) => formatDate(n.date) },
+              { key: 'customer', label: 'Customer', getText: (n) => n.customer?.name || '—' },
+              { key: 'invoice', label: 'Against Invoice', getText: (n) => n.invoice?.invoice_number || '—' },
+              { key: 'total', label: 'Total', getText: (n) => formatCurrency(n.grand_total, activeBusiness?.currency_symbol) },
+              { key: 'status', label: 'Status', getText: (n) => n.status },
+            ]}
+            rows={notes}
+            filename="credit-notes"
+            title="Credit Notes"
+            storageKey="credit-notes"
+          />
+        </ListToolbar>
         {isError ? (
           <ErrorState title="Unable to load credit notes." onRetry={() => refetch()} />
         ) : isLoading ? (

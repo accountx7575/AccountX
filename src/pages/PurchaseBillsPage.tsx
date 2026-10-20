@@ -6,12 +6,13 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast, sanitizeUserFacingError } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { ShoppingCart, Plus, Search, Ban, CheckCircle2, Trash2, Printer, Pencil, FileDown, Share2, Mail } from 'lucide-react';
+import { ShoppingCart, Plus, Ban, CheckCircle2, Trash2, Printer, Pencil, FileDown, Share2, Mail } from 'lucide-react';
+import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { usePagedList } from '@/hooks/usePagedList';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
 import { openWhatsAppShare } from '@/lib/whatsapp';
@@ -25,7 +26,7 @@ export function PurchaseBillsPage() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState('');
+  const list = usePagedList();
   const [cancelTarget, setCancelTarget] = useState<PurchaseBill | null>(null);
   const [discardTarget, setDiscardTarget] = useState<PurchaseBill | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseBill | null>(null);
@@ -165,10 +166,15 @@ export function PurchaseBillsPage() {
   const filtered = useMemo(() => {
     if (!bills) return [];
     return bills.filter((b) =>
-      b.bill_number.toLowerCase().includes(search.toLowerCase()) ||
-      (b.supplier?.name || '').toLowerCase().includes(search.toLowerCase())
+      b.bill_number.toLowerCase().includes(list.search.toLowerCase()) ||
+      (b.supplier?.name || '').toLowerCase().includes(list.search.toLowerCase())
     );
-  }, [bills, search]);
+  }, [bills, list.search]);
+
+  const pageRows = useMemo(
+    () => filtered.slice(list.from, list.from + list.pageSize),
+    [filtered, list.from, list.pageSize],
+  );
 
   const statusVariant = (status: string) => {
     const map: Record<string, 'success' | 'warning' | 'error' | 'info' | 'neutral'> = {
@@ -304,12 +310,13 @@ export function PurchaseBillsPage() {
       />
 
       <div className="card">
-        <div className="p-4 border-b border-secondary-200 dark:border-secondary-800 flex flex-wrap items-center gap-3">
-          <div className="relative max-w-sm flex-1 min-w-[12rem]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400" />
-            <Input placeholder="Search purchase bills..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
-          </div>
-          <div className="sm:ml-auto">
+        <ListToolbar
+          search={list.search}
+          onSearchChange={list.setSearch}
+          placeholder="Search purchase bills..."
+          pageSize={list.pageSize}
+          onPageSizeChange={list.setPageSize}
+        >
             <DataTableExportToolbar
               columns={[
                 { key: 'number', label: 'Bill No.', getText: (b) => b.bill_number },
@@ -324,8 +331,7 @@ export function PurchaseBillsPage() {
               title="Purchase Bills"
               storageKey="purchase-bills"
             />
-          </div>
-        </div>
+        </ListToolbar>
 
         {isError ? (
           <ErrorState title="Unable to load purchase bills." onRetry={() => refetch()} />
@@ -343,7 +349,7 @@ export function PurchaseBillsPage() {
         ) : (
           <>
           <div className="md:hidden space-y-3">
-            {filtered.map((b) => (
+            {pageRows.map((b) => (
               <div key={b.id} className="card-solid p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -382,7 +388,7 @@ export function PurchaseBillsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((b) => (
+                {pageRows.map((b) => (
                   <tr key={b.id} className="border-b border-secondary-100 dark:border-secondary-800/50 table-row-hover">
                     <td className="px-4 py-3">
                       <p className="font-medium text-secondary-600 dark:text-secondary-300">{b.bill_number}</p>
@@ -489,6 +495,14 @@ export function PurchaseBillsPage() {
           </div>
           </>
         )}
+        <ListPagination
+          page={list.page}
+          onPageChange={list.setPage}
+          pageSize={list.pageSize}
+          from={list.from}
+          total={filtered.length}
+          isLoading={isLoading}
+        />
       </div>
 
       <ConfirmDialog

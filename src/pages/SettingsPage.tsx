@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Input, FormField, Select, Textarea } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Settings, Building2, Save, Database, Download, FileDown, Users, UserMinus, ShieldCheck, PenTool, Upload, X, BellRing, ArrowRight } from 'lucide-react';
+import { Settings, Building2, Save, Database, Download, FileDown, FileText, Users, UserMinus, ShieldCheck, PenTool, Upload, X, BellRing, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { CommunicationCenterPanel } from '@/components/settings/CommunicationCenterPanel';
 import { MessageTemplatesPanel } from '@/components/settings/MessageTemplatesPanel';
@@ -22,6 +22,15 @@ import { BulkImportPanel } from '@/components/settings/BulkImportPanel';
 import { PageMotion } from '@/lib/motion';
 import { formatDate } from '@/lib/utils';
 import { DRIFTED_EXTRAS_KEYS, isMissingColumnError, stashBusinessExtras, type BusinessExtras } from '@/lib/businessExtras';
+import { saveTncCache, readTncCache, STANDARD_TNC_DEFAULTS, type TncDocType } from '@/lib/tncDefaults';
+
+const TNC_PAYLOAD_KEYS = ['tnc_invoice', 'tnc_quotation', 'tnc_sales_order', 'tnc_purchase'] as const;
+const tncMirrorFromPayload = (payload: Record<string, unknown>): Record<TncDocType, string | null> => ({
+  sales_invoice: (payload.tnc_invoice as string | null) || null,
+  quotation: (payload.tnc_quotation as string | null) || null,
+  sales_order: (payload.tnc_sales_order as string | null) || null,
+  purchase: (payload.tnc_purchase as string | null) || null,
+});
 
 const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Chandigarh','Puducherry'];
 
@@ -160,6 +169,10 @@ export function SettingsPage() {
     bank_account_number: '',
     bank_ifsc_code: '',
     account_name: '',
+    tnc_invoice: '',
+    tnc_quotation: '',
+    tnc_sales_order: '',
+    tnc_purchase: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState<string | null>(null);
@@ -197,6 +210,10 @@ export function SettingsPage() {
         bank_account_number: activeBusiness.bank_account_number || '',
         bank_ifsc_code: activeBusiness.bank_ifsc_code || '',
         account_name: activeBusiness.account_name || '',
+        tnc_invoice: activeBusiness.tnc_invoice || readTncCache(activeBusiness.id, 'sales_invoice') || '',
+        tnc_quotation: activeBusiness.tnc_quotation || readTncCache(activeBusiness.id, 'quotation') || '',
+        tnc_sales_order: activeBusiness.tnc_sales_order || readTncCache(activeBusiness.id, 'sales_order') || '',
+        tnc_purchase: activeBusiness.tnc_purchase || readTncCache(activeBusiness.id, 'purchase') || '',
       });
     }
   }, [activeBusiness]);
@@ -396,10 +413,16 @@ export function SettingsPage() {
         bank_account_number: form.bank_account_number || null,
         bank_ifsc_code: form.bank_ifsc_code.toUpperCase() || null,
         account_name: form.account_name.trim() || null,
+        tnc_invoice: form.tnc_invoice.trim() || null,
+        tnc_quotation: form.tnc_quotation.trim() || null,
+        tnc_sales_order: form.tnc_sales_order.trim() || null,
+        tnc_purchase: form.tnc_purchase.trim() || null,
       };
       if (form.gst_registered) {
         payload.gstin = form.gstin || null;
       }
+      // Mirror on save: localStorage fallback while the businesses T&C columns migration is pending.
+      saveTncCache(activeBusiness.id, tncMirrorFromPayload(payload));
       const tryUpdate = async (p: Record<string, unknown>) => {
         const { error } = await supabase.from('businesses').update(p).eq('id', activeBusiness.id);
         return error;
@@ -411,6 +434,11 @@ export function SettingsPage() {
       const retry: Record<string, unknown> = { ...payload };
       const stashed: string[] = [];
       const stash: BusinessExtras = {};
+      for (const k of TNC_PAYLOAD_KEYS) {
+        const v = retry[k];
+        delete retry[k];
+        if (typeof v === 'string' && v) stashed.push(k);
+      }
       for (const k of DRIFTED_EXTRAS_KEYS) {
         if (k in retry) {
           const v = retry[k];
@@ -638,6 +666,7 @@ export function SettingsPage() {
           { id: 'settings-gst', label: 'GST & Tax' },
           { id: 'settings-signature', label: 'Signature & Stamp' },
           { id: 'settings-invoice', label: 'Invoice' },
+          { id: 'settings-tnc', label: 'Document T&C' },
           { id: 'settings-comms', label: 'Notifications & Comms' },
           { id: 'settings-export', label: 'Data Export' },
           { id: 'settings-import', label: 'Bulk Import' },
@@ -963,6 +992,34 @@ export function SettingsPage() {
             </FormField>
             <FormField label="Currency Symbol"><Input value={form.currency_symbol} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, currency_symbol: e.target.value })} placeholder={sym} /></FormField>
           </div>
+        </div>
+
+        {/* Document Terms & Conditions */}
+        <div id="settings-tnc" className="card p-6 scroll-mt-28">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="rounded-lg bg-accent-100 dark:bg-accent-900/30 p-2.5">
+              <FileText className="h-5 w-5 text-accent-600 dark:text-accent-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">Document Terms &amp; Conditions</h3>
+              <p className="text-xs text-secondary-500 dark:text-secondary-400">Defaults printed when a record has no stored terms</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="Invoices">
+              <Textarea rows={3} className="min-h-[72px]" value={form.tnc_invoice} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_invoice: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.sales_invoice} />
+            </FormField>
+            <FormField label="Quotations">
+              <Textarea rows={3} className="min-h-[72px]" value={form.tnc_quotation} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_quotation: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.quotation} />
+            </FormField>
+            <FormField label="Sales Orders">
+              <Textarea rows={3} className="min-h-[72px]" value={form.tnc_sales_order} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_sales_order: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.sales_order} />
+            </FormField>
+            <FormField label="Purchase Documents">
+              <Textarea rows={3} className="min-h-[72px]" value={form.tnc_purchase} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_purchase: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.purchase} />
+            </FormField>
+          </div>
+          <p className="mt-3 text-[11px] text-secondary-500 dark:text-secondary-400">Leave empty to use standard defaults. Saved with business settings; while the database migration is pending these are stored on this device only.</p>
         </div>
 
         {/* Data Export */}

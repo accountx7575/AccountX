@@ -6,13 +6,14 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
-import { FileText, Plus, Search, Ban, Eye, Pencil, CheckCircle2, Trash2, Printer, FileDown, FileSpreadsheet, Share2, Truck } from 'lucide-react';
+import { FileText, Plus, Ban, Eye, Pencil, CheckCircle2, Trash2, Printer, FileDown, FileSpreadsheet, Share2, Truck } from 'lucide-react';
+import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { usePagedList } from '@/hooks/usePagedList';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { fetchInvoiceItems, renderInvoiceSheetToPdf, exportInvoiceExcel } from '@/lib/invoiceExport';
 import { EWayBillModal } from '@/components/eway/EWayBillModal';
@@ -50,7 +51,7 @@ export function SalesInvoicesPage() {
   };
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState('');
+  const list = usePagedList();
   const [statusFilter, setStatusFilter] = useState('all');
   const [cancelTarget, setCancelTarget] = useState<SalesInvoice | null>(null);
   const [discardTarget, setDiscardTarget] = useState<SalesInvoice | null>(null);
@@ -74,12 +75,17 @@ export function SalesInvoicesPage() {
   const filtered = useMemo(() => {
     if (!invoices) return [];
     return invoices.filter((inv) => {
-      const matchSearch = inv.invoice_number.toLowerCase().includes(search.toLowerCase()) ||
-        (inv.customer?.name || '').toLowerCase().includes(search.toLowerCase());
+      const matchSearch = inv.invoice_number.toLowerCase().includes(list.search.toLowerCase()) ||
+        (inv.customer?.name || '').toLowerCase().includes(list.search.toLowerCase());
       const matchStatus = statusFilter === 'all' || inv.status === statusFilter;
       return matchSearch && matchStatus;
     });
-  }, [invoices, search, statusFilter]);
+  }, [invoices, list.search, statusFilter]);
+
+  const pageRows = useMemo(
+    () => filtered.slice(list.from, list.from + list.pageSize),
+    [filtered, list.from, list.pageSize],
+  );
 
   const statusVariant = (status: string) => {
     const map: Record<string, 'success' | 'warning' | 'error' | 'info' | 'neutral'> = {
@@ -172,20 +178,30 @@ export function SalesInvoicesPage() {
       />
 
       <div className="card">
-        <div className="p-4 border-b border-secondary-200 dark:border-secondary-800 flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400" />
-            <Input placeholder="Search invoices..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
-          </div>
-          <select className="input max-w-36" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="all">All Status</option>
-            <option value="draft">Draft</option>
-            <option value="issued">Issued</option>
-            <option value="partially_paid">Partial</option>
-            <option value="paid">Paid</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-          <div className="sm:ml-auto">
+        <ListToolbar
+          search={list.search}
+          onSearchChange={list.setSearch}
+          placeholder="Search invoices..."
+          pageSize={list.pageSize}
+          onPageSizeChange={list.setPageSize}
+          leftAddon={(
+            <div className="max-w-36">
+              <select
+                className="input h-9 py-0 leading-none text-sm cursor-pointer"
+                aria-label="Invoice status filter"
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); list.setPage(1); }}
+              >
+                <option value="all">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="issued">Issued</option>
+                <option value="partially_paid">Partial</option>
+                <option value="paid">Paid</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          )}
+        >
             <DataTableExportToolbar
               columns={[
                 { key: 'number', label: 'Invoice No.', getText: (inv) => inv.invoice_number },
@@ -200,8 +216,7 @@ export function SalesInvoicesPage() {
               title="Sales Invoices"
               storageKey="sales-invoices"
             />
-          </div>
-        </div>
+        </ListToolbar>
 
         {isError ? (
           <ErrorState title="Unable to load sales invoices." onRetry={() => refetch()} />
@@ -219,7 +234,7 @@ export function SalesInvoicesPage() {
         ) : (
           <>
           <div className="md:hidden space-y-3">
-            {filtered.map((inv) => (
+            {pageRows.map((inv) => (
               <div key={inv.id} className="card-solid p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -258,7 +273,7 @@ export function SalesInvoicesPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((inv) => (
+                {pageRows.map((inv) => (
                   <tr key={inv.id} className="border-b border-secondary-100 dark:border-secondary-800/50 table-row-hover">
                     <td className="px-4 py-3">
                       <p className="font-medium text-primary-600 dark:text-primary-400">{inv.invoice_number}</p>
@@ -379,6 +394,14 @@ export function SalesInvoicesPage() {
           </div>
           </>
         )}
+        <ListPagination
+          page={list.page}
+          onPageChange={list.setPage}
+          pageSize={list.pageSize}
+          from={list.from}
+          total={filtered.length}
+          isLoading={isLoading}
+        />
       </div>
 
       <ConfirmDialog

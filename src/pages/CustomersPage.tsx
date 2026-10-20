@@ -114,8 +114,7 @@ export function CustomersPage() {
           placeholder="Search by name, phone, GSTIN..."
           pageSize={list.pageSize}
           onPageSizeChange={list.setPageSize}
-        />
-        <div className="px-4 py-2 border-b border-secondary-200 dark:border-secondary-800 flex justify-end">
+        >
           <DataTableExportToolbar
             columns={[
               { key: 'name', label: 'Customer', getText: (c) => c.name },
@@ -132,8 +131,7 @@ export function CustomersPage() {
             title="Customers"
             storageKey="customers"
           />
-        </div>
-
+        </ListToolbar>
         {isError ? (
           <ErrorState title="Unable to load customers." onRetry={() => refetch()} />
         ) : isLoading ? (

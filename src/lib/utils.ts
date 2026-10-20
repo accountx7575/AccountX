@@ -5,13 +5,44 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(amount: number | null | undefined, currency = '₹'): string {
-  if (amount === null || amount === undefined || isNaN(amount)) return `${currency}0.00`;
+export type FormatCurrencyOptions = {
+  noSymbol?: boolean;
+  trimZeroDecimals?: boolean;
+};
+
+export function formatCurrency(
+  amount: number | null | undefined,
+  currency = '₹',
+  opts: FormatCurrencyOptions = {}
+): string {
+  const noSymbol = opts.noSymbol === true || currency === '';
+  if (amount === null || amount === undefined || isNaN(amount)) {
+    return `${noSymbol ? '' : currency}${opts.trimZeroDecimals ? '0' : '0.00'}`;
+  }
+  const hasPaise = Math.round(Number(amount) * 100) % 100 !== 0;
   const formatted = new Intl.NumberFormat('en-IN', {
-    minimumFractionDigits: 2,
+    minimumFractionDigits: opts.trimZeroDecimals && !hasPaise ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(Number(amount));
-  return `${currency}${formatted}`;
+  return `${noSymbol ? '' : currency}${formatted}`;
+}
+
+/** Document address block: line 1 = street address, line 2 = 'City, State - Pincode'. */
+export function formatAddress2Line(loc: {
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+}): string {
+  const line1 = String(loc.address || '').trim();
+  const line2Base = [loc.city, loc.state].map((v) => String(v || '').trim()).filter(Boolean).join(', ');
+  const line2Full = loc.pincode
+    ? line2Base
+      ? `${line2Base} - ${String(loc.pincode).trim()}`
+      : String(loc.pincode).trim()
+    : line2Base;
+  const alreadyIncluded = !!(line1 && line2Full && line1.toLowerCase().includes(line2Full.toLowerCase()));
+  return [line1, !alreadyIncluded && line2Full ? line2Full : ''].filter(Boolean).join('\n');
 }
 
 export function formatNumber(num: number | null | undefined): string {

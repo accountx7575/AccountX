@@ -1,7 +1,8 @@
+import type { ReactNode } from 'react';
 import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 
-const PAGE_SIZES = [10, 25, 50];
+const PAGE_SIZES = [10, 25, 50, 100];
 
 export function ListToolbar(props: {
   search: string;
@@ -9,30 +10,37 @@ export function ListToolbar(props: {
   placeholder: string;
   pageSize: number;
   onPageSizeChange: (n: number) => void;
+  children?: ReactNode;
+  leftAddon?: ReactNode;
+  pageSizes?: number[];
 }) {
   return (
-    <div className="p-4 border-b border-secondary-200 dark:border-secondary-800 flex flex-wrap items-center gap-3">
-      <div className="relative max-w-sm flex-1 min-w-[12rem]">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400" />
-        <Input
-          placeholder={props.placeholder}
-          value={props.search}
-          onChange={(e) => props.onSearchChange(e.target.value)}
-          className="pl-10"
-        />
+    <div className="p-4 border-b border-secondary-200 dark:border-secondary-800 flex flex-col md:flex-row md:items-center md:justify-between gap-3 w-full py-2.5">
+      <div className="flex items-center gap-2 flex-1 max-w-md">
+        <div className="relative flex-1 min-w-0 w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400" />
+          <Input
+            placeholder={props.placeholder}
+            value={props.search}
+            onChange={(e) => props.onSearchChange(e.target.value)}
+            className="pl-10 h-9 py-0 leading-none"
+          />
+        </div>
+        {props.leftAddon}
       </div>
-      <label className="flex items-center gap-2 text-xs text-secondary-500 dark:text-secondary-400 ml-auto">
-        Rows
+      <div className="flex flex-wrap items-center gap-1.5 justify-end">
+        {props.children}
         <select
-          className="input w-auto py-1.5 text-xs"
+          className="input h-9 py-0 leading-none w-auto min-w-[85px] max-w-[100px] px-2.5 rounded-md text-xs"
+          aria-label="Rows per page"
           value={props.pageSize}
           onChange={(e) => props.onPageSizeChange(Number(e.target.value))}
         >
-          {PAGE_SIZES.map((n) => (
-            <option key={n} value={n}>{n}</option>
+          {(props.pageSizes || PAGE_SIZES).map((n) => (
+            <option key={n} value={n}>{n} / page</option>
           ))}
         </select>
-      </label>
+      </div>
     </div>
   );
 }

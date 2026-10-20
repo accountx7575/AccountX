@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { Receipt, Plus } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Expense } from '@/types/db';
@@ -46,10 +47,24 @@ export function ExpensesPage() {
         <ListToolbar
           search={list.search}
           onSearchChange={list.setSearch}
-          placeholder="Search by number or description..."
+          placeholder="Search by number, description, or reference..."
           pageSize={list.pageSize}
           onPageSizeChange={list.setPageSize}
-        />
+        >
+          <DataTableExportToolbar
+            columns={[
+              { key: 'number', label: 'Expense No.', getText: (e) => e.expense_number },
+              { key: 'category', label: 'Category', getText: (e) => e.category?.name || '—' },
+              { key: 'description', label: 'Description', getText: (e) => e.description || '—' },
+              { key: 'date', label: 'Date', getText: (e) => formatDate(e.date) },
+              { key: 'amount', label: 'Amount', getText: (e) => formatCurrency(e.amount, activeBusiness?.currency_symbol) },
+            ]}
+            rows={expenses}
+            filename="expenses"
+            title="Expenses"
+            storageKey="expenses"
+          />
+        </ListToolbar>
         {isError ? (
           <ErrorState title="Unable to load expenses." onRetry={() => refetch()} />
         ) : isLoading ? (

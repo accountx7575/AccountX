@@ -66,7 +66,7 @@ export function QuotationCreatePage() {
   const [quoteDate, setQuoteDate] = useState(getLocalTodayDate());
   const [quoteTime, setQuoteTime] = useState(getLocalNowTime());
   const [expiryDate, setExpiryDate] = useState('');
-  const [terms, setTerms] = useState('');
+  const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<LineItem[]>([{ ...emptyLine }]);
 
   const { data: customers } = useQuery({
@@ -136,7 +136,7 @@ export function QuotationCreatePage() {
       );
     }
     setExpiryDate(quote.expiry_date || '');
-    setTerms(quote.terms || quote.notes || '');
+    setNotes(quote.notes || quote.terms || '');
 
     if (items.length > 0) {
       setLines(
@@ -221,8 +221,7 @@ export function QuotationCreatePage() {
             sgst_amount: totals.sgst,
             igst_amount: totals.igst,
             grand_total: totals.grandTotal,
-            terms: terms.trim() || null,
-            notes: terms.trim() || null,
+            notes: notes.trim() || null,
           })
           .eq('id', targetQuoteId)
           .eq('business_id', activeBusiness.id);
@@ -269,8 +268,7 @@ export function QuotationCreatePage() {
               round_off: 0,
               grand_total: totals.grandTotal,
               status: 'draft',
-              terms: terms.trim() || null,
-              notes: terms.trim() || null,
+              notes: notes.trim() || null,
               created_by: userData?.user?.id || null,
             })
             .select('id')
@@ -356,9 +354,9 @@ export function QuotationCreatePage() {
       />
 
       <div className="card p-6">
-        <FormSection title="Party & Dates">
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <FormField label="Customer" required className="sm:col-span-2">
+        <FormSection>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <FormField label="Customer" required>
               <select
                 className="input"
                 value={customerId}
@@ -384,7 +382,7 @@ export function QuotationCreatePage() {
                 className="figure"
               />
             </FormField>
-            <FormField label="Valid Until" className="sm:col-span-2">
+            <FormField label="Valid Until">
               <DatePicker value={expiryDate} onChange={setExpiryDate} />
             </FormField>
           </div>
@@ -395,19 +393,7 @@ export function QuotationCreatePage() {
           )}
         </FormSection>
 
-        <FormSection
-          title="Lines"
-          description="Select a product from the list to autofill rate and tax."
-          actions={
-            <button
-              type="button"
-              onClick={() => setLines((prev) => [...prev, { ...emptyLine }])}
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline"
-            >
-              + Add line
-            </button>
-          }
-        >
+        <FormSection>
           <div className="border border-secondary-200 dark:border-secondary-800 rounded-lg divide-y divide-secondary-100 dark:divide-secondary-800/50">
             {lines.map((l, idx) => {
               const lineTotal = roundTo2(l.quantity * l.rate);
@@ -498,23 +484,32 @@ export function QuotationCreatePage() {
                 </div>
               );
             })}
+            <div className="p-3">
+              <button
+                type="button"
+                onClick={() => setLines((prev) => [...prev, { ...emptyLine }])}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-dashed border-secondary-300 dark:border-secondary-700 text-sm font-medium text-primary-600 dark:text-primary-400 hover:border-primary-400 hover:bg-primary-50/60 dark:hover:bg-primary-900/20 transition-colors"
+              >
+                Add another product
+              </button>
+            </div>
           </div>
         </FormSection>
 
-        <FormSection title="Terms & Totals">
-          <div className="flex flex-col sm:flex-row gap-6">
-            <div className="flex-1">
-              <FormField label="Terms">
+        <FormSection>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            <div>
+              <FormField label="Notes">
                 <Textarea
-                  rows={2}
-                  value={terms}
-                  onChange={(e) => setTerms(e.target.value)}
-                  placeholder="Payment terms, validity notes..."
+                  rows={3}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Delivery expectations, notes for the customer..."
                 />
               </FormField>
             </div>
             {totals.grandTotal > 0 && (
-              <div className="w-full sm:w-72 space-y-1 text-sm">
+              <div className="w-full md:w-80 md:ml-auto space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span className="text-secondary-500">Taxable</span>
                   <span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span>

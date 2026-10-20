@@ -1,4 +1,6 @@
 import { captureElementToPdfBlob } from '@/lib/pdfCapture';
+import { formatAddress2Line, formatCurrency } from '@/lib/utils';
+import { resolveTermsLines, tncLines, type TncDocType } from '@/lib/tncDefaults';
 
 export interface PrintableDocData {
   docTitle: string;
@@ -52,11 +54,7 @@ const esc = (value: unknown): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
-const money = (value: number): string =>
-  Number(value || 0).toLocaleString('en-IN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+const money = (value: number): string => formatCurrency(value, '', { trimZeroDecimals: true });
 
 function numberToWordsINR(num: number): string {
   const a = [
@@ -135,8 +133,13 @@ export function generateOmStyleHtml(
   const businessName =
     business?.legal_name || business?.name || 'AVADH BORING COMPANY';
   const businessAddress =
-    business?.address ||
-    'AN-25, LAUTA BAGH, AZAD NAGR, NAWABGANJ, Barabanki, Uttar Pradesh, 225001';
+    formatAddress2Line({
+      address: business?.address,
+      city: business?.city,
+      state: business?.state,
+      pincode: business?.pincode,
+    }) ||
+    'AN-25, LAUTA BAGH, AZAD NAGR, NAWABGANJ\nBarabanki, Uttar Pradesh - 225001';
   const gstin = business?.gstin || '09AABPQ3096M1Z5';
   const pan =
     business?.pan ||
@@ -160,6 +163,7 @@ export function generateOmStyleHtml(
     (doc.docTitle || '').toUpperCase().includes('PURCHASE');
 
   const titleUpper = (doc.docTitle || '').toUpperCase();
+
   let headerTitle = 'TAX INVOICE / RECEIPT';
   let subTitle = 'Original for Recipient';
   if (titleUpper.includes('QUOTE') || titleUpper.includes('ESTIMATE')) {
@@ -197,37 +201,45 @@ export function generateOmStyleHtml(
       return `
           <tr>
             <td class="ctr" style="color: #94a3b8;">${index + 1}</td>
-            <td><strong>${esc(item.product_name)}</strong></td>
+            <td><strong>${esc(item.product_name || 'Custom item')}</strong></td>
             <td class="ctr">${esc(item.hsn_sac || '—')}</td>
             <td class="ctr"><strong>${esc(item.quantity)} ${esc(item.unit || '')}</strong></td>
-            <td class="num">₹ ${money(item.rate)}</td>
+            <td class="num">${money(item.rate)}</td>
             <td class="ctr">${esc(item.tax_rate)}%</td>
-            <td class="num"><strong>₹ ${money(item.total_amount)}</strong></td>
+            <td class="num"><strong>${money(item.total_amount)}</strong></td>
           </tr>`;
     })
     .join('');
 
-  const termsList = (
-    doc.terms ||
-    (isPurchase
+  const tncDocType: TncDocType = isPurchase
+    ? 'purchase'
+    : titleUpper.includes('QUOTE') || titleUpper.includes('ESTIMATE')
+      ? 'quotation'
+      : titleUpper.includes('SALES ORDER')
+        ? 'sales_order'
+        : 'sales_invoice';
+
+  // Record terms win; empty falls back to business defaults (db > localStorage);
+  // nothing configured keeps the built-in legacy terms, byte-identical.
+  const resolvedTncLines = resolveTermsLines(tncDocType, business, doc.terms);
+  const legacyTncLines = tncLines(
+    isPurchase
       ? `Goods received are subject to inspection and acceptance as per the purchase order.
 Please quote this bill number in all future correspondence.
 This is a computer-generated document and requires no physical signature.`
       : `Goods once sold will not be taken back or exchanged.
 All payments to be drawn in favour of "${businessName}".
 Redemption / delivery is subject to agreed operational timelines.
-This is a computer-generated document and requires no physical signature.`)
-  )
-    .split('\n')
-    .map((t) => t.trim())
-    .filter(Boolean)
+This is a computer-generated document and requires no physical signature.`
+  );
+  const termsList = (resolvedTncLines.length ? resolvedTncLines : legacyTncLines)
     .map((t) => `<li>${esc(t)}</li>`)
     .join('');
 
   const taxBreakRows = isInterState
-    ? `<tr><td class="t-lbl">Integrated GST (IGST)</td><td class="t-val">₹ ${money(doc.igst)}</td></tr>`
-    : `<tr><td class="t-lbl">Central GST (CGST)</td><td class="t-val">₹ ${money(doc.cgst)}</td></tr>
-       <tr><td class="t-lbl">State GST (SGST)</td><td class="t-val">₹ ${money(doc.sgst)}</td></tr>`;
+    ? `<tr><td class="t-lbl">Integrated GST (IGST)</td><td class="t-val">${money(doc.igst)}</td></tr>`
+    : `<tr><td class="t-lbl">Central GST (CGST)</td><td class="t-val">${money(doc.cgst)}</td></tr>
+       <tr><td class="t-lbl">State GST (SGST)</td><td class="t-val">${money(doc.sgst)}</td></tr>`;
 
   return `
 <!DOCTYPE html>
@@ -266,7 +278,7 @@ This is a computer-generated document and requires no physical signature.`)
   .party-name { font-size: 12.5px; font-weight: 900; color: #0f172a; margin: 0; }
   .gstin-pill { display: inline-flex; align-items: center; padding: 1.5px 5px; border-radius: 4px; background: #f5f3ff; border: 1px solid #ddd6fe; color: #5b21b6; font-family: ui-monospace, monospace; font-size: 9px; font-weight: 700; margin-top: 1mm; }
   .pan-pill { display: inline-flex; align-items: center; padding: 1.5px 5px; border-radius: 4px; background: #f1f5f9; color: #334155; font-family: ui-monospace, monospace; font-size: 9px; font-weight: 600; margin-left: 1.5mm; }
-  .party-desc { font-size: 10px; color: #475569; margin: 0.8mm 0 0; }
+  .party-desc { font-size: 10px; color: #475569; margin: 0.8mm 0 0; white-space: pre-line; }
 
   .table-wrap { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 4mm; }
   table.items { width: 100%; border-collapse: collapse; text-align: left; font-size: 10.5px; }
@@ -329,7 +341,6 @@ This is a computer-generated document and requires no physical signature.`)
         ${doc.expiryValue ? `<div><span class="lbl">${esc(doc.expiryLabel || 'Valid Until')}:</span> <strong>${esc(doc.expiryValue)}</strong></div>` : ''}
         <div><span class="lbl">Place of Supply:</span> <strong>${esc(doc.partyPlaceOfSupply || state)}</strong></div>
         <div><span class="lbl">Supply Type:</span> <strong>${isInterState ? 'Inter-State (IGST)' : 'Intra-State (CGST + SGST)'}</strong></div>
-        <div><span class="lbl">Reverse Charge:</span> <strong>No</strong></div>
       </div>
     </div>
   </div>
@@ -404,9 +415,9 @@ This is a computer-generated document and requires no physical signature.`)
     <div>
       <table class="tot-table">
         <tbody>
-          <tr><td class="t-lbl">Subtotal (Taxable Value):</td><td class="t-val">₹ ${money(doc.subtotal)}</td></tr>
+          <tr><td class="t-lbl">Subtotal (Taxable Value):</td><td class="t-val">${money(doc.subtotal)}</td></tr>
           ${taxBreakRows}
-          ${doc.roundOff ? `<tr><td class="t-lbl">Round Off:</td><td class="t-val">₹ ${money(doc.roundOff)}</td></tr>` : ''}
+          ${doc.roundOff ? `<tr><td class="t-lbl">Round Off:</td><td class="t-val">${money(doc.roundOff)}</td></tr>` : ''}
         </tbody>
       </table>
       <div class="grand-pill">

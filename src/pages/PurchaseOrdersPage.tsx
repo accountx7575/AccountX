@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { Input, FormField } from '@/components/ui/Input';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
 import { PackageCheck, Plus, Lock, CheckCircle2, PackageOpen, Printer, Eye, Download, Pencil } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -55,6 +56,7 @@ export function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
 
   const list = usePagedList();
+  const [statusFilter, setStatusFilter] = useState('all');
   const [confirmCancel, setConfirmCancel] = useState<PurchaseOrder | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -174,7 +176,7 @@ export function PurchaseOrdersPage() {
   };
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['purchase-orders', activeBusiness?.id, { q: list.debouncedSearch, page: list.page, pageSize: list.pageSize }],
+    queryKey: ['purchase-orders', activeBusiness?.id, { q: list.debouncedSearch, page: list.page, pageSize: list.pageSize, status: statusFilter }],
     queryFn: async () => {
       if (!activeBusiness) return { rows: [] as (PurchaseOrder & { supplier: { name: string; phone?: string | null; company_name?: string | null; address?: string | null; city?: string | null; state?: string | null; pincode?: string | null; gstin?: string | null } | null })[], total: 0 };
       const pattern = list.debouncedSearch ? likePattern(list.debouncedSearch) : null;
@@ -182,6 +184,7 @@ export function PurchaseOrdersPage() {
         let q = supabase.from('purchase_orders')
           .select((withJoin ? '*, supplier:suppliers(name,phone,company_name,address,city,state,pincode,gstin)' : '*') as string, { count: 'exact' })
           .eq('business_id', activeBusiness.id);
+        if (statusFilter !== 'all') q = q.eq('status', statusFilter);
         if (pattern) {
           q = withJoin
             ? q.or(`order_number.ilike."${pattern}",supplier.name.ilike."${pattern}"`)
@@ -256,10 +259,41 @@ export function PurchaseOrdersPage() {
         <ListToolbar
           search={list.search}
           onSearchChange={list.setSearch}
-          placeholder="Search by number or supplier..."
+          placeholder="Search by number, supplier, or reference..."
           pageSize={list.pageSize}
           onPageSizeChange={list.setPageSize}
-        />
+          leftAddon={(
+            <div className="max-w-[15rem] min-w-[9.5rem]">
+              <select
+                className="input h-9 py-0 leading-none text-sm cursor-pointer"
+                aria-label="Purchase order status filter"
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); list.setPage(1); }}
+              >
+                <option value="all">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="received">Received</option>
+                <option value="converted">Converted</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          )}
+        >
+          <DataTableExportToolbar
+            columns={[
+              { key: 'number', label: 'Order No.', getText: (o) => o.order_number },
+              { key: 'date', label: 'Date', getText: (o) => formatDate(o.order_date) },
+              { key: 'supplier', label: 'Supplier', getText: (o) => o.supplier?.name || '—' },
+              { key: 'total', label: 'Total', getText: (o) => formatCurrency(o.grand_total, activeBusiness?.currency_symbol) },
+              { key: 'status', label: 'Status', getText: (o) => o.status },
+            ]}
+            rows={orders}
+            filename="purchase-orders"
+            title="Purchase Orders"
+            storageKey="purchase-orders"
+          />
+        </ListToolbar>
         {isError ? (
           <ErrorState title="Unable to load purchase orders." onRetry={() => refetch()} />
         ) : isLoading ? (

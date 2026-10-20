@@ -29,6 +29,10 @@ export type Business = {
   bank_account_number?: string | null;
   bank_ifsc_code?: string | null;
   account_name?: string | null;
+  tnc_invoice?: string | null;
+  tnc_quotation?: string | null;
+  tnc_sales_order?: string | null;
+  tnc_purchase?: string | null;
   created_at: string;
   updated_at: string;
 };

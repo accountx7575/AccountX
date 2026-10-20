@@ -11,7 +11,7 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { Input, FormField } from '@/components/ui/Input';
-import { ListPagination } from '@/components/ui/ListControls';
+import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { usePagedList } from '@/hooks/usePagedList';
 import {
@@ -404,57 +404,33 @@ export function QuotationsPage() {
       />
 
       <div className="card">
-        <div className="p-4 border-b border-secondary-200 dark:border-secondary-800 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-1 items-center gap-2 max-w-lg">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400" />
-              <input
-                type="text"
-                value={list.search}
+        <ListToolbar
+          search={list.search}
+          onSearchChange={list.setSearch}
+          placeholder="Search by number or customer..."
+          pageSize={list.pageSize}
+          onPageSizeChange={list.setPageSize}
+          leftAddon={(
+            <div className="max-w-[15rem]">
+              <select
+                className="input h-9 py-0 leading-none text-sm cursor-pointer w-36"
+                value={statusFilter}
                 onChange={(e) => {
-                  list.setSearch(e.target.value);
+                  setStatusFilter(e.target.value);
                   list.setPage(1);
                 }}
-                placeholder="Search by number or customer..."
-                className="input pl-9 text-sm w-full"
-              />
+              >
+                <option value="all">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="sent">Sent</option>
+                <option value="accepted">Accepted</option>
+                <option value="rejected">Rejected</option>
+                <option value="converted">Converted</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
             </div>
-
-            <select
-              className="input text-sm w-36 cursor-pointer font-medium"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                list.setPage(1);
-              }}
-            >
-              <option value="all">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="sent">Sent</option>
-              <option value="accepted">Accepted</option>
-              <option value="rejected">Rejected</option>
-              <option value="converted">Converted</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-secondary-500">Rows:</span>
-            <select
-              className="input text-sm w-20 cursor-pointer"
-              value={list.pageSize}
-              onChange={(e) => {
-                list.setPageSize(Number(e.target.value));
-                list.setPage(1);
-              }}
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-          </div>
-
+          )}
+        >
           <DataTableExportToolbar
             columns={[
               { key: 'number', label: 'Quote No.', getText: (q) => q.quotation_number },
@@ -468,7 +444,7 @@ export function QuotationsPage() {
             title="Quotations"
             storageKey="quotations"
           />
-        </div>
+        </ListToolbar>
 
         {isError ? (
           <ErrorState title="Unable to load quotations." onRetry={() => refetch()} />

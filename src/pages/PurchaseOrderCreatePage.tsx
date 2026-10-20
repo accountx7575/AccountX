@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -9,9 +9,10 @@ import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/common/DatePicker';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Plus } from 'lucide-react';
 import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
+import { computeDocLine } from '@/lib/payloads';
 import type { Supplier, Product, PurchaseOrder, PurchaseOrderItem } from '@/types/db';
 
 type LineItem = {
@@ -19,12 +20,18 @@ type LineItem = {
   product_name: string;
   quantity: number;
   rate: number;
+  discount_amount: number;
   tax_rate: number;
   unit?: string;
   hsn_sac?: string | null;
+  taxable_amount: number;
+  total_amount: number;
 };
 
-const emptyLine: LineItem = { product_id: null, product_name: '', quantity: 1, rate: 0, tax_rate: 18 };
+const emptyLine: LineItem = { product_id: null, product_name: '', quantity: 1, rate: 0, discount_amount: 0, tax_rate: 18, taxable_amount: 0, total_amount: 0 };
+
+// Mirror of SalesInvoiceCreatePage's slab picker (single house widget).
+const GST_SLABS = [0, 0.25, 3, 5, 12, 18, 28];
 
 // Terminal-state orders are immutable — mirrors PurchaseOrdersPage LOCKED semantics.
 const EDITABLE_STATUSES = new Set(['draft', 'confirmed']);
@@ -77,6 +84,9 @@ export function PurchaseOrderCreatePage() {
       setLines(loaded.items.map((it) => ({
         product_id: it.product_id,
         product_name: it.product_name,
+        discount_amount: 0,
+        taxable_amount: Number(it.taxable_amount || 0),
+        total_amount: Number(it.total_amount || 0),
         quantity: Number(it.quantity),
         rate: Number(it.rate),
         tax_rate: Number(it.tax_rate),
@@ -113,22 +123,67 @@ export function PurchaseOrderCreatePage() {
   }, [activeBusiness, suppliers, supplierId]);
 
   const updateLine = (idx: number, updates: Partial<LineItem>) => {
-    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...updates } : l)));
+    setLines((prev) => {
+      const next = [...prev];
+      const cur = { ...next[idx], ...updates };
+      const line = computeDocLine({
+        quantity: cur.quantity,
+        rate: cur.rate,
+        discount_amount: cur.discount_amount,
+        tax_rate: cur.tax_rate,
+        isInterState,
+      });
+      next[idx] = {
+        ...cur,
+        taxable_amount: line.taxable_amount,
+        total_amount: line.total_amount,
+      };
+      return next;
+    });
+  };
+
+  const rowRefs = useRef<(HTMLSelectElement | null)[]>([]);
+
+  const addLine = () => {
+    setLines((prev) => [...prev, { ...emptyLine }]);
+    setTimeout(() => {
+      const last = rowRefs.current[lines.length];
+      last?.focus();
+    }, 50);
+  };
+
+  const removeLine = (idx: number) => {
+    setLines((prev) => {
+      if (prev.length <= 1) {
+        return [{ ...emptyLine }];
+      }
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
+
+  const handleRowKeyDown = (e: KeyboardEvent<HTMLSelectElement>, idx: number) => {
+    if (e.key === 'Tab' && !e.shiftKey && idx === lines.length - 1) {
+      if (lines[idx].product_id) {
+        e.preventDefault();
+        addLine();
+      }
+    }
   };
 
   const totals = useMemo(() => {
-    let taxableAmount = 0, cgst = 0, sgst = 0, igst = 0;
+    let subtotal = 0, totalDiscount = 0, taxableAmount = 0, cgst = 0, sgst = 0, igst = 0;
     for (const l of lines) {
-      if (!l.product_name.trim() || l.quantity <= 0) continue;
-      const taxable = roundTo2(l.quantity * l.rate);
-      const gst = calculateGstAmounts(taxable, l.tax_rate, isInterState);
-      taxableAmount += taxable;
-      cgst += gst.cgst_amount;
-      sgst += gst.sgst_amount;
-      igst += gst.igst_amount;
+      if (!l.product_name.trim()) continue;
+      const line = computeDocLine({ quantity: l.quantity, rate: l.rate, discount_amount: l.discount_amount, tax_rate: l.tax_rate, isInterState });
+      subtotal += line.gross_amount;
+      totalDiscount += roundTo2(l.discount_amount);
+      taxableAmount += line.taxable_amount;
+      cgst += line.cgst_amount;
+      sgst += line.sgst_amount;
+      igst += line.igst_amount;
     }
     const grandTotal = roundTo2(roundTo2(taxableAmount) + roundTo2(cgst + sgst + igst));
-    return { taxableAmount: roundTo2(taxableAmount), cgst: roundTo2(cgst), sgst: roundTo2(sgst), igst: roundTo2(igst), grandTotal };
+    return { subtotal: roundTo2(subtotal), totalDiscount: roundTo2(totalDiscount), taxableAmount: roundTo2(taxableAmount), cgst: roundTo2(cgst), sgst: roundTo2(sgst), igst: roundTo2(igst), grandTotal };
   }, [lines, isInterState]);
 
   const createMutation = useMutation({
@@ -152,8 +207,8 @@ export function PurchaseOrderCreatePage() {
             supplier_id: supplierId,
             order_date: orderDate,
             expected_date: expectedDate || null,
-            subtotal: totals.taxableAmount,
-            discount_amount: 0,
+            subtotal: totals.subtotal,
+            discount_amount: totals.totalDiscount,
             taxable_amount: totals.taxableAmount,
             cgst_amount: totals.cgst,
             sgst_amount: totals.sgst,
@@ -174,8 +229,7 @@ export function PurchaseOrderCreatePage() {
         if (clearError) throw clearError;
 
         const rows = validLines.map((l) => {
-          const taxable = roundTo2(l.quantity * l.rate);
-          const gst = calculateGstAmounts(taxable, l.tax_rate, isInterState);
+          const line = computeDocLine({ quantity: l.quantity, rate: l.rate, discount_amount: l.discount_amount, tax_rate: l.tax_rate, isInterState });
           return {
             business_id: activeBusiness.id,
             purchase_order_id: editId!,
@@ -186,8 +240,8 @@ export function PurchaseOrderCreatePage() {
             unit: l.unit || 'PCS',
             rate: l.rate,
             tax_rate: l.tax_rate,
-            taxable_amount: taxable,
-            total_amount: roundTo2(taxable + gst.total_tax),
+            taxable_amount: line.taxable_amount,
+            total_amount: line.total_amount,
           };
         });
         const { error: itemsError } = await supabase.from('purchase_order_items').insert(rows);
@@ -216,8 +270,8 @@ export function PurchaseOrderCreatePage() {
           supplier_id: supplierId,
           order_date: orderDate,
           expected_date: expectedDate || null,
-          subtotal: totals.taxableAmount,
-          discount_amount: 0,
+          subtotal: totals.subtotal,
+          discount_amount: totals.totalDiscount,
           taxable_amount: totals.taxableAmount,
           cgst_amount: totals.cgst,
           sgst_amount: totals.sgst,
@@ -245,8 +299,7 @@ export function PurchaseOrderCreatePage() {
 
       const { error: itemsError } = await supabase.from('purchase_order_items').insert(
         validLines.map((l) => {
-          const taxable = roundTo2(l.quantity * l.rate);
-          const gst = calculateGstAmounts(taxable, l.tax_rate, isInterState);
+          const line = computeDocLine({ quantity: l.quantity, rate: l.rate, discount_amount: l.discount_amount, tax_rate: l.tax_rate, isInterState });
           return {
             business_id: activeBusiness.id,
             purchase_order_id: createdOrder.id,
@@ -257,8 +310,8 @@ export function PurchaseOrderCreatePage() {
             unit: l.unit || 'PCS',
             rate: l.rate,
             tax_rate: l.tax_rate,
-            taxable_amount: taxable,
-            total_amount: roundTo2(taxable + gst.total_tax),
+            taxable_amount: line.taxable_amount,
+            total_amount: line.total_amount,
           };
         })
       );
@@ -295,7 +348,7 @@ export function PurchaseOrderCreatePage() {
       />
 
       <div className="card p-6">
-        <FormSection title="Party & Dates">
+        <FormSection>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <FormField label="Supplier" required>
               <select className="input" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
@@ -313,55 +366,172 @@ export function PurchaseOrderCreatePage() {
           )}
         </FormSection>
 
-        <FormSection
-          title="Lines"
-          description="Pick a product to autofill rate and tax"
-          actions={
-            <button onClick={() => setLines((prev) => [...prev, { ...emptyLine }])}
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline">+ Add line</button>
-          }
-        >
-          <div className="border border-secondary-200 dark:border-secondary-800 rounded-lg divide-y divide-secondary-100 dark:divide-secondary-800/50">
-            {lines.map((l, idx) => (
-              <div key={idx} className="p-3 space-y-2">
-                <Input placeholder="Product / description" value={l.product_name}
-                  onChange={(e) => updateLine(idx, { product_name: e.target.value })} />
-                <div className="grid grid-cols-[1fr_5rem_5rem_5rem_2rem] gap-2 items-center">
-                  <select className="input text-xs" value={l.product_id ?? ''}
-                    onChange={(e) => {
-                      const p = products?.find((pr) => pr.id === e.target.value);
-                      if (p) updateLine(idx, { product_id: p.id, product_name: p.name, rate: p.purchase_price, tax_rate: p.tax_rate });
-                      else updateLine(idx, { product_id: null });
-                    }}>
-                    <option value="">Custom line…</option>
-                    {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                  <Input type="number" min={0} value={String(l.quantity)} onChange={(e) => updateLine(idx, { quantity: parseFloat(e.target.value) || 0 })} className="text-right figure" title="Qty" />
-                  <Input type="number" min={0} value={String(l.rate)} onChange={(e) => updateLine(idx, { rate: parseFloat(e.target.value) || 0 })} className="text-right figure" title="Rate" />
-                  <Input type="number" min={0} max={28} value={String(l.tax_rate)} onChange={(e) => updateLine(idx, { tax_rate: parseFloat(e.target.value) || 0 })} className="text-right figure" title="Tax %" />
-                  <button onClick={() => setLines((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)))}
-                    className="text-xs text-secondary-400 hover:text-error-600" title="Remove line">×</button>
-                </div>
+        <FormSection>
+          <div className="overflow-x-auto scrollbar-thin -mx-2">
+            <div className="min-w-[900px] px-2 text-sm">
+              <div className="grid grid-cols-[1fr_100px_70px_100px_80px_90px_100px_40px] items-center gap-2 border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
+                <div className="py-2 font-medium text-left">Product</div>
+                <div className="py-2 font-medium text-center">HSN/SAC</div>
+                <div className="py-2 font-medium text-center">Qty</div>
+                <div className="py-2 font-medium text-center">Rate</div>
+                <div className="py-2 font-medium text-center">Disc</div>
+                <div className="py-2 font-medium text-center">Tax %</div>
+                <div className="py-2 font-medium text-right">Amount</div>
+                <div />
               </div>
-            ))}
+              {lines.map((l, idx) => (
+                <div key={idx} className="grid grid-cols-[1fr_100px_70px_100px_80px_90px_100px_40px] items-center gap-2 border-b border-secondary-100 dark:border-secondary-800/50">
+                  <div className="py-2 min-w-0">
+                    <select
+                      ref={(el) => { rowRefs.current[idx] = el; }}
+                      value={l.product_id || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const p = products?.find((pr) => pr.id === val);
+                        if (p) {
+                          updateLine(idx, {
+                            product_id: p.id,
+                            product_name: p.name,
+                            hsn_sac: p.hsn_sac || '',
+                            unit: p.unit || 'PCS',
+                            rate: p.purchase_price || 0,
+                            tax_rate: p.tax_rate || 0,
+                          });
+                        } else {
+                          updateLine(idx, { product_id: null, product_name: '', hsn_sac: '', unit: 'PCS', rate: 0, tax_rate: 0 });
+                        }
+                      }}
+                      onKeyDown={(e) => handleRowKeyDown(e, idx)}
+                      className="input w-full"
+                    >
+                      <option value="">-- Select Product --</option>
+                      {products?.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} {p.purchase_price ? `(₹${p.purchase_price})` : ''} {p.current_stock !== undefined ? `[Stock: ${p.current_stock}]` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="py-2">
+                    <Input
+                      value={l.hsn_sac || ''}
+                      onChange={(e) => updateLine(idx, { hsn_sac: e.target.value })}
+                      placeholder="HSN/SAC"
+                      className="text-center font-mono text-xs"
+                    />
+                  </div>
+                  <div className="py-2">
+                    <Input
+                      type="number"
+                      min="1"
+                      value={l.quantity}
+                      onChange={(e) => updateLine(idx, { quantity: Math.max(1, Number(e.target.value)) })}
+                      className="text-center font-mono"
+                    />
+                  </div>
+                  <div className="py-2">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={l.rate}
+                      onChange={(e) => updateLine(idx, { rate: Math.max(0, Number(e.target.value)) })}
+                      className="text-center font-mono"
+                    />
+                  </div>
+                  <div className="py-2">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={l.discount_amount}
+                      onChange={(e) => updateLine(idx, { discount_amount: Math.max(0, Number(e.target.value)) })}
+                      className="text-center font-mono"
+                    />
+                  </div>
+                  <div className="py-2">
+                    <select
+                      value={l.tax_rate}
+                      onChange={(e) => updateLine(idx, { tax_rate: Number(e.target.value) })}
+                      className="input w-full text-center font-mono text-xs px-1"
+                    >
+                      {Array.from(new Set([...GST_SLABS, Number(l.tax_rate)])).sort((a, b) => a - b).map((r) => (
+                        <option key={r} value={r}>{r}%</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="py-2 text-right font-medium figure">
+                    {formatCurrency(l.total_amount, sym)}
+                  </div>
+                  <div className="py-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => removeLine(idx)}
+                      className="p-1 rounded text-secondary-500 dark:text-secondary-400 hover:text-error-500 hover:bg-error-50 dark:hover:bg-error-900/20"
+                      title="Delete item"
+                      aria-label="Delete item"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div className="py-3">
+                <button
+                  type="button"
+                  onClick={addLine}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-dashed border-secondary-300 dark:border-secondary-700 text-sm font-medium text-primary-600 dark:text-primary-400 hover:border-primary-400 hover:bg-primary-50/60 dark:hover:bg-primary-900/20 transition-colors"
+                >
+                  <Plus className="h-4 w-4" /> Add another product
+                </button>
+              </div>
+            </div>
           </div>
           <p className="text-xs text-secondary-400 mt-3">Numbered via the document service on save. Orders have no stock impact until fulfilled.</p>
         </FormSection>
 
-        <FormSection title="Notes & Totals">
-          <div className="flex flex-col sm:flex-row gap-6">
-            <div className="flex-1">
-              <FormField label="Notes"><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Delivery expectations, special instructions..." /></FormField>
+        <FormSection>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            <div>
+              <FormField label="Notes"><Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Delivery expectations, special instructions..." /></FormField>
             </div>
-            {totals.grandTotal > 0 && (
-              <div className="w-full sm:w-72 space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-secondary-500">Taxable</span><span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span></div>
-                <div className="flex justify-between"><span className="text-secondary-500">CGST</span><span className="figure">{formatCurrency(totals.cgst, sym)}</span></div>
-                <div className="flex justify-between"><span className="text-secondary-500">SGST</span><span className="figure">{formatCurrency(totals.sgst, sym)}</span></div>
-                {totals.igst > 0 && <div className="flex justify-between"><span className="text-secondary-500">IGST</span><span className="figure">{formatCurrency(totals.igst, sym)}</span></div>}
-                <div className="flex justify-between font-semibold border-t border-secondary-200 dark:border-secondary-700 pt-1 mt-1"><span>Total</span><span className="figure text-primary-600 dark:text-primary-400">{formatCurrency(totals.grandTotal, sym)}</span></div>
+            <div className="w-full sm:w-80 md:ml-auto space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-secondary-500">Subtotal</span>
+                <span className="figure">{formatCurrency(totals.subtotal, sym)}</span>
               </div>
-            )}
+              {totals.totalDiscount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-secondary-500">Discount</span>
+                  <span className="figure text-error-600 dark:text-error-400">-{formatCurrency(totals.totalDiscount, sym)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm">
+                <span className="text-secondary-500">Taxable Amount</span>
+                <span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span>
+              </div>
+              {isInterState ? (
+                <div className="flex justify-between text-sm">
+                  <span className="text-secondary-500">IGST</span>
+                  <span className="figure">{formatCurrency(totals.igst, sym)}</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-secondary-500">CGST</span>
+                    <span className="figure">{formatCurrency(totals.cgst, sym)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-secondary-500">SGST</span>
+                    <span className="figure">{formatCurrency(totals.sgst, sym)}</span>
+                  </div>
+                </>
+              )}
+              <div className="border-t border-secondary-200 dark:border-secondary-800 pt-2 flex justify-between items-baseline">
+                <span className="text-base font-semibold">Grand Total</span>
+                <span className="figure text-xl font-bold text-primary-600 dark:text-primary-400">{formatCurrency(totals.grandTotal, sym)}</span>
+              </div>
+            </div>
           </div>
         </FormSection>
       </div>

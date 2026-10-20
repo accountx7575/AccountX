@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Modal } from '@/components/ui/Modal';
 import { Input, FormField } from '@/components/ui/Input';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
 import { ShoppingCart, Plus, Lock, CheckCircle2, Printer, Eye, Download, Pencil } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -55,6 +56,7 @@ export function SalesOrdersPage() {
   const queryClient = useQueryClient();
 
   const list = usePagedList();
+  const [statusFilter, setStatusFilter] = useState('all');
   const [confirmCancel, setConfirmCancel] = useState<SalesOrder | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -104,7 +106,7 @@ export function SalesOrdersPage() {
       partyAddress: custAddress || undefined,
       partyGstin: customer?.gstin || undefined,
       partyPhone: customer?.phone || undefined,
-      partyPlaceOfSupply: customer?.state || activeBusiness?.state,
+      partyPlaceOfSupply: customer?.state || activeBusiness?.state || undefined,
       status: o.status,
       items: (items || []) as SalesOrderItem[],
       subtotal: Number(o.subtotal),
@@ -173,7 +175,7 @@ export function SalesOrdersPage() {
   };
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['sales-orders', activeBusiness?.id, { q: list.debouncedSearch, page: list.page, pageSize: list.pageSize }],
+    queryKey: ['sales-orders', activeBusiness?.id, { q: list.debouncedSearch, page: list.page, pageSize: list.pageSize, status: statusFilter }],
     queryFn: async () => {
       if (!activeBusiness) return { rows: [] as (SalesOrder & { customer: { name: string; phone?: string | null; company_name?: string | null; address?: string | null; city?: string | null; state?: string | null; pincode?: string | null; gstin?: string | null } | null })[], total: 0 };
       const pattern = list.debouncedSearch ? likePattern(list.debouncedSearch) : null;
@@ -181,6 +183,7 @@ export function SalesOrdersPage() {
         let q = supabase.from('sales_orders')
           .select((withJoin ? '*, customer:customers(name,phone,company_name,address,city,state,pincode,gstin)' : '*') as string, { count: 'exact' })
           .eq('business_id', activeBusiness.id);
+        if (statusFilter !== 'all') q = q.eq('status', statusFilter);
         if (pattern) {
           q = withJoin
             ? q.or(`order_number.ilike."${pattern}",customer.name.ilike."${pattern}"`)
@@ -255,10 +258,41 @@ export function SalesOrdersPage() {
         <ListToolbar
           search={list.search}
           onSearchChange={list.setSearch}
-          placeholder="Search by number or customer..."
+          placeholder="Search by number, customer, or reference..."
           pageSize={list.pageSize}
           onPageSizeChange={list.setPageSize}
-        />
+          leftAddon={(
+            <div className="max-w-[15rem] min-w-[9.5rem]">
+              <select
+                className="input h-9 py-0 leading-none text-sm cursor-pointer"
+                aria-label="Sales order status filter"
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); list.setPage(1); }}
+              >
+                <option value="all">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="fulfilled">Fulfilled</option>
+                <option value="converted">Converted</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          )}
+        >
+          <DataTableExportToolbar
+            columns={[
+              { key: 'number', label: 'Order No.', getText: (o) => o.order_number },
+              { key: 'date', label: 'Date', getText: (o) => formatDate(o.order_date) },
+              { key: 'customer', label: 'Customer', getText: (o) => o.customer?.name || '—' },
+              { key: 'total', label: 'Total', getText: (o) => formatCurrency(o.grand_total, activeBusiness?.currency_symbol) },
+              { key: 'status', label: 'Status', getText: (o) => o.status },
+            ]}
+            rows={orders}
+            filename="sales-orders"
+            title="Sales Orders"
+            storageKey="sales-orders"
+          />
+        </ListToolbar>
         {isError ? (
           <ErrorState title="Unable to load sales orders." onRetry={() => refetch()} />
         ) : isLoading ? (

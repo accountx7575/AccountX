@@ -1,6 +1,10 @@
 import React from 'react';
 import { Building2, ShieldCheck, Printer, Download } from 'lucide-react';
-import { amountInWordsIndian, formatDate } from '@/lib/utils';
+import { amountInWordsIndian, formatDate, formatCurrency, formatAddress2Line } from '@/lib/utils';
+import { resolveTermsLines } from '@/lib/tncDefaults';
+
+/** Bare INR cell value for doc tables/totals: '1,80,000' (no symbol, '.00' trimmed). */
+const cellINR = (v: number | null | undefined): string => formatCurrency(v, '', { trimZeroDecimals: true });
 
 export type DocumentType =
   | 'TAX_INVOICE'
@@ -206,24 +210,9 @@ export const UniversalDocumentTemplate: React.FC<{
   const buyerName = data.buyer.companyName || data.buyer.name || 'Party';
   const initial = (sellerName.charAt(0) || 'A').toUpperCase();
 
-  // Full formatted address
-  const sellerAddress = [
-    data.seller.address,
-    [data.seller.city, data.seller.state, data.seller.pincode]
-      .filter(Boolean)
-      .join(', '),
-  ]
-    .filter(Boolean)
-    .join('\n');
+  const sellerAddress = formatAddress2Line(data.seller);
 
-  const buyerAddress = [
-    data.buyer.address,
-    [data.buyer.city, data.buyer.state, data.buyer.pincode]
-      .filter(Boolean)
-      .join(', '),
-  ]
-    .filter(Boolean)
-    .join(', ');
+  const buyerAddress = formatAddress2Line(data.buyer);
 
   const amountWords =
     data.amountInWords || amountInWordsIndian(Number(data.grandTotal || 0));
@@ -347,12 +336,6 @@ export const UniversalDocumentTemplate: React.FC<{
                   (data.igstAmount && Number(data.igstAmount) > 0
                     ? 'Inter-State (IGST)'
                     : 'Intra-State (CGST + SGST)')}
-              </span>
-            </p>
-            <p>
-              <span className="text-slate-500 font-sans">Reverse Charge:</span>{' '}
-              <span className="text-slate-900 font-semibold">
-                {data.reverseCharge || 'No'}
               </span>
             </p>
           </div>
@@ -534,13 +517,13 @@ export const UniversalDocumentTemplate: React.FC<{
                   {item.quantity} {item.unit || ''}
                 </td>
                 <td className="px-3 py-3 text-right font-mono text-slate-700">
-                  ₹{Number(item.rate || 0).toFixed(2)}
+                  {cellINR(Number(item.rate || 0))}
                 </td>
                 <td className="px-3 py-3 text-center text-[10px] font-semibold text-slate-500">
                   {item.taxRate !== undefined ? `${item.taxRate}%` : '0%'}
                 </td>
                 <td className="px-3 py-3 text-right font-mono font-bold text-slate-900">
-                  ₹{Number(item.total || 0).toFixed(2)}
+                  {cellINR(Number(item.total || 0))}
                 </td>
               </tr>
             ))}
@@ -576,44 +559,45 @@ export const UniversalDocumentTemplate: React.FC<{
         <div className="space-y-2 font-mono text-xs">
           <div className="flex justify-between py-1 text-slate-600">
             <span className="font-sans">Subtotal (Taxable Value):</span>
-            <span>₹{Number(data.subtotal || 0).toFixed(2)}</span>
+            <span>{cellINR(Number(data.subtotal || 0))}</span>
           </div>
           {data.cgstAmount !== undefined && Number(data.cgstAmount) > 0 && (
             <div className="flex justify-between py-1 text-slate-500">
               <span className="font-sans">Central GST (CGST):</span>
-              <span>₹{Number(data.cgstAmount).toFixed(2)}</span>
+              <span>{cellINR(Number(data.cgstAmount))}</span>
             </div>
           )}
           {data.sgstAmount !== undefined && Number(data.sgstAmount) > 0 && (
             <div className="flex justify-between py-1 text-slate-500">
               <span className="font-sans">State GST (SGST):</span>
-              <span>₹{Number(data.sgstAmount).toFixed(2)}</span>
+              <span>{cellINR(Number(data.sgstAmount))}</span>
             </div>
           )}
           {data.igstAmount !== undefined && Number(data.igstAmount) > 0 && (
             <div className="flex justify-between py-1 text-slate-500">
               <span className="font-sans">Integrated GST (IGST):</span>
-              <span>₹{Number(data.igstAmount).toFixed(2)}</span>
+              <span>{cellINR(Number(data.igstAmount))}</span>
             </div>
           )}
           {data.discount !== undefined && Number(data.discount) > 0 ? (
             <div className="flex justify-between py-1 text-emerald-600 font-semibold">
               <span className="font-sans">Discount:</span>
-              <span>- ₹{Number(data.discount).toFixed(2)}</span>
+              <span>- {cellINR(Number(data.discount))}</span>
             </div>
           ) : null}
           {data.roundOff !== undefined && Number(data.roundOff) !== 0 ? (
             <div className="flex justify-between py-1 text-slate-500">
               <span className="font-sans">Round Off:</span>
               <span>
-                {Number(data.roundOff) > 0 ? '+ ' : '- '}₹{Math.abs(Number(data.roundOff)).toFixed(2)}
+                {Number(data.roundOff) > 0 ? '+ ' : '- '}
+                {cellINR(Math.abs(Number(data.roundOff)))}
               </span>
             </div>
           ) : null}
           <div className="flex justify-between items-center rounded-xl bg-violet-50/70 border border-violet-200 p-3 font-sans mt-3">
             <span className="text-sm font-black text-violet-950">Grand Total (INR):</span>
             <span className="text-base font-black font-mono text-violet-900">
-              ₹{Number(data.grandTotal || 0).toFixed(2)}
+              ₹{cellINR(Number(data.grandTotal || 0))}
             </span>
           </div>
         </div>
@@ -763,9 +747,7 @@ export function mapSalesInvoiceToUniversalData(
       accountNumber: business?.bank_account_number,
       ifsc: business?.bank_ifsc_code,
     },
-    terms: invoice.terms
-      ? invoice.terms.split('\n').map((t: string) => t.trim()).filter(Boolean)
-      : undefined,
+    terms: resolveTermsLines('sales_invoice', business, invoice.terms),
     notes: invoice.notes,
   };
 }
@@ -843,9 +825,7 @@ export function mapQuotationToUniversalData(
       accountNumber: business?.bank_account_number,
       ifsc: business?.bank_ifsc_code,
     },
-    terms: quote.terms
-      ? quote.terms.split('\n').map((t: string) => t.trim()).filter(Boolean)
-      : undefined,
+    terms: resolveTermsLines('quotation', business, quote.terms),
     notes: quote.notes,
   };
 }
@@ -898,7 +878,7 @@ export function mapSalesOrderToUniversalData(
     },
     items: items.map((it, idx) => ({
       id: it.id || String(idx),
-      name: it.product_name || 'Item',
+      name: it.product_name || 'Custom item',
       hsnSac: it.hsn_sac || '—',
       quantity: Number(it.quantity || 1),
       rate: Number(it.rate || 0),
@@ -1046,7 +1026,7 @@ export function mapPurchaseOrderToUniversalData(
     },
     items: items.map((it, idx) => ({
       id: it.id || String(idx),
-      name: it.product_name || 'Item',
+      name: it.product_name || 'Custom item',
       hsnSac: it.hsn_sac || '—',
       quantity: Number(it.quantity || 1),
       rate: Number(it.rate || 0),

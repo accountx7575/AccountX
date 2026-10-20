@@ -5,9 +5,11 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
+import { usePagedList } from '@/hooks/usePagedList';
 import { CreditCard, Plus, Search, Send } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { SendDialog } from '@/components/comms/SendDialog';
@@ -17,8 +19,8 @@ import type { Payment } from '@/types/db';
 export function PaymentsMadePage() {
   const { activeBusiness } = useAuth();
   const navigate = useNavigate();
-  const [search, setSearch] = useState('');
-  const [unappliedOnly, setUnappliedOnly] = useState(false);
+  const list = usePagedList();
+  const [statusFilter, setStatusFilter] = useState<'all' | 'unapplied'>('all');
   const [sendTarget, setSendTarget] = useState<(Payment & { supplier: { name: string; email: string | null; phone: string | null } | null }) | null>(null);
 
   const { data: payments, isLoading, isError, refetch } = useQuery({
@@ -35,28 +37,55 @@ export function PaymentsMadePage() {
   const filtered = useMemo(() => {
     if (!payments) return [];
     return payments.filter((p) => {
-      if (unappliedOnly && Math.round((p.amount - p.allocated_amount) * 100) <= 0) return false;
-      return p.payment_number.toLowerCase().includes(search.toLowerCase()) ||
-        (p.supplier?.name || '').toLowerCase().includes(search.toLowerCase());
+      if (statusFilter === 'unapplied' && Math.round((p.amount - p.allocated_amount) * 100) <= 0) return false;
+      return p.payment_number.toLowerCase().includes(list.search.toLowerCase()) ||
+        (p.supplier?.name || '').toLowerCase().includes(list.search.toLowerCase());
     });
-  }, [payments, search, unappliedOnly]);
+  }, [payments, list.search, statusFilter]);
 
+  const pageRows = filtered.slice(list.from, list.from + list.pageSize);
   return (
     <div>
       <PageHeader title="Payment Made" subtitle={`${filtered.length} payment${filtered.length !== 1 ? 's' : ''}`}
         actions={<Button onClick={() => navigate('/app/payments-made/new')}><Plus className="h-4 w-4" /> Make Payment</Button>} />
 
       <div className="card">
-        <div className="p-4 border-b border-secondary-200 dark:border-secondary-800 flex flex-wrap items-center gap-3">
-          <div className="relative max-w-sm flex-1 min-w-[12rem]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400" />
-            <Input placeholder="Search payments..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
-          </div>
-          <Button size="sm" variant={unappliedOnly ? 'primary' : 'secondary'} onClick={() => setUnappliedOnly(!unappliedOnly)}
-            title="Show only payments with an unallocated remainder">
-            Unapplied only
-          </Button>
-        </div>
+        <ListToolbar
+          search={list.search}
+          onSearchChange={list.setSearch}
+          placeholder="Search by number, supplier, or reference..."
+          pageSize={list.pageSize}
+          onPageSizeChange={list.setPageSize}
+          pageSizes={[10, 25, 50, 100]}
+          leftAddon={(
+            <div className="max-w-[15rem] min-w-[9.5rem]">
+              <select
+                className="input h-9 py-0 leading-none text-sm cursor-pointer"
+                aria-label="Payment status filter"
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value as 'all' | 'unapplied'); list.setPage(1); }}
+              >
+                <option value="all">All Payments</option>
+                <option value="unapplied">Unapplied</option>
+              </select>
+            </div>
+          )}
+        >
+          <DataTableExportToolbar
+            columns={[
+              { key: 'number', label: 'Payment No.', getText: (p) => p.payment_number },
+            { key: 'supplier', label: 'Supplier', getText: (p) => p.supplier?.name || '—' },
+            { key: 'date', label: 'Date', getText: (p) => formatDate(p.date) },
+            { key: 'method', label: 'Method', getText: (p) => p.payment_method },
+            { key: 'amount', label: 'Amount', getText: (p) => formatCurrency(p.amount, activeBusiness?.currency_symbol) },
+            { key: 'unapplied', label: 'Unapplied', getText: (p) => (Math.round((p.amount - p.allocated_amount) * 100) > 0 ? formatCurrency(Math.round((p.amount - p.allocated_amount) * 100) / 100, activeBusiness?.currency_symbol) : '—') },
+            ]}
+            rows={pageRows}
+            filename="payment_made"
+            title="Payments Made"
+            storageKey="payment_made"
+          />
+        </ListToolbar>
         {isError ? (
           <ErrorState title="Unable to load payments made." onRetry={() => refetch()} />
         ) : isLoading ? (
@@ -77,7 +106,7 @@ export function PaymentsMadePage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => (
+                {pageRows.map((p) => (
                   <tr key={p.id} className="border-b border-secondary-100 dark:border-secondary-800/50 table-row-hover">
                     <td className="px-4 py-3 font-medium text-error-600 dark:text-error-400">{p.payment_number}</td>
                     <td className="px-4 py-3 text-secondary-900 dark:text-secondary-100">{p.supplier?.name || '—'}</td>
@@ -104,6 +133,14 @@ export function PaymentsMadePage() {
             </table>
           </div>
         )}
+
+        <ListPagination
+          page={list.page}
+          onPageChange={list.setPage}
+          pageSize={list.pageSize}
+          from={list.from}
+          total={filtered.length}
+        />
       </div>
 
       {/* Supplier-side payment advice. doc_type 'payment_made' + seeded

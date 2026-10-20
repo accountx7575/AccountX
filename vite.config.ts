@@ -32,7 +32,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['lucide-react'],
-    include: ['react', 'react-dom', 'react-router-dom', '@supabase/supabase-js', 'zod', 'tanstack-query'],
+    include: ['react', 'react-dom', 'react-router-dom', '@supabase/supabase-js', '@tanstack/react-query'],
   },
   server: {
     watch: {

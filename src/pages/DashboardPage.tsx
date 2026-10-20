@@ -196,6 +196,7 @@ export function DashboardPage() {
     },
     enabled: billSupplierIds.size > 0,
   });
+  const supplierNames = supplierNamesQ.data;
 
   // No silent async failures: surface read errors from the supporting feeds.
   const feedError = recentInvoicesQ.error || recentBillsQ.error || recentPaymentsQ.error || lowStockFeedQ.error || customerNamesQ.error || supplierNamesQ.error;

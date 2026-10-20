@@ -568,7 +568,7 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
       />
 
       <div className="card p-6">
-        <FormSection title="Party & Dates" description="Who you're buying from and when payment is due">
+        <FormSection>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="label">Supplier <span className="text-error-500">*</span></label>
@@ -598,13 +598,6 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
         </FormSection>
 
         <FormSection
-          title="Line Items"
-          description="Products or services received"
-          actions={
-            <button type="button" onClick={addItem} className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline">
-              <Plus className="h-4 w-4" /> Add Item
-            </button>
-          }
         >
           <div className="overflow-x-auto md:overflow-visible scrollbar-thin -mx-2">
             <div className="min-w-[900px] px-2 text-sm">
@@ -673,47 +666,55 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
                   </div>
                 </div>
               ))}
+              <div className="py-3">
+                <button
+                  type="button"
+                  onClick={addItem}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-dashed border-secondary-300 dark:border-secondary-700 text-sm font-medium text-primary-600 dark:text-primary-400 hover:border-primary-400 hover:bg-primary-50/60 dark:hover:bg-primary-900/20 transition-colors"
+                >
+                  <Plus className="h-4 w-4" /> Add another product
+                </button>
+              </div>
             </div>
           </div>
         </FormSection>
 
-        <FormSection title="Payment, Notes & Terms">
-          <div className="space-y-4">
-            <div className="max-w-48">
-              <label className="label">Payment Method</label>
-              <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-                <option value="">—</option>
-                <option value="cash">Cash</option>
-                <option value="upi">UPI</option>
-                <option value="bank">Bank Transfer</option>
-                <option value="cheque">Cheque</option>
-                <option value="credit">Credit / Pending</option>
-              </select>
+        <FormSection>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            <div className="space-y-4">
+              <div>
+                <label className="label">Payment Method</label>
+                <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                  <option value="">—</option>
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="bank">Bank Transfer</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="credit">Credit / Pending</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Notes</label>
+                <textarea className="input resize-none" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes for this bill..." />
+              </div>
             </div>
-            <div>
-              <label className="label">Notes</label>
-              <textarea className="input resize-none max-w-xl" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes for this bill..." />
-            </div>
-          </div>
-        </FormSection>
-
-        <FormSection title="Totals & GST">
-          <div className="w-full sm:w-80 ml-auto space-y-2">
-            <div className="flex justify-between text-sm"><span className="text-secondary-500">Subtotal</span><span className="figure">{formatCurrency(totals.subtotal, sym)}</span></div>
-            {totals.totalDiscount > 0 && <div className="flex justify-between text-sm"><span className="text-secondary-500">Discount</span><span className="figure text-error-600 dark:text-error-400">-{formatCurrency(totals.totalDiscount, sym)}</span></div>}
-            <div className="flex justify-between text-sm"><span className="text-secondary-500">Taxable Amount</span><span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span></div>
-            {isInterState ? (
-              <div className="flex justify-between text-sm"><span className="text-secondary-500">IGST</span><span className="figure">{formatCurrency(totals.igst, sym)}</span></div>
-            ) : (
-              <>
-                <div className="flex justify-between text-sm"><span className="text-secondary-500">CGST</span><span className="figure">{formatCurrency(totals.cgst, sym)}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-secondary-500">SGST</span><span className="figure">{formatCurrency(totals.sgst, sym)}</span></div>
-              </>
-            )}
-            {totals.roundOff !== 0 && <div className="flex justify-between text-sm"><span className="text-secondary-500">Round Off</span><span className="figure">{formatCurrency(totals.roundOff, sym)}</span></div>}
-            <div className="border-t border-secondary-200 dark:border-secondary-800 pt-2 flex justify-between items-baseline">
-              <span className="text-base font-semibold">Grand Total</span>
-              <span className="figure text-xl font-bold text-primary-600 dark:text-primary-400">{formatCurrency(totals.grandTotal, sym)}</span>
+            <div className="w-full md:w-80 md:ml-auto space-y-2">
+              <div className="flex justify-between text-sm"><span className="text-secondary-500">Subtotal</span><span className="figure">{formatCurrency(totals.subtotal, sym)}</span></div>
+              {totals.totalDiscount > 0 && <div className="flex justify-between text-sm"><span className="text-secondary-500">Discount</span><span className="figure text-error-600 dark:text-error-400">-{formatCurrency(totals.totalDiscount, sym)}</span></div>}
+              <div className="flex justify-between text-sm"><span className="text-secondary-500">Taxable Amount</span><span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span></div>
+              {isInterState ? (
+                <div className="flex justify-between text-sm"><span className="text-secondary-500">IGST</span><span className="figure">{formatCurrency(totals.igst, sym)}</span></div>
+              ) : (
+                <>
+                  <div className="flex justify-between text-sm"><span className="text-secondary-500">CGST</span><span className="figure">{formatCurrency(totals.cgst, sym)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-secondary-500">SGST</span><span className="figure">{formatCurrency(totals.sgst, sym)}</span></div>
+                </>
+              )}
+              {totals.roundOff !== 0 && <div className="flex justify-between text-sm"><span className="text-secondary-500">Round Off</span><span className="figure">{formatCurrency(totals.roundOff, sym)}</span></div>}
+              <div className="border-t border-secondary-200 dark:border-secondary-800 pt-2 flex justify-between items-baseline">
+                <span className="text-base font-semibold">Grand Total</span>
+                <span className="figure text-xl font-bold text-primary-600 dark:text-primary-400">{formatCurrency(totals.grandTotal, sym)}</span>
+              </div>
             </div>
           </div>
         </FormSection>

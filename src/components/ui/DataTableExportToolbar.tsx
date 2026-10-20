@@ -84,7 +84,7 @@ async function loadPdfMake(): Promise<PdfMakeApi> {
 }
 
 const BTN =
-  'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-secondary-200 dark:border-secondary-700 text-secondary-600 dark:text-secondary-300 hover:bg-secondary-50 dark:hover:bg-secondary-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+  'inline-flex items-center gap-1.5 group px-2.5 h-9 py-0 leading-none text-xs font-medium rounded-lg border border-secondary-200 dark:border-secondary-700 bg-transparent text-secondary-700 dark:text-secondary-300 hover:bg-secondary-50 dark:hover:bg-secondary-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
 
 export function DataTableExportToolbar<T>(props: DataTableExportToolbarProps<T>): JSX.Element {
   const { columns, rows, filename, title, storageKey } = props;
@@ -212,20 +212,20 @@ export function DataTableExportToolbar<T>(props: DataTableExportToolbarProps<T>)
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <button type="button" className={BTN} onClick={doCopy} title="Copy table (visible columns)">
-        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5 text-sky-500 group-hover:text-sky-400" />}
         {copied ? 'Copied' : 'Copy'}
       </button>
       <button type="button" className={BTN} onClick={doExcel} title="Download Excel (.xls, visible columns)">
-        <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
+        <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-500 group-hover:text-emerald-400" /> Excel
       </button>
       <button type="button" className={BTN} onClick={doPdf} disabled={pdfBusy} title="Download PDF (visible columns)">
-        <FileText className="h-3.5 w-3.5" /> {pdfBusy ? 'PDF…' : 'PDF'}
+        <FileText className="h-3.5 w-3.5 text-rose-500 group-hover:text-rose-400" /> {pdfBusy ? 'PDF…' : 'PDF'}
       </button>
       <button type="button" className={BTN} onClick={doPrint} title="Print table (visible columns)">
-        <Printer className="h-3.5 w-3.5" /> Print
+        <Printer className="h-3.5 w-3.5 text-amber-500 group-hover:text-amber-400" /> Print
       </button>
       <button type="button" className={BTN} onClick={doCsv} title="Download CSV (visible columns)">
-        <FileDown className="h-3.5 w-3.5" /> CSV
+        <FileDown className="h-3.5 w-3.5 text-teal-500 group-hover:text-teal-400" /> CSV
       </button>
       <div className="relative" ref={panelRef}>
         <button
@@ -234,7 +234,7 @@ export function DataTableExportToolbar<T>(props: DataTableExportToolbarProps<T>)
           onClick={() => setColOpen((o) => !o)}
           title="Show / hide columns"
         >
-          <SlidersHorizontal className="h-3.5 w-3.5" /> Columns
+          <SlidersHorizontal className="h-3.5 w-3.5 text-indigo-500 group-hover:text-indigo-400" /> Columns
         </button>
         {colOpen && (
           <div className="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-secondary-200 dark:border-secondary-700 bg-white dark:bg-secondary-900 shadow-xl p-1 max-h-64 overflow-y-auto">

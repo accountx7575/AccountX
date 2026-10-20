@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
 import { FilePlus, Plus, Lock } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -51,11 +52,12 @@ export function DebitNotesPage() {
 
   const navigate = useNavigate();
   const list = usePagedList();
+  const [statusFilter, setStatusFilter] = useState('all');
   const [confirmAction, setConfirmAction] = useState<{ kind: 'cancel' | 'apply'; note: DebitNote } | null>(null);
   const [refundMethod, setRefundMethod] = useState('bank');
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['debit-notes', activeBusiness?.id, { q: list.debouncedSearch, page: list.page, pageSize: list.pageSize }],
+    queryKey: ['debit-notes', activeBusiness?.id, { q: list.debouncedSearch, page: list.page, pageSize: list.pageSize, status: statusFilter }],
     queryFn: async () => {
       if (!activeBusiness) return { rows: [] as (DebitNote & { supplier: { name: string } | null; bill: { bill_number: string } | null })[], total: 0 };
       const pattern = list.debouncedSearch ? likePattern(list.debouncedSearch) : null;
@@ -63,6 +65,7 @@ export function DebitNotesPage() {
         let q = supabase.from('debit_notes')
           .select((withJoin ? '*, supplier:suppliers(name), bill:purchase_bills(bill_number)' : '*') as string, { count: 'exact' })
           .eq('business_id', activeBusiness.id);
+        if (statusFilter !== 'all') q = q.eq('status', statusFilter);
         if (pattern) {
           q = withJoin
             ? q.or(`debit_note_number.ilike."${pattern}",supplier.name.ilike."${pattern}",bill.bill_number.ilike."${pattern}"`)
@@ -123,10 +126,41 @@ export function DebitNotesPage() {
         <ListToolbar
           search={list.search}
           onSearchChange={list.setSearch}
-          placeholder="Search by number, supplier, bill..."
+          placeholder="Search by number, supplier, or bill reference..."
           pageSize={list.pageSize}
           onPageSizeChange={list.setPageSize}
-        />
+          leftAddon={(
+            <div className="max-w-[15rem] min-w-[9.5rem]">
+              <select
+                className="input h-9 py-0 leading-none text-sm cursor-pointer"
+                aria-label="Debit note status filter"
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); list.setPage(1); }}
+              >
+                <option value="all">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="issued">Issued</option>
+                <option value="applied">Applied</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          )}
+        >
+          <DataTableExportToolbar
+            columns={[
+              { key: 'number', label: 'Note No.', getText: (n) => n.debit_note_number },
+              { key: 'date', label: 'Date', getText: (n) => formatDate(n.date) },
+              { key: 'supplier', label: 'Supplier', getText: (n) => n.supplier?.name || '—' },
+              { key: 'bill', label: 'Against Bill', getText: (n) => n.bill?.bill_number || '—' },
+              { key: 'total', label: 'Total', getText: (n) => formatCurrency(n.grand_total, activeBusiness?.currency_symbol) },
+              { key: 'status', label: 'Status', getText: (n) => n.status },
+            ]}
+            rows={notes}
+            filename="debit-notes"
+            title="Debit Notes"
+            storageKey="debit-notes"
+          />
+        </ListToolbar>
         {isError ? (
           <ErrorState title="Unable to load debit notes." onRetry={() => refetch()} />
         ) : isLoading ? (

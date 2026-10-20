@@ -4,7 +4,6 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatCard } from '@/components/ui/StatCard';
@@ -21,8 +20,11 @@ import {
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import {
-  Truck, Plus, Search, Printer, Eye, Pencil, Ban, FileDown, CheckCircle2, XCircle,
+  Truck, Plus, Printer, Eye, Pencil, Ban, FileDown, CheckCircle2, XCircle,
 } from 'lucide-react';
+import { Input } from '@/components/ui/Input';
+import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { usePagedList } from '@/hooks/usePagedList';
 
 type Tab = 'all' | 'generated' | 'pending_dispatch' | 'cancelled';
 
@@ -41,7 +43,7 @@ export function EWayBillPage() {
 
   const [refresh, setRefresh] = useState(0);
   const [tab, setTab] = useState<Tab>('all');
-  const [search, setSearch] = useState('');
+  const list = usePagedList();
   const [generateOpen, setGenerateOpen] = useState(false);
   const [detail, setDetail] = useState<EWayBill | null>(null);
   const [editVehicle, setEditVehicle] = useState<EWayBill | null>(null);
@@ -72,7 +74,7 @@ export function EWayBillPage() {
     () =>
       bills.filter((b) => {
         if (tab !== 'all' && b.status !== tab) return false;
-        const q = search.toLowerCase();
+        const q = list.search.toLowerCase();
         return (
           !q ||
           b.ewayBillNo.includes(q) ||
@@ -81,8 +83,10 @@ export function EWayBillPage() {
           b.vehicleNo.toLowerCase().includes(q)
         );
       }),
-    [bills, tab, search]
+    [bills, tab, list.search]
   );
+
+  const pageRows = filtered.slice(list.from, list.from + list.pageSize);
 
   const reload = () => setRefresh((r) => r + 1);
 
@@ -179,27 +183,27 @@ export function EWayBillPage() {
       </div>
 
       <div className="card">
-        <div className="p-4 border-b border-secondary-200 dark:border-secondary-800 flex flex-col sm:flex-row gap-3 sm:items-center">
-          <div className="flex gap-1 flex-wrap">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  tab === t.key
-                    ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
-                    : 'text-secondary-500 hover:bg-secondary-100 dark:hover:bg-secondary-800'
-                }`}
+        <ListToolbar
+          search={list.search}
+          onSearchChange={list.setSearch}
+          placeholder="Search bill no / invoice / customer / vehicle..."
+          pageSize={list.pageSize}
+          onPageSizeChange={list.setPageSize}
+          leftAddon={(
+            <div className="max-w-[13rem]">
+              <select
+                className="input h-9 py-0 leading-none text-sm cursor-pointer"
+                aria-label="e-Way Bill status filter"
+                value={tab}
+                onChange={(e) => { setTab(e.target.value as Tab); list.setPage(1); }}
               >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <div className="relative flex-1 max-w-sm sm:ml-auto">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400" />
-            <Input placeholder="Search bill no / invoice / customer / vehicle..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
-          </div>
-          <div className="w-full flex sm:justify-end">
+                {TABS.map((t) => (
+                  <option key={t.key} value={t.key}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        >
             <DataTableExportToolbar
               columns={[
                 { key: 'ewayBillNo', label: 'e-Way Bill No.', getText: (b) => b.ewayBillNo },
@@ -219,8 +223,7 @@ export function EWayBillPage() {
               title="e-Way Bills"
               storageKey="eway-bills"
             />
-          </div>
-        </div>
+        </ListToolbar>
 
         {filtered.length === 0 ? (
           <EmptyState
@@ -246,7 +249,7 @@ export function EWayBillPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((b) => (
+                {pageRows.map((b) => (
                   <tr key={b.id} className="border-b border-secondary-100 dark:border-secondary-800/50 table-row-hover">
                     <td className="px-4 py-3 font-mono font-semibold text-primary-600 dark:text-primary-400">{b.ewayBillNo}</td>
                     <td className="px-4 py-3">
@@ -304,6 +307,14 @@ export function EWayBillPage() {
             </table>
           </div>
         )}
+        <ListPagination
+          page={list.page}
+          onPageChange={list.setPage}
+          pageSize={list.pageSize}
+          from={list.from}
+          total={filtered.length}
+          isLoading={bills === undefined}
+        />
       </div>
 
       {/* Generate-from-invoice picker: jump to invoices; modal lives on invoice pages too */}

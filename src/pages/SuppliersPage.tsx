@@ -190,8 +190,7 @@ export function SuppliersPage() {
           placeholder="Search by name, phone, GSTIN..."
           pageSize={list.pageSize}
           onPageSizeChange={list.setPageSize}
-        />
-        <div className="px-4 py-2 border-b border-secondary-200 dark:border-secondary-800 flex justify-end">
+        >
           <DataTableExportToolbar
             columns={[
               { key: 'name', label: 'Supplier', getText: (s) => s.name },
@@ -208,8 +207,7 @@ export function SuppliersPage() {
             title="Suppliers"
             storageKey="suppliers"
           />
-        </div>
-
+        </ListToolbar>
         {isError ? (
           <ErrorState title="Unable to load suppliers." onRetry={() => refetch()} />
         ) : isLoading ? (

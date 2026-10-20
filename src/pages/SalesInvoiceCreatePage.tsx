@@ -58,7 +58,6 @@ export function SalesInvoiceCreatePage() {
   const [dueDate, setDueDate] = useState('');
   const [items, setItems] = useState<LineItem[]>([{ ...emptyItem }]);
   const [notes, setNotes] = useState('');
-  const [terms, setTerms] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
   const [saving, setSaving] = useState(false);
   const [quotaModalOpen, setQuotaModalOpen] = useState(false);
@@ -99,7 +98,6 @@ export function SalesInvoiceCreatePage() {
     setInvoiceDate(inv.invoice_date);
     setDueDate(inv.due_date || '');
     setNotes(inv.notes || '');
-    setTerms(inv.terms || '');
     setPaymentMethod(inv.payment_method || '');
     if (loadedItems.length > 0) {
       setItems(loadedItems.map((it) => ({
@@ -292,7 +290,6 @@ export function SalesInvoiceCreatePage() {
             payment_status: paymentStatus,
             payment_method: paymentMethod || null,
             notes: notes || null,
-            terms: terms || null,
           })
           .eq('business_id', biz)
           .eq('id', editId!);
@@ -346,7 +343,6 @@ export function SalesInvoiceCreatePage() {
         grand_total: totals.grandTotal,
         payment_method: paymentMethod || null,
         notes: notes || null,
-        terms: terms || null,
       };
 
       const p_items = items.map((it) => ({
@@ -449,7 +445,6 @@ export function SalesInvoiceCreatePage() {
     status: (existingQuery.data?.invoice.status || 'draft') as any,
     payment_method: paymentMethod || null,
     notes: notes || null,
-    terms: terms || null,
     created_by: null,
     created_at: '',
     updated_at: '',
@@ -516,7 +511,7 @@ export function SalesInvoiceCreatePage() {
 
       <div>
         <div className="card p-6 min-w-0">
-          <FormSection title="Party & Dates" description="Who you're billing and when payment is due">
+          <FormSection>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="label">Customer <span className="text-error-500">*</span></label>
@@ -542,13 +537,6 @@ export function SalesInvoiceCreatePage() {
           </FormSection>
 
           <FormSection
-            title="Line Items"
-            description="Choose a product — rate, HSN & tax autofill"
-            actions={
-              <button type="button" onClick={addItem} className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline">
-                <Plus className="h-4 w-4" /> Add Item
-              </button>
-            }
           >
             <div className="overflow-x-auto scrollbar-thin -mx-2">
               <div className="min-w-[900px] px-2 text-sm">
@@ -659,36 +647,42 @@ export function SalesInvoiceCreatePage() {
                     </div>
                   </div>
                 ))}
+                <div className="py-3">
+                  <button
+                    type="button"
+                    onClick={addItem}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-dashed border-secondary-300 dark:border-secondary-700 text-sm font-medium text-primary-600 dark:text-primary-400 hover:border-primary-400 hover:bg-primary-50/60 dark:hover:bg-primary-900/20 transition-colors"
+                  >
+                    <Plus className="h-4 w-4" /> Add another product
+                  </button>
+                </div>
               </div>
             </div>
           </FormSection>
 
-          <FormSection title="Payment & Notes" description="Payment method and notes printed on the invoice">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="label">Payment Method</label>
-                <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-                  <option value="">Select payment method...</option>
-                  <option value="Cash">Cash</option>
-                  <option value="UPI">UPI / QR</option>
-                  <option value="Bank Transfer">Bank Transfer (NEFT/RTGS/IMPS)</option>
-                  <option value="Cheque">Cheque</option>
-                  <option value="Credit / Pending">Credit / Pending</option>
-                </select>
+          <FormSection>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+              <div className="space-y-4">
+                <div>
+                  <label className="label">Payment Method</label>
+                  <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                    <option value="">Select payment method...</option>
+                    <option value="Cash">Cash</option>
+                    <option value="UPI">UPI / QR</option>
+                    <option value="Bank Transfer">Bank Transfer (NEFT/RTGS/IMPS)</option>
+                    <option value="Cheque">Cheque</option>
+                    <option value="Credit / Pending">Credit / Pending</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Customer Notes</label>
+                  <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Terms, delivery instructions, or notes for the customer..." />
+                </div>
               </div>
-              <div className="sm:col-span-2">
-                <label className="label">Notes</label>
-                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Terms, delivery instructions, or notes for the customer..." />
+              <div className="w-full md:w-80 md:ml-auto">
+                {totalRows}
               </div>
             </div>
-            <div className="mt-4">
-              <label className="label">Terms &amp; Conditions</label>
-              <Input value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="Custom terms and conditions (one per line or comma-separated)..." />
-            </div>
-          </FormSection>
-
-          <FormSection title="Totals & GST">
-            {totalRows}
           </FormSection>
         </div>
 

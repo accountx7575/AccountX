@@ -82,8 +82,7 @@ export function ProductsPage() {
           placeholder="Search by name, SKU, HSN/SAC..."
           pageSize={list.pageSize}
           onPageSizeChange={list.setPageSize}
-        />
-        <div className="px-4 py-2 border-b border-secondary-200 dark:border-secondary-800 flex justify-end">
+        >
           <DataTableExportToolbar
             columns={[
               { key: 'name', label: 'Product', getText: (p) => p.name },
@@ -100,8 +99,7 @@ export function ProductsPage() {
             title="Products"
             storageKey="products"
           />
-        </div>
-
+        </ListToolbar>
         {isError ? (
           <ErrorState title="Unable to load products." onRetry={() => refetch()} />
         ) : isLoading ? (
@@ -169,7 +167,7 @@ export function ProductsPage() {
                         <button onClick={() => openEdit(p)} title="Edit product" aria-label="Edit product" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={() => setArchiveId(p.id)} title="Archive product" aria-label="Archive product" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-warning-600 hover:bg-warning-50 dark:hover:bg-warning-900/30 transition-colors" title="Archive product">
+                        <button onClick={() => setArchiveId(p.id)} title="Archive product" aria-label="Archive product" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-warning-600 hover:bg-warning-50 dark:hover:bg-warning-900/30 transition-colors">
                           <Archive className="h-3.5 w-3.5" />
                         </button>
                       </div>
