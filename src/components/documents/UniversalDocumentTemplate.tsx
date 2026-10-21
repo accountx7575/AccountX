@@ -1,6 +1,7 @@
 import React from 'react';
-import { Building2, ShieldCheck, Printer, Download } from 'lucide-react';
+import { Building2, CreditCard, ShieldCheck, Printer, Download } from 'lucide-react';
 import { amountInWordsIndian, formatDate, formatCurrency, formatAddress2Line } from '@/lib/utils';
+import { cleanMedia, cleanText } from '@/lib/nullable';
 import { resolveTermsLines } from '@/lib/tncDefaults';
 
 /** Bare INR cell value for doc tables/totals: '1,80,000' (no symbol, '.00' trimmed). */
@@ -220,7 +221,6 @@ export const UniversalDocumentTemplate: React.FC<{
 
   const sellerName = data.seller.companyName || data.seller.name || 'Company';
   const buyerName = data.buyer.companyName || data.buyer.name || 'Party';
-  const initial = (sellerName.charAt(0) || 'A').toUpperCase();
 
   const sellerAddress = formatAddress2Line(data.seller);
 
@@ -254,16 +254,12 @@ export const UniversalDocumentTemplate: React.FC<{
       <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b-2 border-slate-900 pb-6">
         <div>
           <div className="flex items-center gap-3">
-            {data.seller.logoUrl ? (
+            {data.seller.logoUrl && (
               <img
                 src={data.seller.logoUrl}
                 alt={sellerName}
                 className="h-10 w-auto max-w-[140px] object-contain rounded-md"
               />
-            ) : (
-              <span className="grid place-items-center h-9 w-9 rounded-xl bg-violet-700 text-white font-black text-base shadow-sm">
-                {initial}
-              </span>
             )}
             <span className="text-2xl font-black tracking-tight text-slate-900">
               {sellerName}
@@ -462,7 +458,7 @@ export const UniversalDocumentTemplate: React.FC<{
           ) : (
             <>
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
-                <ShieldCheck className="h-3 w-3 text-slate-400" /> Payment &amp; Terms
+                <CreditCard className="h-3 w-3 text-slate-400" /> Payment &amp; Terms
               </p>
               {data.orderRef && (
                 <p className="flex justify-between sm:justify-start sm:gap-4">
@@ -714,20 +710,20 @@ export function mapSalesInvoiceToUniversalData(
     seller: {
       name: business?.name || 'Company',
       companyName: business?.legal_name || business?.name || 'Company',
-      address: business?.address,
-      city: business?.city,
-      state: business?.state,
-      pincode: business?.pincode,
-      gstin: business?.gstin,
+      address: cleanText(business?.address),
+      city: cleanText(business?.city),
+      state: cleanText(business?.state),
+      pincode: cleanText(business?.pincode),
+      gstin: cleanText(business?.gstin),
       pan:
         business?.pan ||
         (String(business?.gstin || '').length >= 12
           ? String(business.gstin).slice(2, 12)
           : undefined),
-      cin: business?.cin,
-      email: business?.email,
-      phone: business?.phone,
-      logoUrl: business?.logo_url || business?.stamp_url,
+      cin: cleanText(business?.cin),
+      email: cleanText(business?.email),
+      phone: cleanText(business?.phone),
+      logoUrl: cleanMedia(business?.logo_url),
     },
     buyer: {
       name: customer.name || 'Customer',
@@ -803,20 +799,20 @@ export function mapQuotationToUniversalData(
     seller: {
       name: business?.name || 'Company',
       companyName: business?.legal_name || business?.name || 'Company',
-      address: business?.address,
-      city: business?.city,
-      state: business?.state,
-      pincode: business?.pincode,
-      gstin: business?.gstin,
+      address: cleanText(business?.address),
+      city: cleanText(business?.city),
+      state: cleanText(business?.state),
+      pincode: cleanText(business?.pincode),
+      gstin: cleanText(business?.gstin),
       pan:
         business?.pan ||
         (String(business?.gstin || '').length >= 12
           ? String(business.gstin).slice(2, 12)
           : undefined),
-      cin: business?.cin,
-      email: business?.email,
-      phone: business?.phone,
-      logoUrl: business?.logo_url || business?.stamp_url,
+      cin: cleanText(business?.cin),
+      email: cleanText(business?.email),
+      phone: cleanText(business?.phone),
+      logoUrl: cleanMedia(business?.logo_url),
     },
     buyer: {
       name: customer.name || 'Customer',
@@ -884,16 +880,16 @@ export function mapSalesOrderToUniversalData(
     seller: {
       name: business?.name || 'Company',
       companyName: business?.legal_name || business?.name || 'Company',
-      address: business?.address,
-      city: business?.city,
-      state: business?.state,
-      pincode: business?.pincode,
-      gstin: business?.gstin,
-      pan: business?.pan,
-      cin: business?.cin,
-      email: business?.email,
-      phone: business?.phone,
-      logoUrl: business?.logo_url || business?.stamp_url,
+      address: cleanText(business?.address),
+      city: cleanText(business?.city),
+      state: cleanText(business?.state),
+      pincode: cleanText(business?.pincode),
+      gstin: cleanText(business?.gstin),
+      pan: cleanText(business?.pan),
+      cin: cleanText(business?.cin),
+      email: cleanText(business?.email),
+      phone: cleanText(business?.phone),
+      logoUrl: cleanMedia(business?.logo_url),
     },
     buyer: {
       name: customer.name || 'Customer',
@@ -973,19 +969,19 @@ export function mapPurchaseBillToUniversalData(
     buyer: {
       name: business?.name || 'Company',
       companyName: business?.legal_name || business?.name || 'Company',
-      address: business?.address,
-      city: business?.city,
-      state: business?.state,
-      pincode: business?.pincode,
-      gstin: business?.gstin,
+      address: cleanText(business?.address),
+      city: cleanText(business?.city),
+      state: cleanText(business?.state),
+      pincode: cleanText(business?.pincode),
+      gstin: cleanText(business?.gstin),
       pan:
         business?.pan ||
         (String(business?.gstin || '').length >= 12
           ? String(business.gstin).slice(2, 12)
           : undefined),
-      cin: business?.cin,
-      email: business?.email,
-      phone: business?.phone,
+      cin: cleanText(business?.cin),
+      email: cleanText(business?.email),
+      phone: cleanText(business?.phone),
     },
     items: items.map((it, idx) => ({
       id: it.id || String(idx),
@@ -1045,15 +1041,15 @@ export function mapPurchaseOrderToUniversalData(
     buyer: {
       name: business?.name || 'Company',
       companyName: business?.legal_name || business?.name || 'Company',
-      address: business?.address,
-      city: business?.city,
-      state: business?.state,
-      pincode: business?.pincode,
-      gstin: business?.gstin,
-      pan: business?.pan,
-      cin: business?.cin,
-      email: business?.email,
-      phone: business?.phone,
+      address: cleanText(business?.address),
+      city: cleanText(business?.city),
+      state: cleanText(business?.state),
+      pincode: cleanText(business?.pincode),
+      gstin: cleanText(business?.gstin),
+      pan: cleanText(business?.pan),
+      cin: cleanText(business?.cin),
+      email: cleanText(business?.email),
+      phone: cleanText(business?.phone),
     },
     items: items.map((it, idx) => ({
       id: it.id || String(idx),

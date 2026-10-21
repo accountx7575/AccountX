@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { allocateDocumentNumber } from '@/lib/numbering';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
@@ -269,20 +270,23 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
 
         await supabase.from('quotation_items').delete().eq('quotation_id', targetQuoteId);
       } else {
-        // Insert with ONE retry on duplicate key (23505): fetch a fresh
-        // number and retry before falling back to the error path.
+        // Insert with ONE retry on duplicate key (23505): each attempt
+        // re-allocates from a fresh scan of existing numbers, so a stale
+        // counter is stepped past (Date.now fallback if the scan itself is
+        // unavailable).
         let createdQuote: { id: string } | null = null;
         let insertErr: any = null;
         for (let attempt = 0; attempt < 2; attempt++) {
           let docNumber = '';
           let counterUnavailable = false;
           try {
-            const { data: generated } = await supabase.rpc('next_document_number', {
-              p_business_id: activeBusiness.id,
-              p_doc_type: 'quotation',
-              p_date: quoteDate,
+            docNumber = await allocateDocumentNumber({
+              businessId: activeBusiness.id,
+              docType: 'quotation',
+              table: 'quotations',
+              numberColumn: 'quotation_number',
+              date: quoteDate,
             });
-            if (generated) docNumber = String(generated);
           } catch (rpcErr) {
             console.warn('RPC fallback', rpcErr);
             counterUnavailable = true;

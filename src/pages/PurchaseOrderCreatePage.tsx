@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { allocateDocumentNumber } from '@/lib/numbering';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
@@ -251,18 +252,19 @@ export function PurchaseOrderCreatePage() {
 
       const { data: userData } = await supabase.auth.getUser();
 
-      // Number + insert with ONE retry on duplicate key (23505): a second
-      // tab/RPC can race the shared counter — refetch a fresh number and retry.
+      // Number + insert with ONE retry on duplicate key (23505): each attempt
+      // re-allocates from a fresh scan of existing numbers, so a stale counter
+      // or a racing tab is stepped past instead of failing twice in a row.
       let createdOrder: { id: string } | null = null;
       let insertError: any = null;
       for (let attempt = 0; attempt < 2; attempt++) {
-        const { data: number, error: numberError } = await supabase.rpc('next_document_number', {
-          p_business_id: activeBusiness.id,
-          p_doc_type: 'purchase_order',
-          p_date: orderDate,
+        const orderNumber = await allocateDocumentNumber({
+          businessId: activeBusiness.id,
+          docType: 'purchase_order',
+          table: 'purchase_orders',
+          numberColumn: 'order_number',
+          date: orderDate,
         });
-        if (numberError) throw numberError;
-        const orderNumber = String(number);
 
         const res = await supabase.from('purchase_orders').insert({
           business_id: activeBusiness.id,

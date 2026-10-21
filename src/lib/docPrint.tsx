@@ -1,4 +1,5 @@
 import { captureElementToPdfBlob } from '@/lib/pdfCapture';
+import { cleanMedia, cleanText } from '@/lib/nullable';
 import { formatAddress2Line, formatCurrency } from '@/lib/utils';
 import { resolveTermsLines, tncLines, type TncDocType } from '@/lib/tncDefaults';
 
@@ -125,6 +126,15 @@ function numberToWordsINR(num: number): string {
   return `${out.trim()} Rupees Only`;
 }
 
+// PBS-131: inline SVG for print headers — lucide-react components cannot run
+// inside the raw-HTML string path, so path data is inlined. currentColor
+// inherits the heading color; explicit width/height keep print crispness.
+const SECTION_ICONS = {
+  user: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  building: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v8h4"/><path d="M18 9h2a2 2 0 0 1 2 2v11h-4"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>',
+  creditCard: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>',
+};
+
 export function generateOmStyleHtml(
   business: any,
   doc: PrintableDocData,
@@ -132,35 +142,35 @@ export function generateOmStyleHtml(
   const isInterState = Number(doc.igst || 0) > 0;
   const totalAmountWords = numberToWordsINR(doc.grandTotal);
 
-  // PBS-118: blank over fake identity — no hardcoded dev-business fallbacks.
-  // Empty business fields render blank / conditionally-absent lines (the
-  // markup gates identity pills, contact lines and the bank section on
-  // truthiness, so empty stays layout-safe).
+  // PBS-118 blank-over-fake + PBS-128 nullish normalization — no hardcoded
+  // dev-business fallbacks, and legacy 'null'/'undefined' strings in the row
+  // never reach the print surface (cleanText/cleanMedia collapse them to '').
   const businessName = business?.legal_name || business?.name || '';
   const businessAddress = formatAddress2Line({
-    address: business?.address,
-    city: business?.city,
-    state: business?.state,
-    pincode: business?.pincode,
+    address: cleanText(business?.address),
+    city: cleanText(business?.city),
+    state: cleanText(business?.state),
+    pincode: cleanText(business?.pincode),
   }) || '';
-  const gstin = business?.gstin || '';
+  const gstin = cleanText(business?.gstin);
   // PAN stays DERIVED strictly from GSTIN when not stored — no fake literal.
   const pan =
-    business?.pan ||
+    cleanText(business?.pan) ||
     (String(gstin).length >= 12 ? String(gstin).slice(2, 12) : '');
-  const cin = business?.cin || '';
-  const phone = business?.phone || '';
-  const email = business?.email || '';
-  const state = business?.state || '';
+  const cin = cleanText(business?.cin);
+  const phone = cleanText(business?.phone);
+  const email = cleanText(business?.email);
+  const state = cleanText(business?.state);
 
-  const bankName = business?.bank_name || '';
+  const bankName = cleanText(business?.bank_name);
   const accountName =
-    business?.bank_account_name || business?.account_name || businessName;
-  const accountNo = business?.bank_account_number || '';
-  const ifsc = business?.bank_ifsc_code || '';
+    cleanText(business?.bank_account_name) ||
+    cleanText(business?.account_name) ||
+    businessName;
+  const accountNo = cleanText(business?.bank_account_number);
+  const ifsc = cleanText(business?.bank_ifsc_code);
 
-  const dynamicLogo =
-    business?.stamp_url || business?.logo_url || null;
+  const dynamicLogo = cleanMedia(business?.logo_url);
 
   const isPurchase =
     doc.isPurchaseBill === true ||
@@ -201,7 +211,6 @@ export function generateOmStyleHtml(
   const sellerCin = isPurchase ? '' : cin;
   const sellerPhone = isPurchase ? (doc.partyPhone || '') : phone;
   const sellerEmail = isPurchase ? '' : email;
-  const initial = (sellerName.charAt(0) || 'A').toUpperCase();
 
   const buyerName = isPurchase ? businessName : (doc.partyName || 'Customer');
   const buyerAddress = isPurchase ? businessAddress : (doc.partyAddress || '');
@@ -270,7 +279,6 @@ This is a computer-generated document and requires no physical signature.`
   .header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 6mm; border-bottom: 2px solid #0f172a; padding-bottom: 4mm; }
   .brand-block { display: flex; align-items: center; gap: 3mm; }
   .brand-logo { max-height: 40px; max-width: 130px; object-fit: contain; border-radius: 4px; }
-  .brand-badge { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: #6d28d9; color: #ffffff; font-weight: 900; font-size: 15px; }
   .brand-name { font-size: 20px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px; }
   .brand-address { font-size: 10px; color: #475569; max-width: 380px; margin-top: 1mm; line-height: 1.35; white-space: pre-line; }
   .brand-tags { display: flex; flex-wrap: wrap; gap: 3.5mm; margin-top: 1.5mm; font-size: 9.5px; color: #64748b; font-weight: 500; }
@@ -288,7 +296,7 @@ This is a computer-generated document and requires no physical signature.`
   .details-card { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; margin: 4mm 0; padding: 3.5mm 4.5mm; border-radius: 10px; background: rgba(248, 250, 252, 0.85); border: 1px solid #e2e8f0; }
   .details-col-left { }
   .details-col-right { border-left: 1px solid #e2e8f0; padding-left: 4.5mm; }
-  .card-sec-title { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; margin: 0 0 1mm; }
+  .card-sec-title { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; margin: 0 0 1mm; display: inline-flex; align-items: center; gap: 4px; }
   .party-name { font-size: 12.5px; font-weight: 900; color: #0f172a; margin: 0; }
   .gstin-pill { display: inline-flex; align-items: center; padding: 1.5px 5px; border-radius: 4px; background: #f5f3ff; border: 1px solid #ddd6fe; color: #5b21b6; font-family: ui-monospace, monospace; font-size: 9px; font-weight: 700; margin-top: 1mm; }
   .pan-pill { display: inline-flex; align-items: center; padding: 1.5px 5px; border-radius: 4px; background: #f1f5f9; color: #334155; font-family: ui-monospace, monospace; font-size: 9px; font-weight: 600; margin-left: 1.5mm; }
@@ -335,7 +343,7 @@ This is a computer-generated document and requires no physical signature.`
   <div class="header-row">
     <div>
       <div class="brand-block">
-        ${dynamicLogo ? `<img src="${dynamicLogo}" alt="Logo" class="brand-logo" />` : `<span class="brand-badge">${initial}</span>`}
+        ${dynamicLogo ? `<img src="${dynamicLogo}" alt="Logo" class="brand-logo" />` : ``}
         <span class="brand-name">${esc(sellerName)}</span>
       </div>
       <p class="brand-address">${esc(sellerAddress)}</p>
@@ -366,7 +374,7 @@ This is a computer-generated document and requires no physical signature.`
   <!-- 2. Billed Details Card -->
   <div class="details-card">
     <div class="details-col-left">
-      <p class="card-sec-title">${isPurchase ? 'BILLED BY (SUPPLIER DETAILS)' : 'BILLED TO (CUSTOMER DETAILS)'}</p>
+      <p class="card-sec-title">${isPurchase ? SECTION_ICONS.user : SECTION_ICONS.user}${isPurchase ? 'BILLED BY (SUPPLIER DETAILS)' : 'BILLED TO (CUSTOMER DETAILS)'}</p>
       <p class="party-name">${esc(isPurchase ? sellerName : buyerName)}</p>
       ${(isPurchase ? sellerGstin : buyerGstin) ? `<div><span class="gstin-pill">GSTIN: ${esc(isPurchase ? sellerGstin : buyerGstin)}</span>${(isPurchase ? sellerPan : buyerPan) ? `<span class="pan-pill">PAN: ${esc(isPurchase ? sellerPan : buyerPan)}</span>` : ''}</div>` : ''}
       ${(isPurchase ? sellerEmail : buyerEmail) ? `<p class="party-desc">${esc(isPurchase ? sellerEmail : buyerEmail)}</p>` : ''}
@@ -375,7 +383,7 @@ This is a computer-generated document and requires no physical signature.`
     </div>
     <div class="details-col-right">
       ${isPurchase ? `
-      <p class="card-sec-title">BILLED TO (OUR BUSINESS DETAILS)</p>
+      <p class="card-sec-title">${SECTION_ICONS.building}BILLED TO (OUR BUSINESS DETAILS)</p>
       <p class="party-name">${esc(buyerName)}</p>
       ${buyerGstin ? `<div><span class="gstin-pill">GSTIN: ${esc(buyerGstin)}</span>${buyerPan ? `<span class="pan-pill">PAN: ${esc(buyerPan)}</span>` : ''}</div>` : ''}
       ${buyerEmail ? `<p class="party-desc">${esc(buyerEmail)}</p>` : ''}
@@ -384,7 +392,7 @@ This is a computer-generated document and requires no physical signature.`
       ${doc.ewayBillNo ? `<p style="margin: 1.5mm 0 0.5mm; font-size: 10px;"><span style="color: #64748b;">e-Way Bill No:</span> <strong>${esc(doc.ewayBillNo)}</strong></p>` : ''}
       ${doc.vehicleNo ? `<p style="margin: 0.5mm 0; font-size: 10px;"><span style="color: #64748b;">Vehicle No:</span> <strong>${esc(doc.vehicleNo)}</strong></p>` : ''}
       ` : `
-      <p class="card-sec-title">Payment &amp; Terms</p>
+      <p class="card-sec-title">${SECTION_ICONS.creditCard}Payment &amp; Terms</p>
       ${doc.ewayBillNo ? `<p style="margin: 0.5mm 0; font-size: 10px;"><span style="color: #64748b;">e-Way Bill No:</span> <strong>${esc(doc.ewayBillNo)}</strong></p>` : ''}
       ${doc.vehicleNo ? `<p style="margin: 0.5mm 0; font-size: 10px;"><span style="color: #64748b;">Vehicle No:</span> <strong>${esc(doc.vehicleNo)}</strong></p>` : ''}
       <p style="margin: 0.5mm 0; font-size: 10px;"><span style="color: #64748b;">Payment Mode:</span> <strong>Bank / UPI / Credit</strong></p>
