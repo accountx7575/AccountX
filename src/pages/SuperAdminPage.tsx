@@ -10,13 +10,21 @@ import { AuditTrailTable } from '@/components/admin/AuditTrailTable';
 import { DisasterRecoveryStudio } from '@/components/admin/DisasterRecoveryStudio';
 import { LiquidGlassNav } from '@/components/layout/LiquidGlassNav';
 import { supabase } from '@/lib/supabase';
+import { canonicalPlanTypeForWrite, normalizePlanType, type CanonicalTierId } from '@/lib/planTypes';
 import {
   Building2, Users, LogOut, ShieldCheck, Search, CheckCircle, Ban, RefreshCw,
   X, Eye, FileText, Activity, Database, Server, HardDrive, Clock, Download,
   Plus, Megaphone, Pencil, Trash2, AlertTriangle, KeyRound, ShieldAlert, TrendingUp, Wallet,
 } from 'lucide-react';
 
+/** Legacy console vocabulary. These are DISPLAY labels only - the column
+ *  stores the canonical tier ids (PBS-153). */
 type Plan = 'Free' | 'Starter' | 'Pro' | 'Enterprise';
+const LEGACY_PLAN_BY_TIER: Record<CanonicalTierId, Plan> = {
+  'early-adopter-beta': 'Free',
+  starter: 'Starter',
+  'pro-business': 'Pro',
+};
 type Severity = 'Info' | 'Warning' | 'Critical';
 type TabKey = 'tenants' | 'broadcasts' | 'quota' | 'telemetry' | 'rbac' | 'revenue';
 type MemberRole = 'Owner' | 'Manager' | 'Accountant' | 'Billing Staff' | 'Viewer';
@@ -203,7 +211,10 @@ export function SuperAdminPage() {
         const plans: Plan[] = ['Free', 'Starter', 'Pro', 'Enterprise'];
         const formatted: Tenant[] = bizData.map((b: any, i: number) => {
           const raw = b.created_at || new Date().toISOString();
-          const plan: Plan = (['Free', 'Starter', 'Pro', 'Enterprise'].includes(b.plan_type) ? b.plan_type : plans[i % plans.length]) as Plan;
+          // PBS-153: the column stores canonical tier ids; the console shows
+          // its legacy display label.
+          const tier = normalizePlanType(b.plan_type);
+          const plan: Plan = (tier && LEGACY_PLAN_BY_TIER[tier]) || plans[i % plans.length];
           const quota = Number(b.monthly_invoice_quota ?? (plan === 'Free' ? 50 : plan === 'Starter' ? 500 : plan === 'Pro' ? 2000 : 10000));
           return {
             id: String(b.id),
@@ -360,7 +371,7 @@ export function SuperAdminPage() {
     const ids = [...selectedIds];
     setTenants(prev => prev.map(t => (selectedIds.includes(t.id) ? { ...t, plan: bulkTier, quota: tierDefaults[bulkTier] } : t)));
     try {
-      await supabase.from('businesses').update({ plan_type: bulkTier, monthly_invoice_quota: tierDefaults[bulkTier] }).in('id', selectedIds);
+      await supabase.from('businesses').update({ plan_type: canonicalPlanTypeForWrite(bulkTier), monthly_invoice_quota: tierDefaults[bulkTier] }).in('id', selectedIds);
       pushToast('success', `${n} tenant${n > 1 ? 's' : ''} moved to ${bulkTier}.`);
     } catch { pushToast('info', `${n} tenants moved to ${bulkTier} locally.`); }
     void logAdminEvent('PLAN_UPGRADED', null, { bulk: true, count: n, ids, tier: bulkTier });
@@ -460,7 +471,7 @@ export function SuperAdminPage() {
     const targetId = planEdit.id;
     setTenants(prev => prev.map(t => (t.id === planEdit.id ? { ...t, plan: planDraft, quota: quotaDraft } : t)));
     try {
-      await supabase.from('businesses').update({ plan_type: planDraft, monthly_invoice_quota: quotaDraft }).eq('id', planEdit.id);
+      await supabase.from('businesses').update({ plan_type: canonicalPlanTypeForWrite(planDraft), monthly_invoice_quota: quotaDraft }).eq('id', planEdit.id);
       pushToast('success', `${name} moved to ${planDraft} (${quotaDraft}/mo).`);
     } catch { pushToast('info', `${name} plan updated locally.`); }
     void logAdminEvent('PLAN_UPGRADED', targetId, { business_name: name, tier: planDraft, quota: quotaDraft });
@@ -494,7 +505,7 @@ export function SuperAdminPage() {
     try {
       const { data } = await supabase.from('businesses').insert({
         legal_name: nt.name, trade_name: nt.tradeName, email: nt.ownerEmail,
-        gstin: nt.gstin, state: nt.state, is_active: true, plan_type: nt.plan,
+        gstin: nt.gstin, state: nt.state, is_active: true, plan_type: canonicalPlanTypeForWrite(nt.plan),
       }).select('*').single();
       if (data) {
         const d: any = data;
