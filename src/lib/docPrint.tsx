@@ -338,7 +338,7 @@ This is a computer-generated document and requires no physical signature.`
 </head>
 <body>
 <div class="doc">
-  ${demoMode && `<div class="demo-wm" aria-hidden="true"><span style="color:${demoMode === 'estimate' ? 'rgba(244,63,94,0.10)' : 'rgba(245,158,11,0.14)'}">${demoMode === 'estimate' ? 'ESTIMATE' : 'DEMO'}</span></div>`}
+  ${demoMode ? `<div class="demo-wm" aria-hidden="true"><span style="color:${demoMode === 'estimate' ? 'rgba(244,63,94,0.10)' : 'rgba(245,158,11,0.14)'}">${demoMode === 'estimate' ? 'ESTIMATE' : 'DEMO'}</span></div>` : ''}
   <!-- 1. Header Section -->
   <div class="header-row">
     <div>
