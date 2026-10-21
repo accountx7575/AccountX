@@ -21,9 +21,10 @@ export function SuperAdminRoute({ children }: { children: ReactNode }) {
       Boolean(user?.app_metadata?.is_super_admin) ||
       Boolean(user?.user_metadata?.is_super_admin);
 
+    // PBS-140: regular users bounce to the tenant shell, never a dead route.
     if (!isSuperAdmin) {
       toast('Super admin access required', 'error');
-      navigate('/dashboard', { state: { from: location }, replace: true });
+      navigate('/app', { state: { from: location }, replace: true });
     }
   }, [session, user, loading, navigate, location, toast]);
 
