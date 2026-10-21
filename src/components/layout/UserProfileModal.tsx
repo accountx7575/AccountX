@@ -9,6 +9,14 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { can, roleLabel, type Capability } from '@/lib/rbac';
 import { supabase } from '@/lib/supabase';
+import {
+  buildProfileUpdatePayload,
+  persistProfileToProfilesTable,
+  profileErrorMessage,
+  resolveProfileName,
+  resolveProfilePhone,
+  saveUserProfile,
+} from '@/lib/userProfileStore';
 
 const CAPABILITY_LABELS: Array<{ cap: Capability; label: string }> = [
   { cap: 'settings.edit', label: 'Edit business settings' },
@@ -31,8 +39,8 @@ export function UserProfileModal({ open, onClose }: { open: boolean; onClose: ()
 
   useEffect(() => {
     if (!open || !user) return;
-    setName(user.user_metadata?.name || '');
-    setPhone(user.phone || user.user_metadata?.phone || '');
+    setName(resolveProfileName(user, user.id));
+    setPhone(resolveProfilePhone(user, user.id));
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
@@ -41,16 +49,27 @@ export function UserProfileModal({ open, onClose }: { open: boolean; onClose: ()
   const handleSaveProfile = async () => {
     if (!user) return;
     setSavingProfile(true);
+    const cleanName = name.trim();
+    const cleanPhone = phone.trim();
     try {
-      const updates: { data: Record<string, string>; phone?: string } = {
-        data: { name: name.trim() },
-      };
-      if (phone.trim() && phone.trim() !== (user.phone || '')) updates.phone = phone.trim();
-      const { error } = await supabase.auth.updateUser(updates);
-      if (error) throw error;
-      toast('Profile updated', 'success');
+      const { error: metaError } = await supabase.auth.updateUser(
+        buildProfileUpdatePayload({ name: cleanName, phone: cleanPhone })
+      );
+      if (metaError) throw metaError;
+
+      const dbResult = await persistProfileToProfilesTable(supabase, user.id, {
+        name: cleanName,
+        phone: cleanPhone,
+        email: user.email,
+      });
+      saveUserProfile(user.id, { name: cleanName, phone: cleanPhone });
+
+      toast('Profile updated successfully!', 'success');
+      if (dbResult.error) {
+        toast('Saved on your account, but the shared profile table update failed. Support can sync it later.', 'info');
+      }
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Failed to update profile', 'error');
+      toast(profileErrorMessage(err), 'error');
     } finally {
       setSavingProfile(false);
     }
@@ -88,9 +107,11 @@ export function UserProfileModal({ open, onClose }: { open: boolean; onClose: ()
     }
   };
 
+  const currentName = user ? resolveProfileName(user, user.id) : '';
+  const currentPhone = user ? resolveProfilePhone(user, user.id) : '';
   const profileDirty =
-    name.trim() !== (user?.user_metadata?.name || '') ||
-    (!!phone.trim() && phone.trim() !== (user?.phone || ''));
+    name.trim() !== currentName ||
+    (!!phone.trim() && phone.trim() !== currentPhone);
 
   return (
     <Modal open={open} onClose={onClose} title="My Profile" size="md">
@@ -99,7 +120,7 @@ export function UserProfileModal({ open, onClose }: { open: boolean; onClose: ()
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-secondary-900 dark:text-secondary-100 truncate">
-                {user?.user_metadata?.name || 'User'}
+                {currentName || 'User'}
               </p>
               <p className="text-xs text-secondary-400 truncate">{user?.email}</p>
             </div>
@@ -152,6 +173,9 @@ export function UserProfileModal({ open, onClose }: { open: boolean; onClose: ()
           </FormField>
           <FormField label="Phone">
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Add a phone number" />
+            <p className="text-xs text-secondary-400 mt-1">
+              Saved on your AccountX profile — no SMS verification required.
+            </p>
           </FormField>
           <Button onClick={handleSaveProfile} disabled={!profileDirty || savingProfile} size="sm">
             {savingProfile && <Loader2 className="h-4 w-4 animate-spin" />} Save Profile
