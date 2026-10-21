@@ -42,10 +42,9 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/super-admin" state={{ from: location }} replace />;
   }
 
-  if (location.pathname === '/setup-business' && businesses.length > 0 && !supportMode) {
-    return <Navigate to="/app" replace />;
-  }
-
+  // /setup-business stays reachable with existing businesses: it is the
+  // "+ Add New Business" flow (Header switcher + user menu). The
+  // businesses.length === 0 gate below keeps first-login onboarding intact.
   if (businesses.length === 0 && !supportMode && location.pathname !== '/setup-business' && !location.pathname.startsWith('/super-admin')) {
     return <Navigate to="/setup-business" replace />;
   }

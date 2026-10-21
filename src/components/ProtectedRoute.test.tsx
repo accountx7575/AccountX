@@ -72,4 +72,21 @@ describe('ProtectedRoute — /login anchor (N1)', () => {
     expect(screen.getByText('guarded children')).toBeTruthy();
     expect(screen.queryByText('login destination element')).toBeNull();
   });
+
+  it('session with a business can still reach /setup-business (Add New Business flow)', () => {
+    authState.session = { access_token: 'x' };
+    authState.businessesReady = true;
+    authState.businesses = [{ id: 'b1' }];
+    render(
+      <MemoryRouter initialEntries={['/setup-business']}>
+        <Routes>
+          <Route path="/app/customers" element={<div>guarded children</div>} />
+          <Route path="/app" element={<div>dashboard destination element</div>} />
+          <Route path="/setup-business" element={<ProtectedRoute><div>setup destination element</div></ProtectedRoute>} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByText('setup destination element')).toBeTruthy();
+    expect(screen.queryByText('dashboard destination element')).toBeNull();
+  });
 });

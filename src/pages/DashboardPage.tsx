@@ -87,7 +87,7 @@ const QUICK_START_ACTIONS = [
 ];
 
 export function DashboardPage() {
-  const { user, activeBusiness } = useAuth();
+  const { activeBusiness } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -229,7 +229,7 @@ export function DashboardPage() {
   return (
     <div>
       <PageHeader
-        title={`${greeting}, ${user?.user_metadata?.name?.split(' ')[0] || 'User'}`}
+        title={greeting}
         subtitle={activeBusiness ? `${activeBusiness.name}` : ''}
         meta={
           activeBusiness ? (
