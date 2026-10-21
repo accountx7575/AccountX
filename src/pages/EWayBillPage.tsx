@@ -55,7 +55,7 @@ export function EWayBillPage() {
   const [evTransporterId, setEvTransporterId] = useState('');
 
   const bills = useMemo(
-    () => (businessId ? listEWayBills(businessId) : []),
+    () => (businessId ? listEWayBills(businessId).filter((b) => !b.demo) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [businessId, refresh]
   );

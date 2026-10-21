@@ -41,6 +41,8 @@ export interface PrintableDocData {
   grandTotal: number;
   notes?: string | null;
   terms?: string | null;
+  /** Demo/Proforma sandbox: 'estimate' | 'demo' | 'clean' — undefined keeps real docs byte-identical. */
+  demoHeader?: 'estimate' | 'demo' | 'clean';
   /** Purchase-bill mode: Billed By = supplier, Billed To = our business,
    *  no bank card, neutral terms, no signature image/For-block. */
   isPurchaseBill?: boolean;
@@ -130,30 +132,32 @@ export function generateOmStyleHtml(
   const isInterState = Number(doc.igst || 0) > 0;
   const totalAmountWords = numberToWordsINR(doc.grandTotal);
 
-  const businessName =
-    business?.legal_name || business?.name || 'AVADH BORING COMPANY';
-  const businessAddress =
-    formatAddress2Line({
-      address: business?.address,
-      city: business?.city,
-      state: business?.state,
-      pincode: business?.pincode,
-    }) ||
-    'AN-25, LAUTA BAGH, AZAD NAGR, NAWABGANJ\nBarabanki, Uttar Pradesh - 225001';
-  const gstin = business?.gstin || '09AABPQ3096M1Z5';
+  // PBS-118: blank over fake identity — no hardcoded dev-business fallbacks.
+  // Empty business fields render blank / conditionally-absent lines (the
+  // markup gates identity pills, contact lines and the bank section on
+  // truthiness, so empty stays layout-safe).
+  const businessName = business?.legal_name || business?.name || '';
+  const businessAddress = formatAddress2Line({
+    address: business?.address,
+    city: business?.city,
+    state: business?.state,
+    pincode: business?.pincode,
+  }) || '';
+  const gstin = business?.gstin || '';
+  // PAN stays DERIVED strictly from GSTIN when not stored — no fake literal.
   const pan =
     business?.pan ||
-    (String(gstin).length >= 12 ? String(gstin).slice(2, 12) : 'AABPQ3096M');
+    (String(gstin).length >= 12 ? String(gstin).slice(2, 12) : '');
   const cin = business?.cin || '';
-  const phone = business?.phone || '+91 9450942418';
-  const email = business?.email || 'abc.solar7575@gmail.com';
-  const state = business?.state || 'Uttar Pradesh';
+  const phone = business?.phone || '';
+  const email = business?.email || '';
+  const state = business?.state || '';
 
-  const bankName = business?.bank_name || 'Canara Bank';
+  const bankName = business?.bank_name || '';
   const accountName =
     business?.bank_account_name || business?.account_name || businessName;
-  const accountNo = business?.bank_account_number || '120034396413';
-  const ifsc = business?.bank_ifsc_code || 'CNRB0018631';
+  const accountNo = business?.bank_account_number || '';
+  const ifsc = business?.bank_ifsc_code || '';
 
   const dynamicLogo =
     business?.stamp_url || business?.logo_url || null;
@@ -178,6 +182,16 @@ export function generateOmStyleHtml(
   } else if (titleUpper.includes('PURCHASE BILL') || isPurchase) {
     headerTitle = 'PURCHASE BILL / INWARD';
     subTitle = 'Tax Inward Receipt';
+  }
+  // Demo sandbox header override (PBS-112) — standard real docs (demoHeader
+  // undefined) resolve identically to before.
+  const demoMode = doc.demoHeader === 'estimate' || doc.demoHeader === 'demo' ? doc.demoHeader : null;
+  if (demoMode === 'estimate') {
+    headerTitle = 'ESTIMATE / PROFORMA INVOICE';
+    subTitle = 'Not A Tax Invoice — Subject To Availability';
+  } else if (demoMode === 'demo') {
+    headerTitle = `DEMO ${headerTitle.split(' / ')[0]}`;
+    subTitle = 'Not For Statutory Use';
   }
 
   const sellerName = isPurchase ? (doc.partyName || 'Supplier') : businessName;
@@ -228,7 +242,7 @@ export function generateOmStyleHtml(
 Please quote this bill number in all future correspondence.
 This is a computer-generated document and requires no physical signature.`
       : `Goods once sold will not be taken back or exchanged.
-All payments to be drawn in favour of "${businessName}".
+${businessName ? `All payments to be drawn in favour of "${businessName}".` : ''}
 Redemption / delivery is subject to agreed operational timelines.
 This is a computer-generated document and requires no physical signature.`
   );
@@ -309,10 +323,14 @@ This is a computer-generated document and requires no physical signature.`
   .sign-for { font-size: 8.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; }
   .sign-badge { display: flex; align-items: center; justify-content: center; gap: 4px; color: #047857; margin: 1.5mm 0; font-size: 9px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; }
   .sign-line { border-top: 1px solid #e2e8f0; padding-top: 1mm; font-size: 9px; font-weight: 800; color: #1e293b; }
+  .doc { position: relative; }
+  .demo-wm { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .demo-wm span { transform: rotate(-28deg); font-family: ui-sans-serif, system-ui; font-weight: 900; text-transform: uppercase; font-size: 64px; letter-spacing: 14px; }
 </style>
 </head>
 <body>
 <div class="doc">
+  ${demoMode && `<div class="demo-wm" aria-hidden="true"><span style="color:${demoMode === 'estimate' ? 'rgba(244,63,94,0.10)' : 'rgba(245,158,11,0.14)'}">${demoMode === 'estimate' ? 'ESTIMATE' : 'DEMO'}</span></div>`}
   <!-- 1. Header Section -->
   <div class="header-row">
     <div>
@@ -331,7 +349,7 @@ This is a computer-generated document and requires no physical signature.`
 
     <!-- Meta Pill Heading -->
     <div class="meta-block">
-      <div class="doc-pill">
+      <div class="doc-pill" style="${demoMode === 'estimate' ? 'background:#fff1f2;border-color:#fecdd3;color:#be123c;' : demoMode === 'demo' ? 'background:#fffbeb;border-color:#fde68a;color:#b45309;' : ''}">
         <span class="doc-pill-title">${esc(headerTitle)}</span>
         <span class="doc-pill-sub">${esc(subTitle)}</span>
       </div>

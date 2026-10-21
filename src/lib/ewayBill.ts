@@ -39,9 +39,37 @@ export interface EWayBill {
   status: EWayBillStatus;
   validUntil: string;
   createdAt: string;
+  /** Demo/Proforma sandbox tag (PBS-112) — demo bills never show in the real e-Way Bill page. */
+  demo?: boolean;
 }
 
 export interface EWayBillInput {
+  businessId: string;
+  invoiceId: string | null;
+  invoiceNumber: string;
+  docType: string;
+  docDate: string;
+  customerName: string;
+  subType: EWaySubType;
+  fromAddress: string;
+  fromPincode: string;
+  toAddress: string;
+  toPincode: string;
+  transportMode: EWayTransportMode;
+  distanceKm: number;
+  transporterName: string;
+  transporterId: string;
+  vehicleNo: string;
+  lrNo: string;
+  lrDate: string;
+  totalValue: number;
+}
+
+export interface EWayBillInput extends EWayBillInputBase {
+  demo?: boolean;
+}
+
+interface EWayBillInputBase {
   businessId: string;
   invoiceId: string | null;
   invoiceNumber: string;
@@ -158,6 +186,14 @@ export function cancelEWayBill(businessId: string, id: string): EWayBill | null 
   all[idx] = { ...all[idx], status: 'cancelled' };
   writeAll(businessId, all);
   return all[idx];
+}
+
+/** Remove a demo e-Way bill from the local store (sandbox-only). */
+export function deleteEWayBill(businessId: string, id: string): void {
+  writeAll(
+    businessId,
+    readAll(businessId).filter((b) => b.id !== id)
+  );
 }
 
 /**

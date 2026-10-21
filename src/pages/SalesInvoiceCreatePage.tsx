@@ -12,6 +12,7 @@ import { FormSection } from '@/components/ui/FormSection';
 import { Plus, Trash2, Save, ArrowLeft, Printer, FileText, FileSpreadsheet, Rocket, Loader2 } from 'lucide-react';
 import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
 import { computeDocLine } from '@/lib/payloads';
+import { saveDemoDoc, defaultDemoNumber, countDemoDocs } from '@/lib/demoStore';
 import { InvoiceSheet, type InvoiceWithCustomer } from '@/components/invoice/InvoiceSheet';
 import { mergeBusinessExtras } from '@/lib/businessExtras';
 import { Modal } from '@/components/ui/Modal';
@@ -43,7 +44,7 @@ const emptyItem: LineItem = {
 
 const GST_SLABS = [0, 0.25, 3, 5, 12, 18, 28];
 
-export function SalesInvoiceCreatePage() {
+export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}) {
   const { activeBusiness, user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -260,6 +261,54 @@ export function SalesInvoiceCreatePage() {
         throw new Error('Please fill in all item details');
       }
 
+      // Demo/Proforma sandbox (PBS-112): zero effect on real books — no
+      // sales_invoices rows, no create_sales_invoice RPC call, no journal
+      // postings, no stock decrement, no GST series consumption.
+      if (demo) {
+        const p_demo_items = items.map((it) => ({
+          product_id: it.product_id,
+          product_name: it.product_name,
+          hsn_sac: it.hsn_sac || '',
+          quantity: it.quantity,
+          unit: it.unit || 'PCS',
+          rate: it.rate,
+          discount_amount: it.discount_amount,
+          tax_rate: it.tax_rate,
+          taxable_amount: it.taxable_amount,
+          cgst_amount: it.cgst_amount,
+          sgst_amount: it.sgst_amount,
+          igst_amount: it.igst_amount,
+          cess_amount: 0,
+          total_amount: it.total_amount,
+        }));
+        const saved = saveDemoDoc(
+          activeBusiness.id,
+          'sales_invoice',
+          {
+            invoice_number: defaultDemoNumber('sales_invoice', countDemoDocs(activeBusiness.id, 'sales_invoice') + 1),
+            customer_id: customerId,
+            invoice_date: invoiceDate,
+            due_date: dueDate || null,
+            place_of_supply: selectedCustomer?.state || activeBusiness.state,
+            subtotal: totals.subtotal,
+            discount_amount: totals.totalDiscount,
+            taxable_amount: totals.taxableAmount,
+            cgst_amount: totals.cgst,
+            sgst_amount: totals.sgst,
+            igst_amount: totals.igst,
+            round_off: totals.roundOff,
+            grand_total: totals.grandTotal,
+            status: status,
+            payment_status: 'unpaid',
+            payment_method: paymentMethod || null,
+            notes: notes || null,
+          },
+          p_demo_items,
+          selectedCustomer as unknown as Record<string, unknown> | null
+        );
+        return { invoiceId: saved.id, status: 'draft', edited: false };
+      }
+
       setSaving(true);
 
       // Edit mode: UPDATE existing sales invoice header and replace line items
@@ -387,6 +436,9 @@ export function SalesInvoiceCreatePage() {
       if (edited) {
         toast('Invoice updated successfully', 'success');
         navigate(`/app/sales-invoices/${invoiceId}`);
+      } else if (demo && invoiceId) {
+        toast('Demo invoice saved — sandbox only, books untouched', 'success');
+        navigate(`/app/demo/invoices/${invoiceId}`);
       } else {
         toast(status === 'draft' ? 'Draft saved — issue it from the invoices list' : 'Invoice issued successfully', 'success');
         navigate(status === 'draft' ? '/app/sales-invoices' : invoiceId ? `/app/sales-invoices/${invoiceId}` : '/app/sales-invoices');
@@ -500,10 +552,10 @@ export function SalesInvoiceCreatePage() {
   return (
     <div>
       <PageHeader
-        title={isEdit ? `Edit Invoice #${invoiceNumber || existingQuery.data?.invoice.invoice_number || ''}` : 'New Sale Invoice'}
-        subtitle={isEdit ? 'Update invoice details and line items' : 'Create and issue a GST compliant invoice'}
+        title={isEdit ? `Edit Invoice #${invoiceNumber || existingQuery.data?.invoice.invoice_number || ''}` : demo ? 'New Demo Invoice' : 'New Sale Invoice'}
+        subtitle={demo ? 'Proforma sandbox — no ledger, no stock, no GST series' : isEdit ? 'Update invoice details and line items' : 'Create and issue a GST compliant invoice'}
         actions={
-          <Button variant="secondary" onClick={() => navigate(isEdit ? `/app/sales-invoices/${editId}` : '/app/sales-invoices')}>
+          <Button variant="secondary" onClick={() => navigate(demo ? '/app/demo/invoices' : isEdit ? `/app/sales-invoices/${editId}` : '/app/sales-invoices')}>
             <ArrowLeft className="h-4 w-4" /> Back
           </Button>
         }
@@ -701,7 +753,7 @@ export function SalesInvoiceCreatePage() {
       {/* Sticky action footer */}
       <div className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 mt-5 border-t border-secondary-200/80 dark:border-zinc-800 bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md print:hidden">
         <div className="flex items-center justify-between gap-3">
-          <Button variant="ghost" onClick={() => navigate(isEdit ? `/app/sales-invoices/${editId}` : '/app/sales-invoices')}>
+          <Button variant="ghost" onClick={() => navigate(demo ? '/app/demo/invoices' : isEdit ? `/app/sales-invoices/${editId}` : '/app/sales-invoices')}>
             Cancel
           </Button>
           <div className="flex items-center gap-2">

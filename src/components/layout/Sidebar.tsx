@@ -63,6 +63,15 @@ const navSections: NavSection[] = [
     ],
   },
   {
+    title: 'Estimates / Demo',
+    items: [
+      { to: '/app/demo/quotations', label: 'Demo Quotations', icon: FileSpreadsheet },
+      { to: '/app/demo/invoices', label: 'Demo Sales Invoices', icon: FileSpreadsheet },
+      { to: '/app/demo/orders', label: 'Demo Sales Orders', icon: FileSpreadsheet },
+      { to: '/app/demo/eway-bill', label: 'Demo e-Way Bills', icon: FileSpreadsheet },
+    ],
+  },
+  {
     title: 'Accounting',
     items: [
       { to: '/app/ledger', label: 'Ledger', icon: BookOpen },

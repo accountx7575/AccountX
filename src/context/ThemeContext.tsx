@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 
 type ThemeContextValue = {
   theme: 'light' | 'dark';
+  setThemePreference: (theme: 'light' | 'dark') => void;
   toggleTheme: () => void;
 };
 
@@ -39,13 +40,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, theme);
   }, [theme]);
 
+  const setThemePreference = (next: 'light' | 'dark') => {
+    if (next === theme) return;
+    applySmoothThemeTransition();
+    setTheme(next);
+  };
+
   const toggleTheme = () => {
     applySmoothThemeTransition();
     setTheme((t) => (t === 'light' ? 'dark' : 'light'));
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, setThemePreference, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   );

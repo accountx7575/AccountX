@@ -73,6 +73,13 @@ const EWayBillPage = lazy(() => import('@/pages/EWayBillPage').then((m) => ({ de
 const CommunicationsPage = lazy(() => import('@/pages/CommunicationsPage').then((m) => ({ default: m.CommunicationsPage })));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const SleuthNotFoundPage = lazy(() => import('@/pages/SleuthNotFoundPage').then((m) => ({ default: m.SleuthNotFoundPage })));
+const DemoQuotationsPage = lazy(() => import('@/pages/demo/DemoDocListPage').then((m) => ({ default: m.DemoQuotationsPage })));
+const DemoInvoicesPage = lazy(() => import('@/pages/demo/DemoDocListPage').then((m) => ({ default: m.DemoInvoicesPage })));
+const DemoOrdersPage = lazy(() => import('@/pages/demo/DemoDocListPage').then((m) => ({ default: m.DemoOrdersPage })));
+const DemoEWayBillPage = lazy(() => import('@/pages/demo/DemoEWayBillPage').then((m) => ({ default: m.DemoEWayBillPage })));
+const DemoQuotationPreviewPage = lazy(() => import('@/pages/demo/DemoDocPreviewPage').then((m) => ({ default: m.DemoQuotationPreviewPage })));
+const DemoInvoicePreviewPage = lazy(() => import('@/pages/demo/DemoDocPreviewPage').then((m) => ({ default: m.DemoInvoicePreviewPage })));
+const DemoOrderPreviewPage = lazy(() => import('@/pages/demo/DemoDocPreviewPage').then((m) => ({ default: m.DemoOrderPreviewPage })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -164,6 +171,18 @@ function AppRoutes() {
         <Route path="gst/reconciliation" element={<GstReconciliationPage />} />
         <Route path="tally" element={<TallyWizardPage />} />
         <Route path="eway-bill" element={<EWayBillPage />} />
+
+        {/* Demo/Proforma Sandbox (PBS-112) */}
+        <Route path="demo/quotations" element={<DemoQuotationsPage />} />
+        <Route path="demo/invoices" element={<DemoInvoicesPage />} />
+        <Route path="demo/orders" element={<DemoOrdersPage />} />
+        <Route path="demo/eway-bill" element={<DemoEWayBillPage />} />
+        <Route path="demo/quotations/new" element={<QuotationCreatePage demo />} />
+        <Route path="demo/invoices/new" element={<SalesInvoiceCreatePage demo />} />
+        <Route path="demo/orders/new" element={<SalesOrderCreatePage demo />} />
+        <Route path="demo/quotations/:id" element={<DemoQuotationPreviewPage />} />
+        <Route path="demo/invoices/:id" element={<DemoInvoicePreviewPage />} />
+        <Route path="demo/orders/:id" element={<DemoOrderPreviewPage />} />
         <Route path="tally/mapping" element={<TallyMappingPage />} />
         <Route path="tally/history" element={<TallyHistoryPage />} />
         

@@ -65,6 +65,8 @@ export interface UniversalDocumentData {
   grandTotal: number;
   amountInWords?: string;
   taxNote?: string;
+  /** Demo sandbox: 'estimate' | 'demo' | 'clean' — see UniversalDocumentTemplate. */
+  demoHeader?: 'estimate' | 'demo' | 'clean';
   terms?: string[];
   bankDetails?: {
     bankName?: string;
@@ -201,7 +203,17 @@ export const UniversalDocumentTemplate: React.FC<{
   className?: string;
   id?: string;
 }> = ({ data, className = '', id = 'universal-printable-area' }) => {
-  const titles = getDocumentTitles(data.documentType);
+  const stdTitles = getDocumentTitles(data.documentType);
+  // Demo/Proforma sandbox header override (PBS-112):
+  // 'estimate' → ESTIMATE / PROFORMA INVOICE · 'demo' → DEMO <doc kind> ·
+  // 'clean' (or unset) → byte-identical standard real-doc layout.
+  const demoMode = data.demoHeader === 'estimate' || data.demoHeader === 'demo' ? data.demoHeader : null;
+  const titles =
+    demoMode === 'estimate'
+      ? { header: 'ESTIMATE / PROFORMA INVOICE', sub: 'Not A Tax Invoice — Subject To Availability' }
+      : demoMode === 'demo'
+        ? { header: `DEMO ${stdTitles.header.split(' / ')[0]}`, sub: 'Not For Statutory Use' }
+        : stdTitles;
   const isPurchase =
     data.documentType === 'PURCHASE_BILL' ||
     data.documentType === 'PURCHASE_ORDER';
@@ -220,9 +232,24 @@ export const UniversalDocumentTemplate: React.FC<{
   return (
     <div
       id={id}
-      className={`bg-white p-6 sm:p-10 text-slate-800 text-xs leading-relaxed font-sans shadow-sm border border-slate-200/90 rounded-2xl ${className}`}
+      className={`relative bg-white p-6 sm:p-10 text-slate-800 text-xs leading-relaxed font-sans shadow-sm border border-slate-200/90 rounded-2xl ${className}`}
       style={{ minHeight: '297mm', boxSizing: 'border-box' }}
     >
+      {demoMode && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden rounded-2xl"
+        >
+          <span
+            className={`select-none text-[88px] font-black uppercase tracking-[0.35em] ${
+              demoMode === 'estimate' ? 'text-rose-500/10' : 'text-amber-500/15'
+            }`}
+            style={{ transform: 'rotate(-28deg)' }}
+          >
+            {demoMode === 'estimate' ? 'ESTIMATE' : 'DEMO'}
+          </span>
+        </div>
+      )}
       {/* 1. Header Section */}
       <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b-2 border-slate-900 pb-6">
         <div>
@@ -297,11 +324,15 @@ export const UniversalDocumentTemplate: React.FC<{
 
         {/* Document Meta Heading */}
         <div className="text-left sm:text-right shrink-0">
-          <div className="inline-block rounded-lg bg-slate-100 border border-slate-300 px-3.5 py-1.5 text-center shadow-xs">
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-900">
+          <div className={`inline-block rounded-lg px-3.5 py-1.5 text-center shadow-xs ${demoMode === 'estimate' ? 'bg-rose-50 border border-rose-200' : demoMode === 'demo' ? 'bg-amber-50 border border-amber-200' : 'bg-slate-100 border border-slate-300'}`}>
+            <span
+              className={`text-[11px] font-black uppercase tracking-wider ${
+                demoMode === 'estimate' ? 'text-rose-700' : demoMode === 'demo' ? 'text-amber-700' : 'text-slate-900'
+              }`}
+            >
               {titles.header}
             </span>
-            <p className="text-[9px] font-bold text-violet-700 tracking-wide">
+            <p className={`text-[9px] font-bold tracking-wide ${demoMode === 'estimate' ? 'text-rose-600' : demoMode === 'demo' ? 'text-amber-600' : 'text-violet-700'}`}>
               {titles.sub}
             </p>
           </div>

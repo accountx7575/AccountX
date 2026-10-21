@@ -1,26 +1,20 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { GSTIN_REGEX, PAN_REGEX } from '@/lib/validation';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
 import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input, FormField, Select, Textarea } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Settings, Building2, Save, Database, Download, FileDown, FileText, Users, UserMinus, ShieldCheck, PenTool, Upload, X, BellRing, ArrowRight } from 'lucide-react';
+import { Settings, Building2, Save, ShieldCheck, Upload, X, BellRing, FileText, Landmark, Sun, Moon, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { CommunicationCenterPanel } from '@/components/settings/CommunicationCenterPanel';
 import { MessageTemplatesPanel } from '@/components/settings/MessageTemplatesPanel';
 import { ScheduledReportsPanel } from '@/components/settings/ScheduledReportsPanel';
-import { can, capabilityTooltip, roleLabel, type Role } from '@/lib/rbac';
-import { useAdminTelemetry } from '@/hooks/useAdminTelemetry';
-import { buildFullLedgerJson } from '@/lib/exportLedger';
-import { TallyExportPanel } from '@/components/settings/TallyExportPanel';
-import { BulkImportPanel } from '@/components/settings/BulkImportPanel';
+import { can, capabilityTooltip, roleLabel } from '@/lib/rbac';
 import { PageMotion } from '@/lib/motion';
-import { formatDate } from '@/lib/utils';
 import { DRIFTED_EXTRAS_KEYS, isMissingColumnError, stashBusinessExtras, type BusinessExtras } from '@/lib/businessExtras';
 import { saveTncCache, readTncCache, STANDARD_TNC_DEFAULTS, type TncDocType } from '@/lib/tncDefaults';
 
@@ -37,39 +31,6 @@ const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chh
 const UPI_ID_REGEX = /^[A-Za-z0-9.@-]{2,60}$/;
 const IFSC_REGEX = /^[A-Za-z]{4}0[A-Za-z0-9]{6}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-type CsvRow = Record<string, string | number | boolean | null>;
-
-function toCsvValue(v: string | number | boolean | null): string {
-  if (v === null || v === undefined) return '';
-  const s = String(v);
-  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-  return s;
-}
-
-function toCsv(columns: string[], rows: CsvRow[]): string {
-  const header = columns.join(',');
-  const body = rows.map((r) => columns.map((c) => toCsvValue(r[c])).join(','));
-  return [header, ...body].join('\r\n');
-}
-
-function downloadCsv(filename: string, csv: string): void {
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-const CUSTOMER_COLUMNS = ['name','company_name','phone','email','gstin','pan','address','city','state','pincode','opening_balance','current_balance','total_sales','credit_limit','status','notes','created_at'];
-const SUPPLIER_COLUMNS = ['name','company_name','phone','email','gstin','pan','address','city','state','pincode','opening_balance','current_balance','status','notes','created_at'];
-const PRODUCT_COLUMNS = ['name','sku','barcode','type','hsn_sac','unit','purchase_price','selling_price','tax_rate','tax_inclusive','opening_stock','current_stock','minimum_stock','description','is_active','created_at'];
-const SALES_INVOICE_COLUMNS = ['invoice_number','invoice_date','due_date','customer','status','payment_status','place_of_supply','subtotal','discount_amount','taxable_amount','cgst_amount','sgst_amount','igst_amount','cess_amount','round_off','grand_total','paid_amount','balance_amount','product_name','hsn_sac','quantity','unit','rate','line_discount_amount','tax_rate','line_taxable_amount','line_cgst_amount','line_sgst_amount','line_igst_amount','line_total_amount'];
-const PURCHASE_BILL_COLUMNS = ['bill_number','bill_date','due_date','supplier','status','payment_status','subtotal','discount_amount','taxable_amount','cgst_amount','sgst_amount','igst_amount','cess_amount','round_off','grand_total','paid_amount','balance_amount','product_name','hsn_sac','quantity','unit','rate','line_discount_amount','tax_rate','line_taxable_amount','line_cgst_amount','line_sgst_amount','line_igst_amount','line_total_amount'];
 
 function StampSignatureSlot({
   title,
@@ -137,22 +98,28 @@ function StampSignatureSlot({
   );
 }
 
-type BusinessMemberRow = {
-  membership_id: string;
-  user_id: string;
-  email: string | null;
-  full_name: string | null;
-  role: Role | string;
-  is_active: boolean | null;
-  invited_at: string | null;
-  joined_at: string | null;
-};
+function SectionHeader({ icon, tone, title, subtitle }: { icon: ReactNode; tone: 'primary' | 'accent' | 'success' | 'secondary'; title: string; subtitle: string }) {
+  const tones = {
+    primary: 'bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400',
+    accent: 'bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400',
+    success: 'bg-success-100 dark:bg-success-900/30 text-success-600 dark:text-success-400',
+    secondary: 'bg-secondary-100 dark:bg-secondary-800 text-secondary-600 dark:text-secondary-300',
+  };
+  return (
+    <div className="flex items-center gap-3 mb-5">
+      <div className={`rounded-lg p-2.5 ${tones[tone]}`}>{icon}</div>
+      <div>
+        <h3 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">{title}</h3>
+        <p className="text-xs text-secondary-500 dark:text-secondary-400">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
 
 export function SettingsPage() {
-  const { activeBusiness, activeRole, user, refreshBusinesses } = useAuth();
+  const { activeBusiness, activeRole, refreshBusinesses } = useAuth();
+  const { theme, setThemePreference } = useTheme();
   const { toast } = useToast();
-  const { logAdminEvent } = useAdminTelemetry();
-  const queryClient = useQueryClient();
   const [form, setForm] = useState({
     name: '', legal_name: '', phone: '', email: '', address: '', city: '', state: 'Maharashtra',
     pincode: '',
@@ -175,11 +142,43 @@ export function SettingsPage() {
     tnc_purchase: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [exporting, setExporting] = useState<string | null>(null);
+
+  // PBS-121: strict exclusive tab rendering (human spec) — one card in the DOM
+  // at a time; the tab pin is a render switch, not an anchor scroll. Form state
+  // lives at page level, so switching never remounts or resets unsaved edits.
+  type SettingsTab = 'profile' | 'bank' | 'tnc' | 'taxes' | 'preferences';
+  const TAB_TO_HASH: Record<SettingsTab, string> = {
+    profile: 'settings-profile',
+    bank: 'settings-bank',
+    tnc: 'settings-docs',
+    taxes: 'settings-tax',
+    preferences: 'settings-prefs',
+  };
+  const HASH_TO_TAB: Record<string, SettingsTab> = {
+    'settings-profile': 'profile',
+    'settings-bank': 'bank',
+    'settings-docs': 'tnc',
+    'settings-tax': 'taxes',
+    'settings-prefs': 'preferences',
+  };
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+    try {
+      const h = window.location.hash.replace('#', '');
+      return HASH_TO_TAB[h] || 'profile';
+    } catch {
+      return 'profile';
+    }
+  });
+  const switchTab = (id: SettingsTab) => {
+    setActiveTab(id);
+    try {
+      window.history.replaceState(null, '', `#${TAB_TO_HASH[id]}`);
+    } catch {
+      /* hash update is best-effort */
+    }
+  };
 
   const canEditSettings = can(activeRole, 'settings.edit');
-  const canManageMembers = can(activeRole, 'members.manage');
-  const canExportData = can(activeRole, 'data.export');
   const settingsLockTooltip = capabilityTooltip('settings.edit', activeRole);
 
   useEffect(() => {
@@ -253,91 +252,6 @@ export function SettingsPage() {
     reader.onerror = () => toast('Could not read the selected image', 'error');
     reader.readAsDataURL(file);
   };
-
-  const ownerFallbackRows = (): BusinessMemberRow[] => {
-    if (!user) return [];
-    return [{
-      membership_id: `fallback-${user.id}`,
-      user_id: user.id,
-      email: user.email ?? null,
-      full_name: (user.user_metadata?.name as string | undefined) ?? null,
-      role: activeRole ?? 'owner',
-      is_active: true,
-      invited_at: null,
-      joined_at: null,
-    }];
-  };
-
-  const membersQuery = useQuery({
-    queryKey: ['business-members', activeBusiness?.id],
-    queryFn: async (): Promise<BusinessMemberRow[]> => {
-      if (!activeBusiness || !user) return ownerFallbackRows();
-      try {
-        const { data, error } = await supabase
-          .from('v_member_directory')
-          .select('membership_id, user_id, email, full_name, role, is_active, invited_at, joined_at')
-          .eq('business_id', activeBusiness.id)
-          .order('joined_at');
-        if (error) throw error;
-        const rows = (data ?? []) as BusinessMemberRow[];
-        if (rows.length === 0) return ownerFallbackRows();
-        return rows;
-      } catch {
-        return ownerFallbackRows();
-      }
-    },
-    enabled: !!activeBusiness,
-    retry: false,
-  });
-
-  const removeMutation = useMutation({
-    mutationFn: async (targetUserId: string) => {
-      if (!activeBusiness) throw new Error('No active business');
-      const { data, error } = await supabase.rpc('remove_business_member', {
-        p_business_id: activeBusiness.id,
-        p_target_user_id: targetUserId,
-      });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: async () => {
-      toast('Member removed from business', 'success');
-      await queryClient.invalidateQueries({ queryKey: ['business-members', activeBusiness?.id] });
-      await refreshBusinesses();
-    },
-    onError: (err: Error) => toast(err.message || 'Failed to remove member', 'error'),
-  });
-
-  function removalBlockReason(m: BusinessMemberRow): string | null {
-    if (!canManageMembers) return capabilityTooltip('members.manage', activeRole);
-    if (m.user_id === user?.id) return "You can't remove yourself";
-    if (m.role === 'owner') return 'The business owner cannot be removed';
-    return null;
-  }
-
-  function confirmRemove(m: BusinessMemberRow) {
-    let impersonating = false;
-    try {
-      impersonating =
-        localStorage.getItem('super_admin_impersonating') === 'true' ||
-        localStorage.getItem('accountx_impersonating') === 'true';
-    } catch {
-      impersonating = false;
-    }
-    if (impersonating) {
-      toast('Disabled in Super Admin support mode — exit to Admin Control Center to manage members.', 'error');
-      void logAdminEvent('DESTRUCTIVE_BLOCKED', activeBusiness?.id ?? null, {
-        attempted: 'remove_business_member',
-        target_user_id: m.user_id,
-      });
-      return;
-    }
-    const reason = removalBlockReason(m);
-    if (reason) return;
-    if (window.confirm('Remove this member from the business? Their access ends immediately.')) {
-      removeMutation.mutate(m.user_id);
-    }
-  }
 
   /* ----------------------------- settings ------------------------------- */
 
@@ -466,215 +380,27 @@ export function SettingsPage() {
     onError: (err: any) => toast(err.message || 'Failed to update settings', 'error'),
   });
 
-  async function exportFullLedger() {
-    if (!activeBusiness) return;
-    setExporting('full-ledger');
-    try {
-      const bundle = await buildFullLedgerJson(activeBusiness.id);
-      downloadJson(`accountx-full-ledger_${activeBusiness.name.replace(/[^a-z0-9]+/gi, '-')}_${bundle.fiscalYear.replace(/\s+/g, '')}.json`, JSON.stringify(bundle, null, 2));
-      toast('Full-ledger backup downloaded', 'success');
-    } catch (err: any) {
-      toast(err.message || 'Backup failed', 'error');
-    } finally {
-      setExporting(null);
-    }
-  }
-
-  function downloadJson(filename: string, json: string) {
-    const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async function fetchAll<T>(table: string, orderCol: string): Promise<T[]> {
-    if (!activeBusiness) throw new Error('No active business');
-    const { data, error } = await supabase.from(table).select('*').eq('business_id', activeBusiness.id).order(orderCol);
-    if (error) throw error;
-    return (data || []) as T[];
-  }
-
-  async function exportTable(key: string, label: string, table: string, orderCol: string, columns: string[]) {
-    setExporting(key);
-    try {
-      const rows = await fetchAll<CsvRow>(table, orderCol);
-      downloadCsv(`${activeBusiness?.name?.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'accountx'}-${key}.csv`, toCsv(columns, rows));
-      toast(`${label} exported (${rows.length} rows)`, 'success');
-    } catch (err: any) {
-      toast(err.message || `Failed to export ${label}`, 'error');
-    } finally {
-      setExporting(null);
-    }
-  }
-
-  async function exportSalesInvoices() {
-    setExporting('sales-invoices');
-    try {
-      if (!activeBusiness) throw new Error('No active business');
-      const bid = activeBusiness.id;
-      const { data: invoices, error: invError } = await supabase
-        .from('sales_invoices')
-        .select('*, customer:customers(name)')
-        .eq('business_id', bid)
-        .order('invoice_date');
-      if (invError) throw invError;
-      const list = (invoices || []) as (Record<string, unknown> & { id: string; customer?: { name: string } | null })[];
-      const ids = list.map((i) => i.id);
-      const { data: lines, error: lineError } = ids.length
-        ? await supabase.from('sales_invoice_items').select('*').in('invoice_id', ids)
-        : { data: [], error: null };
-      if (lineError) throw lineError;
-      const lineRows = ((lines || []) as Record<string, unknown>[]);
-      const linesByInvoice = new Map<string, Record<string, unknown>[]>();
-      lineRows.forEach((l) => {
-        const arr = linesByInvoice.get(l.invoice_id as string) || [];
-        arr.push(l);
-        linesByInvoice.set(l.invoice_id as string, arr);
-      });
-      const rows: CsvRow[] = [];
-      list.forEach((inv) => {
-        const docLines = linesByInvoice.get(inv.id) || [{}];
-        docLines.forEach((l) => {
-          rows.push({
-            invoice_number: inv.invoice_number as string,
-            invoice_date: inv.invoice_date as string,
-            due_date: (inv.due_date as string) || '',
-            customer: inv.customer?.name || '',
-            status: inv.status as string,
-            payment_status: inv.payment_status as string,
-            place_of_supply: (inv.place_of_supply as string) || '',
-            subtotal: inv.subtotal as number,
-            discount_amount: inv.discount_amount as number,
-            taxable_amount: inv.taxable_amount as number,
-            cgst_amount: inv.cgst_amount as number,
-            sgst_amount: inv.sgst_amount as number,
-            igst_amount: inv.igst_amount as number,
-            cess_amount: inv.cess_amount as number,
-            round_off: inv.round_off as number,
-            grand_total: inv.grand_total as number,
-            paid_amount: inv.paid_amount as number,
-            balance_amount: inv.balance_amount as number,
-            product_name: (l.product_name as string) || '',
-            hsn_sac: (l.hsn_sac as string) || '',
-            quantity: l.quantity as number,
-            unit: (l.unit as string) || '',
-            rate: l.rate as number,
-            line_discount_amount: l.discount_amount as number,
-            tax_rate: l.tax_rate as number,
-            line_taxable_amount: l.taxable_amount as number,
-            line_cgst_amount: l.cgst_amount as number,
-            line_sgst_amount: l.sgst_amount as number,
-            line_igst_amount: l.igst_amount as number,
-            line_total_amount: l.total_amount as number,
-          });
-        });
-      });
-      downloadCsv(`${activeBusiness?.name?.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'accountx'}-sales-invoices.csv`, toCsv(SALES_INVOICE_COLUMNS, rows));
-      toast(`Sales invoices exported (${rows.length} line items)`, 'success');
-    } catch (err: any) {
-      toast(err.message || 'Failed to export sales invoices', 'error');
-    } finally {
-      setExporting(null);
-    }
-  }
-
-  async function exportPurchaseBills() {
-    setExporting('purchase-bills');
-    try {
-      if (!activeBusiness) throw new Error('No active business');
-      const bid = activeBusiness.id;
-      const { data: bills, error: billError } = await supabase
-        .from('purchase_bills')
-        .select('*, supplier:suppliers(name)')
-        .eq('business_id', bid)
-        .order('bill_date');
-      if (billError) throw billError;
-      const list = (bills || []) as (Record<string, unknown> & { id: string; supplier?: { name: string } | null })[];
-      const ids = list.map((b) => b.id);
-      const { data: lines, error: lineError } = ids.length
-        ? await supabase.from('purchase_bill_items').select('*').in('bill_id', ids)
-        : { data: [], error: null };
-      if (lineError) throw lineError;
-      const lineRows = ((lines || []) as Record<string, unknown>[]);
-      const linesByBill = new Map<string, Record<string, unknown>[]>();
-      lineRows.forEach((l) => {
-        const arr = linesByBill.get(l.bill_id as string) || [];
-        arr.push(l);
-        linesByBill.set(l.bill_id as string, arr);
-      });
-      const rows: CsvRow[] = [];
-      list.forEach((bill) => {
-        const docLines = linesByBill.get(bill.id) || [{}];
-        docLines.forEach((l) => {
-          rows.push({
-            bill_number: bill.bill_number as string,
-            bill_date: bill.bill_date as string,
-            due_date: (bill.due_date as string) || '',
-            supplier: bill.supplier?.name || '',
-            status: bill.status as string,
-            payment_status: bill.payment_status as string,
-            subtotal: bill.subtotal as number,
-            discount_amount: bill.discount_amount as number,
-            taxable_amount: bill.taxable_amount as number,
-            cgst_amount: bill.cgst_amount as number,
-            sgst_amount: bill.sgst_amount as number,
-            igst_amount: bill.igst_amount as number,
-            cess_amount: bill.cess_amount as number,
-            round_off: bill.round_off as number,
-            grand_total: bill.grand_total as number,
-            paid_amount: bill.paid_amount as number,
-            balance_amount: bill.balance_amount as number,
-            product_name: (l.product_name as string) || '',
-            hsn_sac: (l.hsn_sac as string) || '',
-            quantity: l.quantity as number,
-            unit: (l.unit as string) || '',
-            rate: l.rate as number,
-            line_discount_amount: l.discount_amount as number,
-            tax_rate: l.tax_rate as number,
-            line_taxable_amount: l.taxable_amount as number,
-            line_cgst_amount: l.cgst_amount as number,
-            line_sgst_amount: l.sgst_amount as number,
-            line_igst_amount: l.igst_amount as number,
-            line_total_amount: l.total_amount as number,
-          });
-        });
-      });
-      downloadCsv(`${activeBusiness?.name?.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'accountx'}-purchase-bills.csv`, toCsv(PURCHASE_BILL_COLUMNS, rows));
-      toast(`Purchase bills exported (${rows.length} line items)`, 'success');
-    } catch (err: any) {
-      toast(err.message || 'Failed to export purchase bills', 'error');
-    } finally {
-      setExporting(null);
-    }
-  }
-
-  const sym = '₹';
-
   if (!activeBusiness) return null;
 
   return (
     <PageMotion>
-      <PageHeader title="Settings" subtitle="Manage your business configuration" />
+      <PageHeader title="Settings" subtitle="Business & operational configuration" />
 
       <nav aria-label="Settings sections" className="sticky top-[64px] z-20 -mx-1 mb-4 flex gap-2 overflow-x-auto py-2 px-1 backdrop-blur-sm">
         {[
-          { id: 'settings-members', label: 'Members' },
-          { id: 'settings-profile', label: 'Business Profile' },
-          { id: 'settings-gst', label: 'GST & Tax' },
-          { id: 'settings-signature', label: 'Signature & Stamp' },
-          { id: 'settings-invoice', label: 'Invoice' },
-          { id: 'settings-tnc', label: 'Document T&C' },
-          { id: 'settings-comms', label: 'Notifications & Comms' },
-          { id: 'settings-export', label: 'Data Export' },
-          { id: 'settings-import', label: 'Bulk Import' },
+          { id: 'profile', card: 'settings-profile', label: '1. Business Profile' },
+          { id: 'bank', card: 'settings-bank', label: '2. Bank & UPI' },
+          { id: 'tnc', card: 'settings-docs', label: '3. Terms & Conditions' },
+          { id: 'taxes', card: 'settings-tax', label: '4. Taxes & Currency' },
+          { id: 'preferences', card: 'settings-prefs', label: '5. Preferences' },
         ].map((s) => (
           <button
             key={s.id}
-            onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className="shrink-0 rounded-full border border-secondary-200 dark:border-secondary-700 bg-white/80 dark:bg-zinc-900/80 px-3.5 py-1.5 text-xs font-medium text-secondary-600 dark:text-secondary-300 hover:border-primary-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            onClick={() => switchTab(s.id as SettingsTab)}
+            aria-current={activeTab === s.id}
+            className={activeTab === s.id
+              ? 'shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium bg-primary-600 text-white shadow-sm transition-colors'
+              : 'shrink-0 rounded-full border border-secondary-200 dark:border-secondary-700 bg-white/80 dark:bg-zinc-900/80 px-3.5 py-1.5 text-xs font-medium text-secondary-600 dark:text-secondary-300 hover:border-primary-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors'}
           >
             {s.label}
           </button>
@@ -691,187 +417,15 @@ export function SettingsPage() {
       )}
 
       <div className="space-y-6 scroll-mt-24">
-        {/* Members */}
-        <div id="settings-members" className="card p-6 scroll-mt-28">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="rounded-lg bg-accent-100 dark:bg-accent-900/30 p-2.5">
-              <Users className="h-5 w-5 text-accent-600 dark:text-accent-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">Team Members</h3>
-              <p className="text-xs text-secondary-500 dark:text-secondary-400">People with access to this business</p>
-            </div>
-          </div>
-
-          {membersQuery.isLoading ? (
-            <div className="animate-pulse space-y-2" aria-busy="true">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-10 rounded-lg bg-secondary-100 dark:bg-secondary-800" />
-              ))}
-            </div>
-          ) : (membersQuery.data ?? []).length === 0 ? (
-            <EmptyState icon={Users} title="No members listed" description="Membership records could not be loaded for this business." />
-          ) : (
-            <ul className="divide-y divide-secondary-100 dark:divide-secondary-800">
-              {(membersQuery.data ?? []).map((m) => {
-                const blockReason = removalBlockReason(m);
-                const isYou = m.user_id === user?.id;
-                return (
-                  <li key={m.user_id} className="flex flex-wrap items-center gap-3 py-3 px-2 -mx-2 rounded-lg transition-colors hover:bg-secondary-50/70 dark:hover:bg-secondary-800/40">
-                    <div className={
-                      m.role === 'owner'
-                        ? 'h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-500/15 flex items-center justify-center text-xs font-semibold text-amber-700 dark:text-amber-400 shrink-0'
-                        : 'h-9 w-9 rounded-full bg-secondary-200 dark:bg-secondary-700 flex items-center justify-center text-xs font-semibold text-secondary-600 dark:text-secondary-300 shrink-0'
-                    } aria-hidden="true">
-                      {m.role === 'owner' ? '★' : roleLabel(m.role).slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-secondary-900 dark:text-secondary-100 truncate">
-                        {m.full_name || (isYou ? user?.email || 'You' : m.email) || `Member ${m.user_id.slice(0, 8)}…`}
-                        {isYou && <span className="ml-1.5 text-xs font-normal text-primary-500">(you)</span>}
-                      </p>
-                      <p className="figure text-xs text-secondary-400 truncate">{m.email || (m.joined_at ? `Joined ${formatDate(m.joined_at)}` : 'Join date unavailable')}</p>
-                    </div>
-                    {m.is_active === false && (
-                      <Badge variant="error">deactivated</Badge>
-                    )}
-                    <Badge variant={m.role === 'owner' ? 'primary' : m.is_active === false ? 'neutral' : 'info'}>
-                      {roleLabel(m.role)}
-                      {m.is_active === false ? ' · inactive' : ''}
-                    </Badge>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => confirmRemove(m)}
-                      disabled={!!blockReason}
-                      loading={removeMutation.isPending && removeMutation.variables === m.user_id}
-                      title={blockReason ?? `Remove ${roleLabel(m.role)} from this business`}
-                      aria-label={`Remove member with role ${roleLabel(m.role)}`}
-                    >
-                      <UserMinus className="h-3.5 w-3.5" /> Remove
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {!canManageMembers && (
-            <p className="mt-4 text-xs text-secondary-400">
-              Member management requires owner or admin access — removal stays disabled until then.
-            </p>
-          )}
-        </div>
-
-        {/* Business Profile */}
+        {/* 1. Business Profile */}
+        {activeTab === 'profile' && (
         <div id="settings-profile" className="card p-6 scroll-mt-28">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="rounded-lg bg-primary-100 dark:bg-primary-900/30 p-2.5">
-              <Building2 className="h-5 w-5 text-primary-600 dark:text-primary-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">Business Profile</h3>
-              <p className="text-xs text-secondary-500 dark:text-secondary-400">Update your business information</p>
-            </div>
-          </div>
+          <SectionHeader icon={<Building2 className="h-5 w-5" />} tone="primary" title="Business Profile" subtitle="Identity, tax registration, print branding and numbering" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Business Name" required error={errors.name}>
               <Input value={form.name} disabled={!canEditSettings} title={!canEditSettings ? settingsLockTooltip : undefined} onChange={(e) => { clearError('name'); setForm({ ...form, name: e.target.value }); }} />
             </FormField>
             <FormField label="Legal Name"><Input value={form.legal_name} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, legal_name: e.target.value })} /></FormField>
-            <FormField label="Phone"><Input type="tel" value={form.phone} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></FormField>
-            <FormField label="Email" error={errors.email}>
-              <Input type="email" value={form.email} disabled={!canEditSettings} onChange={(e) => { clearError('email'); setForm({ ...form, email: e.target.value }); }} />
-            </FormField>
-            <FormField label="City"><Input value={form.city} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, city: e.target.value })} /></FormField>
-            <FormField label="UPI ID" error={errors.upi_id}>
-              <Input
-                value={form.upi_id}
-                disabled={!canEditSettings}
-                maxLength={60}
-                placeholder="business@upi"
-                onChange={(e) => { clearError('upi_id'); setForm({ ...form, upi_id: e.target.value.trim() }); }}
-              />
-              <p className="text-xs text-secondary-400 mt-1">Shown on invoices for UPI QR payments</p>
-            </FormField>
-            <StampSignatureSlot
-              title="UPI QR Code"
-              hint="Uploaded QR shown on invoices (PNG, JPG or SVG)"
-              value={form.upi_qr_url}
-              disabled={!canEditSettings}
-              onPick={(f) => readImageFile(f, 'upi_qr_url')}
-              onRemove={() => setForm((prev) => ({ ...prev, upi_qr_url: '' }))}
-            />
-            <FormField label="Bank Name">
-              <Input
-                value={form.bank_name}
-                disabled={!canEditSettings}
-                maxLength={80}
-                placeholder="HDFC Bank"
-                onChange={(e) => setForm({ ...form, bank_name: e.target.value })}
-              />
-            </FormField>
-            <FormField label="Account Number" error={errors.bank_account_number}>
-              <Input
-                value={form.bank_account_number}
-                disabled={!canEditSettings}
-                maxLength={20}
-                placeholder="1234567890"
-                onChange={(e) => { clearError('bank_account_number'); setForm({ ...form, bank_account_number: e.target.value }); }}
-              />
-              <p className="text-xs text-secondary-400 mt-1">Printed on documents - never shared</p>
-            </FormField>
-            <FormField label="Account Holder Name">
-              <Input
-                value={form.account_name}
-                disabled={!canEditSettings}
-                maxLength={80}
-                placeholder="Rajesh Kumar"
-                onChange={(e) => setForm({ ...form, account_name: e.target.value })}
-              />
-              <p className="text-xs text-secondary-400 mt-1">Printed as A/c Name on invoices</p>
-            </FormField>
-            <FormField label="IFSC Code" error={errors.bank_ifsc_code}>
-              <Input
-                value={form.bank_ifsc_code}
-                disabled={!canEditSettings}
-                maxLength={11}
-                placeholder="SBIN0001234"
-                onChange={(e) => { clearError('bank_ifsc_code'); setForm({ ...form, bank_ifsc_code: e.target.value.toUpperCase() }); }}
-              />
-            </FormField>
-            <FormField label="State">
-              <Select value={form.state} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, state: e.target.value })}>
-                {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </Select>
-            </FormField>
-            <FormField label="PIN Code" error={errors.pincode}>
-              <Input
-                value={form.pincode}
-                disabled={!canEditSettings}
-                maxLength={6}
-                inputMode="numeric"
-                placeholder="400001"
-                onChange={(e) => { clearError('pincode'); setForm({ ...form, pincode: e.target.value.replace(/[^0-9]/g, '').slice(0, 6) }); }}
-              />
-            </FormField>
-          </div>
-          <div className="mt-4">
-            <FormField label="Address"><Textarea value={form.address} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, address: e.target.value })} rows={2} /></FormField>
-          </div>
-        </div>
-
-        {/* GST & Tax */}
-        <div id="settings-gst" className="card p-6 scroll-mt-28">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="rounded-lg bg-success-100 dark:bg-success-900/30 p-2.5">
-              <Settings className="h-5 w-5 text-success-600 dark:text-success-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">GST & Tax Settings</h3>
-              <p className="text-xs text-secondary-500 dark:text-secondary-400">Configure GST registration details</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="GSTIN" error={errors.gstin}>
               <Input
                 value={form.gstin}
@@ -881,6 +435,7 @@ export function SettingsPage() {
                 placeholder="27ABCDE1234F1Z5"
                 disabled={!form.gst_registered || !canEditSettings}
               />
+              {!form.gst_registered && <p className="text-xs text-secondary-400 mt-1">Enable GST registration in Taxes &amp; Currency to edit</p>}
             </FormField>
             <FormField label="PAN" error={errors.pan}>
               <Input
@@ -891,6 +446,182 @@ export function SettingsPage() {
                 placeholder="ABCDE1234F"
                 disabled={!canEditSettings}
               />
+            </FormField>
+            <FormField label="Phone"><Input type="tel" value={form.phone} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></FormField>
+            <FormField label="Email" error={errors.email}>
+              <Input type="email" value={form.email} disabled={!canEditSettings} onChange={(e) => { clearError('email'); setForm({ ...form, email: e.target.value }); }} />
+            </FormField>
+          </div>
+          <div className="mt-4">
+            <FormField label="Registered Address"><Textarea value={form.address} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, address: e.target.value })} rows={2} /></FormField>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+              <FormField label="City"><Input value={form.city} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, city: e.target.value })} /></FormField>
+              <FormField label="State">
+                <Select value={form.state} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, state: e.target.value })}>
+                  {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </Select>
+              </FormField>
+              <FormField label="PIN Code" error={errors.pincode}>
+                <Input
+                  value={form.pincode}
+                  disabled={!canEditSettings}
+                  maxLength={6}
+                  inputMode="numeric"
+                  placeholder="400001"
+                  onChange={(e) => { clearError('pincode'); setForm({ ...form, pincode: e.target.value.replace(/[^0-9]/g, '').slice(0, 6) }); }}
+                />
+              </FormField>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+            <StampSignatureSlot
+              title="Company / Firm Logo"
+              hint="Rendered top-left on quotation and sales invoice header (PNG, JPG or SVG)"
+              value={form.logo_url}
+              disabled={!canEditSettings}
+              onPick={(f) => readImageFile(f, 'logo_url')}
+              onRemove={() => setForm((prev) => ({ ...prev, logo_url: '' }))}
+            />
+            <StampSignatureSlot
+              title="Company / Firm Stamp & Sign"
+              hint="Transparent PNG recommended - sits above the sign line (PNG, JPG or SVG)"
+              value={form.signature_url}
+              disabled={!canEditSettings}
+              onPick={(f) => readImageFile(f, 'signature_url')}
+              onRemove={() => setForm((prev) => ({ ...prev, signature_url: '' }))}
+            />
+            <FormField label="Signature Name">
+              <Input
+                value={form.invoice_signature_name}
+                disabled={!canEditSettings}
+                maxLength={80}
+                placeholder="e.g. Rajesh Kumar - Proprietor"
+                onChange={(e) => setForm((prev) => ({ ...prev, invoice_signature_name: e.target.value }))}
+              />
+              <p className="text-xs text-secondary-400 mt-1">Printed above the signature block when set</p>
+            </FormField>
+            <FormField label="Invoice Prefix">
+              <Input value={form.invoice_prefix} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, invoice_prefix: e.target.value })} placeholder="INV" />
+            </FormField>
+            <FormField label="Financial Year">
+              <Select value={form.financial_year} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, financial_year: e.target.value })}>
+                {fyList.map((fy) => <option key={fy} value={fy}>{fy}</option>)}
+              </Select>
+            </FormField>
+            <FormField label="Invoice Footer Text">
+              <Textarea
+                value={form.invoice_footer_text}
+                disabled={!canEditSettings}
+                rows={2}
+                placeholder="e.g. Goods once sold will not be taken back. Subject to Barabanki jurisdiction."
+                onChange={(e) => setForm((prev) => ({ ...prev, invoice_footer_text: e.target.value }))}
+              />
+              <p className="text-xs text-secondary-400 mt-1">Rendered as a centred line under invoice totals when set</p>
+            </FormField>
+          </div>
+        </div>
+        )}
+
+
+        {/* 2. Bank & UPI */}
+        {activeTab === 'bank' && (
+        <div id="settings-bank" className="card p-6 scroll-mt-28">
+          <SectionHeader icon={<Landmark className="h-5 w-5" />} tone="secondary" title="Bank &amp; UPI" subtitle="Payment details printed on invoices and quotations" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
+              <FormField label="UPI ID" error={errors.upi_id}>
+                <Input
+                  value={form.upi_id}
+                  disabled={!canEditSettings}
+                  maxLength={60}
+                  placeholder="business@upi"
+                  onChange={(e) => { clearError('upi_id'); setForm({ ...form, upi_id: e.target.value.trim() }); }}
+                />
+                <p className="text-xs text-secondary-400 mt-1">Shown on invoices for UPI QR payments</p>
+              </FormField>
+              <FormField label="Bank Name">
+                <Input
+                  value={form.bank_name}
+                  disabled={!canEditSettings}
+                  maxLength={80}
+                  placeholder="HDFC Bank"
+                  onChange={(e) => setForm({ ...form, bank_name: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Account Number" error={errors.bank_account_number}>
+                <Input
+                  value={form.bank_account_number}
+                  disabled={!canEditSettings}
+                  maxLength={20}
+                  placeholder="1234567890"
+                  onChange={(e) => { clearError('bank_account_number'); setForm({ ...form, bank_account_number: e.target.value }); }}
+                />
+                <p className="text-xs text-secondary-400 mt-1">Printed on documents - never shared</p>
+              </FormField>
+              <FormField label="Account Holder Name">
+                <Input
+                  value={form.account_name}
+                  disabled={!canEditSettings}
+                  maxLength={80}
+                  placeholder="Rajesh Kumar"
+                  onChange={(e) => setForm({ ...form, account_name: e.target.value })}
+                />
+                <p className="text-xs text-secondary-400 mt-1">Printed as A/c Name on invoices</p>
+              </FormField>
+              <FormField label="IFSC Code" error={errors.bank_ifsc_code}>
+                <Input
+                  value={form.bank_ifsc_code}
+                  disabled={!canEditSettings}
+                  maxLength={11}
+                  placeholder="SBIN0001234"
+                  onChange={(e) => { clearError('bank_ifsc_code'); setForm({ ...form, bank_ifsc_code: e.target.value.toUpperCase() }); }}
+                />
+              </FormField>
+              <StampSignatureSlot
+                title="UPI QR Code"
+                hint="Uploaded QR shown on invoices (PNG, JPG or SVG)"
+                value={form.upi_qr_url}
+                disabled={!canEditSettings}
+                onPick={(f) => readImageFile(f, 'upi_qr_url')}
+                onRemove={() => setForm((prev) => ({ ...prev, upi_qr_url: '' }))}
+              />
+            </div>
+          </div>
+        </div>
+        )}
+
+
+        {/* 3. Terms & Conditions */}
+        {activeTab === 'tnc' && (
+        <div id="settings-docs" className="card p-6 scroll-mt-28">
+          <SectionHeader icon={<FileText className="h-5 w-5" />} tone="accent" title="Terms &amp; Conditions" subtitle="Defaults printed when a record has no stored terms" />
+          <div className="flex flex-col gap-6 mt-1">
+              <FormField label="Invoices">
+                <Textarea rows={4} className="w-full min-h-[110px] border border-secondary-200 dark:border-secondary-700 rounded-lg p-3 text-xs md:text-sm" value={form.tnc_invoice} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_invoice: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.sales_invoice} />
+              </FormField>
+              <FormField label="Quotations">
+                <Textarea rows={4} className="w-full min-h-[110px] border border-secondary-200 dark:border-secondary-700 rounded-lg p-3 text-xs md:text-sm" value={form.tnc_quotation} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_quotation: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.quotation} />
+              </FormField>
+              <FormField label="Sales Orders">
+                <Textarea rows={4} className="w-full min-h-[110px] border border-secondary-200 dark:border-secondary-700 rounded-lg p-3 text-xs md:text-sm" value={form.tnc_sales_order} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_sales_order: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.sales_order} />
+              </FormField>
+              <FormField label="Purchase Documents">
+                <Textarea rows={4} className="w-full min-h-[110px] border border-secondary-200 dark:border-secondary-700 rounded-lg p-3 text-xs md:text-sm" value={form.tnc_purchase} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_purchase: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.purchase} />
+              </FormField>
+            </div>
+            <p className="mt-3 text-[11px] text-secondary-500 dark:text-secondary-400">Leave empty to use standard defaults. Saved with business settings; while the database migration is pending these are stored on this device only.</p>
+        </div>
+        )}
+
+
+        {/* 4. Taxes & Currency */}
+        {activeTab === 'taxes' && (
+        <div id="settings-tax" className="card p-6 scroll-mt-28">
+          <SectionHeader icon={<Settings className="h-5 w-5" />} tone="success" title="Taxes &amp; Currency" subtitle="GST behaviour and currency display" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="Currency Symbol">
+              <Input value={form.currency_symbol} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, currency_symbol: e.target.value })} placeholder="₹" />
+              <p className="text-xs text-secondary-400 mt-1">Used across documents and totals</p>
             </FormField>
           </div>
           <label className="flex items-center gap-3 mt-4 p-4 rounded-lg border border-secondary-200 dark:border-secondary-700 cursor-pointer hover:bg-secondary-50 dark:hover:bg-secondary-800/50">
@@ -912,209 +643,72 @@ export function SettingsPage() {
             </div>
           </label>
           {!form.gst_registered && (
-            <p className="mt-2 text-xs text-secondary-400">Disable GST registration to clear and hide GSTIN entry.</p>
+            <p className="mt-2 text-xs text-secondary-400">Disable GST registration to clear the GSTIN in Business Profile.</p>
           )}
+          <p className="mt-3 text-xs text-secondary-400">Tax rates are configured per product; documents compute line tax and round-off automatically.</p>
         </div>
+        )}
 
-        {/* Signature & Stamp */}
-        <div id="settings-signature" className="card p-6 scroll-mt-28">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="rounded-lg bg-primary-100 dark:bg-primary-900/30 p-2.5">
-              <PenTool className="h-5 w-5 text-primary-600 dark:text-primary-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">Signature &amp; Stamp</h3>
-              <p className="text-xs text-secondary-500 dark:text-secondary-400">Auto-rendered on every quotation &amp; invoice (PNG, JPG or SVG)</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <StampSignatureSlot
-              title="Company / Firm Logo"
-              hint="Rendered top-left on quotation and sales invoice header"
-              value={form.logo_url}
-              disabled={!canEditSettings}
-              onPick={(f) => readImageFile(f, 'logo_url')}
-              onRemove={() => setForm((prev) => ({ ...prev, logo_url: '' }))}
-            />
-            <StampSignatureSlot
-              title="Company / Firm Stamp & Sign"
-              hint="Transparent PNG recommended - sits above the sign line"
-              value={form.signature_url}
-              disabled={!canEditSettings}
-              onPick={(f) => readImageFile(f, 'signature_url')}
-              onRemove={() => setForm((prev) => ({ ...prev, signature_url: '' }))}
-            />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-            <FormField label="Signature Name">
-              <Input
-                value={form.invoice_signature_name}
-                disabled={!canEditSettings}
-                maxLength={80}
-                placeholder="e.g. Rajesh Kumar - Proprietor"
-                onChange={(e) => setForm((prev) => ({ ...prev, invoice_signature_name: e.target.value }))}
-              />
-              <p className="text-xs text-secondary-400 mt-1">Printed above the signature block when set</p>
-            </FormField>
-            <FormField label="Invoice Footer Text">
-              <Textarea
-                value={form.invoice_footer_text}
-                disabled={!canEditSettings}
-                rows={2}
-                placeholder="e.g. Goods once sold will not be taken back. Subject to Barabanki jurisdiction."
-                onChange={(e) => setForm((prev) => ({ ...prev, invoice_footer_text: e.target.value }))}
-              />
-              <p className="text-xs text-secondary-400 mt-1">Rendered as a centred line under invoice totals when set</p>
-            </FormField>
-          </div>
-          <p className="mt-3 text-xs text-secondary-400">
-            Saved with Business Settings below. Quotations and Invoices render these automatically.
-          </p>
-        </div>
 
-        {/* Invoice Settings */}
-        <div id="settings-invoice" className="card p-6 scroll-mt-28">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="rounded-lg bg-accent-100 dark:bg-accent-900/30 p-2.5">
-              <FileDown className="h-5 w-5 text-accent-600 dark:text-accent-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">Invoice Settings</h3>
-              <p className="text-xs text-secondary-500 dark:text-secondary-400">Customize invoice numbering and currency</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <FormField label="Invoice Prefix"><Input value={form.invoice_prefix} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, invoice_prefix: e.target.value })} placeholder="INV" /></FormField>
-            <FormField label="Financial Year">
-              <Select value={form.financial_year} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, financial_year: e.target.value })}>
-                {fyList.map((fy) => <option key={fy} value={fy}>{fy}</option>)}
-              </Select>
-            </FormField>
-            <FormField label="Currency Symbol"><Input value={form.currency_symbol} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, currency_symbol: e.target.value })} placeholder={sym} /></FormField>
-          </div>
-        </div>
-
-        {/* Document Terms & Conditions */}
-        <div id="settings-tnc" className="card p-6 scroll-mt-28">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="rounded-lg bg-accent-100 dark:bg-accent-900/30 p-2.5">
-              <FileText className="h-5 w-5 text-accent-600 dark:text-accent-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">Document Terms &amp; Conditions</h3>
-              <p className="text-xs text-secondary-500 dark:text-secondary-400">Defaults printed when a record has no stored terms</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label="Invoices">
-              <Textarea rows={3} className="min-h-[72px]" value={form.tnc_invoice} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_invoice: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.sales_invoice} />
-            </FormField>
-            <FormField label="Quotations">
-              <Textarea rows={3} className="min-h-[72px]" value={form.tnc_quotation} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_quotation: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.quotation} />
-            </FormField>
-            <FormField label="Sales Orders">
-              <Textarea rows={3} className="min-h-[72px]" value={form.tnc_sales_order} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_sales_order: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.sales_order} />
-            </FormField>
-            <FormField label="Purchase Documents">
-              <Textarea rows={3} className="min-h-[72px]" value={form.tnc_purchase} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_purchase: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.purchase} />
-            </FormField>
-          </div>
-          <p className="mt-3 text-[11px] text-secondary-500 dark:text-secondary-400">Leave empty to use standard defaults. Saved with business settings; while the database migration is pending these are stored on this device only.</p>
-        </div>
-
-        {/* Data Export */}
-        <div id="settings-export" className="card p-6 scroll-mt-28">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="rounded-lg bg-secondary-100 dark:bg-secondary-800 p-2.5">
-              <Database className="h-5 w-5 text-secondary-600 dark:text-secondary-300" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">Data Export</h3>
-              <p className="text-xs text-secondary-500 dark:text-secondary-400">Download your data as CSV files</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button variant="secondary" loading={exporting === 'customers'} disabled={!canExportData} title={capabilityTooltip('data.export', activeRole) || undefined} onClick={() => exportTable('customers', 'Customers', 'customers', 'name', CUSTOMER_COLUMNS)}>
-              <Download className="h-4 w-4" /> Customers CSV
-            </Button>
-            <Button variant="secondary" loading={exporting === 'suppliers'} disabled={!canExportData} title={capabilityTooltip('data.export', activeRole) || undefined} onClick={() => exportTable('suppliers', 'Suppliers', 'suppliers', 'name', SUPPLIER_COLUMNS)}>
-              <Download className="h-4 w-4" /> Suppliers CSV
-            </Button>
-            <Button variant="secondary" loading={exporting === 'products'} disabled={!canExportData} title={capabilityTooltip('data.export', activeRole) || undefined} onClick={() => exportTable('products', 'Products', 'products', 'name', PRODUCT_COLUMNS)}>
-              <Download className="h-4 w-4" /> Products CSV
-            </Button>
-            <Button variant="secondary" loading={exporting === 'sales-invoices'} disabled={!canExportData} title={capabilityTooltip('data.export', activeRole) || undefined} onClick={exportSalesInvoices}>
-              <Download className="h-4 w-4" /> Sales Invoices CSV
-            </Button>
-            <Button variant="secondary" loading={exporting === 'purchase-bills'} disabled={!canExportData} title={capabilityTooltip('data.export', activeRole) || undefined} onClick={exportPurchaseBills}>
-              <Download className="h-4 w-4" /> Purchase Bills CSV
-            </Button>
-            <Button
-              variant="secondary"
-              loading={exporting === 'full-ledger'}
-              disabled={!canExportData}
-              title={capabilityTooltip('data.export', activeRole) || 'Full-ledger JSON backup (current fiscal year)'}
-              onClick={exportFullLedger}
+        {/* 5. Preferences */}
+        {activeTab === 'preferences' && (
+        <div id="settings-prefs" className="card p-6 scroll-mt-28">
+          <SectionHeader icon={<BellRing className="h-5 w-5" />} tone="accent" title="Preferences" subtitle="Appearance and notifications" />
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-secondary-600 dark:text-secondary-400 mr-1">Default appearance:</p>
+            <button
+              type="button"
+              onClick={() => setThemePreference('light')}
+              aria-pressed={theme === 'light'}
+              className={theme === 'light'
+                ? 'inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium bg-primary-600 text-white'
+                : 'inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium bg-secondary-100 dark:bg-secondary-800 text-secondary-600 dark:text-secondary-300 hover:bg-secondary-200 dark:hover:bg-secondary-700 transition-colors'}
             >
-              <Database className="h-4 w-4" /> Full-Ledger Backup (JSON)
-            </Button>
-          </div>
-
-          <div className="mt-6 pt-6 border-t border-secondary-100 dark:border-secondary-800">
-            <TallyExportPanel
-              businessId={activeBusiness.id}
-              companyName={activeBusiness.name}
-              business={activeBusiness}
-            />
-          </div>
-        </div>
-
-        {/* Bulk Import */}
-        <div id="settings-import" className="card p-6 scroll-mt-28">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="rounded-lg bg-primary-100 dark:bg-primary-900/30 p-2.5">
-              <Upload className="h-5 w-5 text-primary-600 dark:text-primary-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">Bulk Import</h3>
-              <p className="text-xs text-secondary-500 dark:text-secondary-400">Bring in customers, suppliers and products from CSV</p>
-            </div>
-          </div>
-          <BulkImportPanel businessId={activeBusiness.id} />
-        </div>
-
-        {/* Notifications & Communication */}
-        <div id="settings-comms" className="card p-6 scroll-mt-28">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="rounded-lg bg-accent-100 dark:bg-accent-900/30 p-2.5">
-              <BellRing className="h-5 w-5 text-accent-600 dark:text-accent-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">Notifications &amp; Communication</h3>
-              <p className="text-xs text-secondary-500 dark:text-secondary-400">Providers, templates, test sends, preferences and scheduled report delivery</p>
-            </div>
-            <Link
-              to="/app/communications"
-              className="ml-auto inline-flex items-center gap-1.5 text-sm text-primary-600 dark:text-primary-400 hover:underline"
+              <Sun className="h-3.5 w-3.5" /> Light
+            </button>
+            <button
+              type="button"
+              onClick={() => setThemePreference('dark')}
+              aria-pressed={theme === 'dark'}
+              className={theme === 'dark'
+                ? 'inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium bg-primary-600 text-white'
+                : 'inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium bg-secondary-100 dark:bg-secondary-800 text-secondary-600 dark:text-secondary-300 hover:bg-secondary-200 dark:hover:bg-secondary-700 transition-colors'}
             >
-              Delivery history <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-
-          <CommunicationCenterPanel />
-
-          <div className="mt-6 pt-6 border-t border-secondary-100 dark:border-secondary-800">
-            <h4 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100 mb-1">Message templates</h4>
-            <p className="text-xs text-secondary-500 dark:text-secondary-400 mb-4">Edit the wording used by every send across the app</p>
-            <MessageTemplatesPanel />
+              <Moon className="h-3.5 w-3.5" /> Dark
+            </button>
           </div>
 
           <div className="mt-6 pt-6 border-t border-secondary-100 dark:border-secondary-800">
-            <h4 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100 mb-1">Scheduled reports</h4>
-            <p className="text-xs text-secondary-500 dark:text-secondary-400 mb-4">Recurring report delivery by email on your cadence</p>
-            <ScheduledReportsPanel />
+            <div className="flex items-center gap-3 mb-4">
+              <div>
+                <h4 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">Notifications &amp; Communication</h4>
+                <p className="text-xs text-secondary-500 dark:text-secondary-400">Email toggles, providers, templates, test sends and scheduled report delivery</p>
+              </div>
+              <Link
+                to="/app/communications"
+                className="ml-auto inline-flex items-center gap-1.5 text-sm text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                Delivery history <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+
+            <CommunicationCenterPanel />
+
+            <div className="mt-6 pt-6 border-t border-secondary-100 dark:border-secondary-800">
+              <h4 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100 mb-1">Message templates</h4>
+              <p className="text-xs text-secondary-500 dark:text-secondary-400 mb-4">Edit the wording used by every send across the app</p>
+              <MessageTemplatesPanel />
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-secondary-100 dark:border-secondary-800">
+              <h4 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100 mb-1">Scheduled reports</h4>
+              <p className="text-xs text-secondary-500 dark:text-secondary-400 mb-4">Recurring report delivery by email on your cadence</p>
+              <ScheduledReportsPanel />
+            </div>
           </div>
         </div>
+        )}
+
 
         {/* Save Button */}
         <div className="flex justify-end">
