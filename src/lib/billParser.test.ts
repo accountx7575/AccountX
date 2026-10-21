@@ -288,3 +288,70 @@ describe('parseBillText — sub total then total', () => {
     expect(Math.round((taxable + tax) * 100) / 100).toBe(109);
   });
 });
+
+/**
+ * What the OCR really returned for the same bill: the quantity column came
+ * back as "f:" so the row carries only two numbers, and the tax base has to
+ * come from the bill's printed sub total, not from the imported rows.
+ */
+const OCR_ROW_WITHOUT_QTY = `
+VERMA STEEL WORKS
+
+GSTIN: 09ABCDE1234F1Z5
+
+TAX INVOICE
+
+Bill No: PB/26-27/9
+
+Bill Date: 12-03-2026
+
+Description oty Rate Amount.
+TMT Bar 10mm f: 100.00 100.00
+Sub Total 100.00
+
+CGST 9% 4.50
+
+SGST 9% 4.50
+
+Total 109.00
+`;
+
+/** The same bill without the sub total line — no printed taxable value. */
+const CGST_SGST_WITHOUT_SUBTOTAL = `
+VERMA STEEL WORKS
+GSTIN: 09ABCDE1234F1Z5
+
+Bill No: PB/26-27/9
+Bill Date: 12-03-2026
+
+Description                 Qty       Rate       Amount
+TMT Bar 10mm                 1      100.00      100.00
+
+CGST 9%                4.50
+SGST 9%                4.50
+Total                 109.00
+`;
+
+describe('parseBillText — a row that lost its quantity column', () => {
+  it('reads the two numbers as rate and amount when the quantity is gone', () => {
+    const parsed = parseBillText(OCR_ROW_WITHOUT_QTY);
+    expect(parsed.items.length).toBe(1);
+    expect(parsed.items[0].rate).toBe(100);
+    expect(parsed.items[0].amount).toBe(100);
+    expect(parsed.totalAmount).toBe(109);
+  });
+
+  it('derives the effective tax rate from the printed sub total', () => {
+    const parsed = parseBillText(OCR_ROW_WITHOUT_QTY);
+    expect(parsed.summaryTax?.amount).toBe(9);
+    // 9.00 of tax on the bill's printed 100.00 base is 9% — not 0.09% from a
+    // mis-read quantity column
+    expect(parsed.items[0].taxRate).toBe(9);
+  });
+
+  it('falls back to the imported rows when the bill prints no taxable value', () => {
+    const parsed = parseBillText(CGST_SGST_WITHOUT_SUBTOTAL);
+    expect(parsed.items[0].amount).toBe(100);
+    expect(parsed.items[0].taxRate).toBe(9);
+  });
+});

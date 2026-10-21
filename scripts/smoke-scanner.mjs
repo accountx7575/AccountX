@@ -120,7 +120,28 @@ writeFileSync(
   const BILLS = ${JSON.stringify(BILLS)};
   const log = (m) => { document.getElementById('log').textContent += m + '\\n'; };
 
-  function scannedPng(lines) {
+  // Seeded PRNG (mulberry32): the scan noise is FIXED across runs, so the OCR
+  // results are reproducible instead of flaky from Math.random().
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a |= 0;
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function stringSeed(s) {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function scannedPng(lines, seed) {
     const c = document.createElement('canvas');
     c.width = 1000; c.height = 40 + lines.length * 28;
     const ctx = c.getContext('2d');
@@ -128,8 +149,9 @@ writeFileSync(
     ctx.fillStyle = '#111'; ctx.font = '17px "Courier New", monospace';
     lines.forEach((line, i) => ctx.fillText(line, 28, 40 + i * 28));
     const img = ctx.getImageData(0, 0, c.width, c.height);
+    const rnd = mulberry32(seed);
     for (let i = 0; i < img.data.length; i += 4) {
-      const n = (Math.random() - 0.5) * 26;
+      const n = (rnd() - 0.5) * 26;
       img.data[i] += n; img.data[i + 1] += n; img.data[i + 2] += n;
     }
     ctx.putImageData(img, 0, 0);
@@ -143,11 +165,13 @@ writeFileSync(
         const pdfBlob = await (await fetch('/__smoke-bill-' + name + '.pdf')).blob();
         const pdfText = await extractBillText(new File([pdfBlob], 'bill.pdf', { type: 'application/pdf' }));
         const pdfParsed = parseBillText(pdfText);
+        log('PDF TEXT ' + name + ': ' + JSON.stringify(pdfText));
         log('PDF ' + name + ': ' + JSON.stringify(pdfParsed));
 
-        const pngBlob = await scannedPng(lines);
+        const pngBlob = await scannedPng(lines, stringSeed(name));
         const ocrText = await extractBillText(new File([pngBlob], 'bill.png', { type: 'image/png' }));
         const ocrParsed = parseBillText(ocrText);
+        log('OCR TEXT ' + name + ': ' + JSON.stringify(ocrText));
         log('OCR ' + name + ': ' + JSON.stringify(ocrParsed));
 
         results[name] = { pdfParsed, ocrParsed };

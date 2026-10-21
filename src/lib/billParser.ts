@@ -213,6 +213,26 @@ export interface ParsedBillSummaryTax {
   amount?: number;
 }
 
+/**
+ * The bill's own taxable value ("Sub Total" / "Taxable Value"). This is the
+ * base the tax is charged on, and it is printed as ONE clean figure, so it
+ * survives an OCR slip in a line row that the imported rows do not.
+ */
+const TAXABLE_BASE_RE =
+  /^(?:sub[\s-]*total|taxable\s*(?:value|amount)?|basic\s*amount|total\s*taxable)\b/i;
+
+function findTaxableBase(lines: string[]): number | undefined {
+  for (const line of lines) {
+    const m = TAXABLE_BASE_RE.exec(line);
+    if (!m) continue;
+    const raw = line.slice(m[0].length).match(/[\d,]+(?:\.\d{1,2})?/);
+    if (!raw) continue;
+    const amount = cleanNumber(raw[0]);
+    if (amount > 0) return amount;
+  }
+  return undefined;
+}
+
 const TAX_SUMMARY_RE =
   /^(?:total\s+)?(cgst|sgst|igst|gst|vat|tax)\b\s*[:\-]?\s*(?:(\d{1,2}(?:\.\d{1,2})?)\s*%)?\s*(?:rs\.?\s*)?([\d,]+(?:\.\d{1,2})?)?/i;
 
@@ -258,9 +278,9 @@ function findSummaryTax(lines: string[]): ParsedBillSummaryTax | undefined {
 function allocateSummaryTax(
   items: ParsedBillItem[],
   summary: ParsedBillSummaryTax,
-  itemSum: number
+  taxableBase: number
 ): void {
-  if (!items.length || itemSum <= 0) return;
+  if (!items.length || taxableBase <= 0) return;
   // One tax row: the bill states the rate, so the rows take that rate.
   // Several rows (CGST + SGST): the printed rates are per head, so the
   // effective rate is the bill's tax over its taxable value.
@@ -268,7 +288,7 @@ function allocateSummaryTax(
     summary.rate !== undefined
       ? summary.rate
       : summary.amount !== undefined
-        ? Math.round((summary.amount / itemSum) * 10000) / 100
+        ? Math.round((summary.amount / taxableBase) * 10000) / 100
         : undefined;
   if (rate === undefined) return;
   for (const item of items) item.taxRate = rate;
@@ -283,7 +303,12 @@ const ADDRESS_RE =
   /\b(?:sector|road|street|plot|khata|khasra|ward|floor|marg|nagar|village|taluka|district|pincode|premises|complex|apartment|colony|society|tower|flat|house|block|bypass|highway|square|garden|market|mandi)\b|\bno\.?\s*[-:]?\s*\d/i;
 
 /** Line items: description + trailing numbers (qty, rate, amount). */
-function findItems(lines: string[], billNumber?: string, gstin?: string): ParsedBillItem[] {
+function findItems(
+  lines: string[],
+  billNumber?: string,
+  gstin?: string,
+  taxableBase?: number
+): ParsedBillItem[] {
   const items: ParsedBillItem[] = [];
 
   for (const line of lines) {
@@ -334,8 +359,24 @@ function findItems(lines: string[], billNumber?: string, gstin?: string): Parsed
       rate = numbers[1];
       amount = numbers[2];
     } else if (numbers.length === 2) {
-      quantity = numbers[0];
-      rate = numbers[1];
+      // Two numbers are either (qty, rate) or (rate, amount) — a row that lost
+      // its quantity column to the OCR leaves exactly this. Read as (qty, rate)
+      // the row would be worth qty x rate, and when that no longer fits in the
+      // bill's own taxable value the row must be (rate, amount) instead.
+      const asQtyRate = numbers[0] * numbers[1];
+      const asRateAmount = numbers[1];
+      if (
+        taxableBase !== undefined &&
+        asQtyRate > taxableBase + 1 &&
+        asRateAmount <= taxableBase + 1
+      ) {
+        quantity = 1;
+        rate = numbers[0];
+        amount = numbers[1];
+      } else {
+        quantity = numbers[0];
+        rate = numbers[1];
+      }
     } else {
       quantity = numbers[0];
     }
@@ -397,15 +438,19 @@ export function parseBillText(rawText: string): ParsedBill {
     return undefined;
   })();
 
-  const items = findItems(lines, billNumber, supplierGstin);
+  const taxableBase = findTaxableBase(lines);
+
+  const items = findItems(lines, billNumber, supplierGstin, taxableBase);
 
   const itemSum = items.reduce((sum, item) => sum + (item.amount ?? item.quantity * item.rate), 0);
 
   // The bill's own summary tax (a single "GST 18% 4410.00" row) is allocated
-  // across the items so the imported tax is the bill's tax, not a silent 0%.
+  // across the items so the imported tax is the bill's tax, not a silent 0%. Use
+  // the bill's printed taxable value as the base; fall back to the imported
+  // item rows only when the bill prints none.
   const summaryTax = findSummaryTax(lines);
   if (summaryTax && !items.some((item) => item.taxRate > 0)) {
-    allocateSummaryTax(items, summaryTax, itemSum);
+    allocateSummaryTax(items, summaryTax, taxableBase ?? itemSum);
   }
 
   const totalAmount = findTotalAmount(lines, itemSum);
