@@ -3,6 +3,9 @@ import {
   canonicalPlanTypeForWrite,
   DEFAULT_TIER_ID,
   isCanonicalTierId,
+  LEGACY_FREE_TIER_MONTHLY_LIMIT,
+  LEGACY_PRO_TIER_MONTHLY_LIMIT,
+  legacyTierMirror,
   normalizePlanType,
   planTypeLabel,
   TIER_IDS,
@@ -101,5 +104,58 @@ describe('planTypeLabel', () => {
 
   it('shows an unknown value verbatim instead of hiding it', () => {
     expect(planTypeLabel('Gold')).toBe('Gold');
+  });
+});
+
+describe('legacyTierMirror (PBS-156 write-through bridge)', () => {
+  it('mirrors early-adopter-beta onto the legacy free tier with today\'s 50 cap', () => {
+    expect(legacyTierMirror('early-adopter-beta')).toEqual({
+      subscription_tier: 'free',
+      max_invoices_per_month: 50,
+    });
+  });
+
+  it('mirrors starter onto the legacy free tier with the 50 cap', () => {
+    expect(legacyTierMirror('starter')).toEqual({
+      subscription_tier: 'free',
+      max_invoices_per_month: 50,
+    });
+  });
+
+  it('mirrors pro-business onto the legacy pro tier with the tenant quota', () => {
+    expect(legacyTierMirror('pro-business', 2000)).toEqual({
+      subscription_tier: 'pro',
+      max_invoices_per_month: 2000,
+    });
+  });
+
+  it('falls back to 10000 for pro-business without a quota', () => {
+    expect(legacyTierMirror('pro-business')).toEqual({
+      subscription_tier: 'pro',
+      max_invoices_per_month: LEGACY_PRO_TIER_MONTHLY_LIMIT,
+    });
+    expect(legacyTierMirror('pro-business', null)).toEqual({
+      subscription_tier: 'pro',
+      max_invoices_per_month: 10000,
+    });
+  });
+
+  it('ignores a nonsensical quota', () => {
+    expect(legacyTierMirror('pro-business', 0).max_invoices_per_month).toBe(10000);
+    expect(legacyTierMirror('pro-business', -5).max_invoices_per_month).toBe(10000);
+    expect(legacyTierMirror('pro-business', NaN).max_invoices_per_month).toBe(10000);
+  });
+
+  it('keeps the free cap at 50 regardless of the canonical quota', () => {
+    expect(legacyTierMirror('starter', 500).max_invoices_per_month).toBe(
+      LEGACY_FREE_TIER_MONTHLY_LIMIT,
+    );
+  });
+
+  it('only writes legacy values the live CHECK constraint allows', () => {
+    const allowed = ['free', 'starter', 'pro', 'enterprise'];
+    for (const tier of TIER_IDS) {
+      expect(allowed).toContain(legacyTierMirror(tier, 100).subscription_tier);
+    }
   });
 });

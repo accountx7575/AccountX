@@ -89,16 +89,24 @@ export function clearCachedBusinessColumns(): void {
 
 /**
  * Pull the column names out of a PostgREST unknown-column error.
- * Handles both shapes:
+ * Handles all three shapes:
  *   "column businesses.quotation_prefix does not exist"  (42703)
- *   "Could not find the 'public' column 'quotation_prefix' in the schema cache" (PGRST204)
+ *   "Could not find the 'quotation_prefix' column of 'businesses' in the schema cache" (PGRST204, live)
+ *   "Could not find the 'public' column 'quotation_prefix' in the schema cache" (PGRST204, older)
  */
 export function parseMissingColumnNames(message: string | null | undefined): string[] {
   if (!message) return [];
   const found = new Set<string>();
   const re42703 = /column\s+(?:[A-Za-z0-9_."]+\.)*([a-z0-9_]+)\s+does not exist/gi;
-  const rePgrst = /Could not find the '[^']+' column '([a-z0-9_]+)'/gi;
-  for (const re of [re42703, rePgrst]) {
+  // PGRST204, the shape the live API actually returns:
+  //   "Could not find the 'quotation_prefix' column of 'businesses' in the schema cache"
+  // (the global flag matters: the scan loop below advances with lastIndex, a
+  // non-global regex would return the same match forever)
+  const rePgrst = /Could not find the '([a-z0-9_]+)' column of/gi;
+  // PGRST204, the older shape (schema name first, then the column):
+  //   "Could not find the 'public' column 'quotation_prefix' in the schema cache"
+  const rePgrstLegacy = /Could not find the '[^']+' column '([a-z0-9_]+)'/gi;
+  for (const re of [re42703, rePgrst, rePgrstLegacy]) {
     let m: RegExpExecArray | null;
     while ((m = re.exec(message)) !== null) {
       if (m[1]) found.add(m[1].toLowerCase());

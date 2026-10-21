@@ -10,7 +10,12 @@ import { AuditTrailTable } from '@/components/admin/AuditTrailTable';
 import { DisasterRecoveryStudio } from '@/components/admin/DisasterRecoveryStudio';
 import { LiquidGlassNav } from '@/components/layout/LiquidGlassNav';
 import { supabase } from '@/lib/supabase';
-import { canonicalPlanTypeForWrite, normalizePlanType, type CanonicalTierId } from '@/lib/planTypes';
+import {
+  canonicalPlanTypeForWrite,
+  legacyTierMirror,
+  normalizePlanType,
+  type CanonicalTierId,
+} from '@/lib/planTypes';
 import {
   Building2, Users, LogOut, ShieldCheck, Search, CheckCircle, Ban, RefreshCw,
   X, Eye, FileText, Activity, Database, Server, HardDrive, Clock, Download,
@@ -346,7 +351,15 @@ export function SuperAdminPage() {
     const target = tenants.find(t => t.id === id);
     setTenants(prev => prev.map(t => (t.id === id ? { ...t, isActive: next } : t)));
     try {
-      await supabase.from('businesses').update({ is_active: next }).eq('id', id);
+      // The update returns an error instead of throwing - while the column is
+      // still missing server-side the write 400s, so a success toast would
+      // lie. Surface the failure and roll the optimistic row back.
+      const { error } = await supabase.from('businesses').update({ is_active: next }).eq('id', id);
+      if (error) {
+        pushToast('danger', `${target?.name || 'Tenant'} ${next ? 'activated' : 'blocked'} FAILED: ${error.message}`);
+        setTenants(prev => prev.map(t => (t.id === id ? { ...t, isActive: current } : t)));
+        return;
+      }
       pushToast(next ? 'success' : 'danger', `${target?.name || 'Tenant'} ${next ? 'activated' : 'blocked'}.`);
     } catch { pushToast('info', `${target?.name || 'Tenant'} updated locally (backend unreachable).`); }
     void logAdminEvent(next ? 'TENANT_ACTIVATED' : 'TENANT_BLOCKED', id, { business_name: target?.name });
@@ -358,7 +371,12 @@ export function SuperAdminPage() {
     const ids = [...selectedIds];
     setTenants(prev => prev.map(t => (selectedIds.includes(t.id) ? { ...t, isActive: next } : t)));
     try {
-      await supabase.from('businesses').update({ is_active: next }).in('id', selectedIds);
+      const { error } = await supabase.from('businesses').update({ is_active: next }).in('id', selectedIds);
+      if (error) {
+        pushToast('danger', `${n} tenant${n > 1 ? 's' : ''} ${next ? 'activated' : 'blocked'} FAILED: ${error.message}`);
+        setTenants(prev => prev.map(t => (selectedIds.includes(t.id) ? { ...t, isActive: !next } : t)));
+        return;
+      }
       pushToast(next ? 'success' : 'danger', `${n} tenant${n > 1 ? 's' : ''} ${next ? 'activated' : 'blocked'}.`);
     } catch { pushToast('info', `${n} tenants updated locally.`); }
     void logAdminEvent(next ? 'TENANT_ACTIVATED' : 'TENANT_BLOCKED', null, { bulk: true, count: n, ids });
@@ -371,7 +389,23 @@ export function SuperAdminPage() {
     const ids = [...selectedIds];
     setTenants(prev => prev.map(t => (selectedIds.includes(t.id) ? { ...t, plan: bulkTier, quota: tierDefaults[bulkTier] } : t)));
     try {
-      await supabase.from('businesses').update({ plan_type: canonicalPlanTypeForWrite(bulkTier), monthly_invoice_quota: tierDefaults[bulkTier] }).in('id', selectedIds);
+      const tier = canonicalPlanTypeForWrite(bulkTier);
+      const quota = tierDefaults[bulkTier];
+      // PBS-156: the canonical pair AND the legacy mirror are written together
+      // - the legacy pair is what the quota hook / audit trigger / analytics
+      // read, so a tier move that skips it changes nothing in the cap.
+      const [canonical, legacy] = await Promise.all([
+        supabase.from('businesses').update({ plan_type: tier, monthly_invoice_quota: quota }).in('id', selectedIds),
+        supabase.from('businesses').update(legacyTierMirror(tier, quota)).in('id', selectedIds),
+      ]);
+      if (canonical.error || legacy.error) {
+        const failed = [
+          canonical.error ? `plan_type: ${canonical.error.message}` : null,
+          legacy.error ? `legacy tier: ${legacy.error.message}` : null,
+        ].filter(Boolean).join(' | ');
+        pushToast('danger', `${n} tenant${n > 1 ? 's' : ''} moved to ${bulkTier} FAILED (${failed}).`);
+        return;
+      }
       pushToast('success', `${n} tenant${n > 1 ? 's' : ''} moved to ${bulkTier}.`);
     } catch { pushToast('info', `${n} tenants moved to ${bulkTier} locally.`); }
     void logAdminEvent('PLAN_UPGRADED', null, { bulk: true, count: n, ids, tier: bulkTier });
@@ -471,7 +505,20 @@ export function SuperAdminPage() {
     const targetId = planEdit.id;
     setTenants(prev => prev.map(t => (t.id === planEdit.id ? { ...t, plan: planDraft, quota: quotaDraft } : t)));
     try {
-      await supabase.from('businesses').update({ plan_type: canonicalPlanTypeForWrite(planDraft), monthly_invoice_quota: quotaDraft }).eq('id', planEdit.id);
+      const tier = canonicalPlanTypeForWrite(planDraft);
+      // PBS-156: canonical pair + legacy mirror, written together.
+      const [canonical, legacy] = await Promise.all([
+        supabase.from('businesses').update({ plan_type: tier, monthly_invoice_quota: quotaDraft }).eq('id', planEdit.id),
+        supabase.from('businesses').update(legacyTierMirror(tier, quotaDraft)).eq('id', planEdit.id),
+      ]);
+      if (canonical.error || legacy.error) {
+        const failed = [
+          canonical.error ? `plan_type: ${canonical.error.message}` : null,
+          legacy.error ? `legacy tier: ${legacy.error.message}` : null,
+        ].filter(Boolean).join(' | ');
+        pushToast('danger', `${name} moved to ${planDraft} FAILED (${failed}).`);
+        return;
+      }
       pushToast('success', `${name} moved to ${planDraft} (${quotaDraft}/mo).`);
     } catch { pushToast('info', `${name} plan updated locally.`); }
     void logAdminEvent('PLAN_UPGRADED', targetId, { business_name: name, tier: planDraft, quota: quotaDraft });
@@ -503,10 +550,18 @@ export function SuperAdminPage() {
       validity: 'Valid till 31 Dec 2026',
     };
     try {
-      const { data } = await supabase.from('businesses').insert({
+      const tier = canonicalPlanTypeForWrite(nt.plan);
+      // PBS-156: the new tenant gets the canonical pair and the legacy mirror.
+      const { data, error } = await supabase.from('businesses').insert({
         legal_name: nt.name, trade_name: nt.tradeName, email: nt.ownerEmail,
-        gstin: nt.gstin, state: nt.state, is_active: true, plan_type: canonicalPlanTypeForWrite(nt.plan),
+        gstin: nt.gstin, state: nt.state, is_active: true,
+        plan_type: tier, monthly_invoice_quota: nt.quota,
+        ...legacyTierMirror(tier, nt.quota),
       }).select('*').single();
+      if (error) {
+        pushToast('danger', `${nt.name} could not be created: ${error.message}`);
+        return;
+      }
       if (data) {
         const d: any = data;
         nt.id = String(d.id);

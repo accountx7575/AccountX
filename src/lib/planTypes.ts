@@ -92,3 +92,57 @@ export function planTypeLabel(value: string | null | undefined): string {
   const raw = String(value ?? '').trim();
   return raw;
 }
+
+/* ============================================================================
+ * Write-through bridge (PBS-156).
+ *
+ * The live table has TWO tier pairs:
+ *   canonical: plan_type + monthly_invoice_quota      (PBS-153 ids)
+ *   legacy:    subscription_tier + max_invoices_per_month
+ *
+ * The legacy pair is what the quota hook, the admin audit trigger and the
+ * enterprise tax analytics RPC read, so it stays for backwards compatibility -
+ * but it is MIRRORED in the same write, otherwise the admin console reports
+ * "moved to Starter" while the cap never changes.
+ *
+ * Enforcement stays on the legacy pair for now (the plansConfig tier
+ * enforcement belongs to the payments turn); this module only decides what
+ * the mirror row looks like.
+ * ==========================================================================*/
+
+/** The legacy column pair that is written alongside the canonical one. */
+export interface LegacyTierMirror {
+  subscription_tier: string;
+  max_invoices_per_month: number;
+}
+
+/** The cap the legacy 'free' tier keeps today. */
+export const LEGACY_FREE_TIER_MONTHLY_LIMIT = 50;
+
+/** The cap the legacy 'pro' tier gets when the tenant has no quota of its own. */
+export const LEGACY_PRO_TIER_MONTHLY_LIMIT = 10000;
+
+/**
+ * Map a canonical tier id to the legacy pair.
+ *
+ *   'early-adopter-beta' -> { 'free', 50 }  (preserves today's 50-cap exactly)
+ *   'starter'            -> { 'free', 50 }
+ *   'pro-business'       -> { 'pro', quota ?? 10000 }
+ */
+export function legacyTierMirror(
+  tier: CanonicalTierId,
+  quota?: number | null,
+): LegacyTierMirror {
+  if (tier === 'pro-business') {
+    const cap =
+      typeof quota === 'number' && Number.isFinite(quota) && quota > 0
+        ? Math.floor(quota)
+        : LEGACY_PRO_TIER_MONTHLY_LIMIT;
+    return { subscription_tier: 'pro', max_invoices_per_month: cap };
+  }
+  // 'early-adopter-beta' and 'starter' both sit on the legacy free tier.
+  return {
+    subscription_tier: 'free',
+    max_invoices_per_month: LEGACY_FREE_TIER_MONTHLY_LIMIT,
+  };
+}

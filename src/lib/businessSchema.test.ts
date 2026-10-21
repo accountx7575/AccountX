@@ -53,10 +53,24 @@ describe('parseMissingColumnNames', () => {
     expect(parseMissingColumnNames(msg)).toContain('quotation_prefix');
   });
 
-  it('reads the PGRST204 schema-cache error', () => {
+  it('reads the PGRST204 schema-cache error (live shape)', () => {
+    // The shape the live API actually returns (PBS-155):
+    //   Could not find the 'quotation_prefix' column of 'businesses' in the schema cache
+    const msg =
+      "Could not find the 'quotation_prefix' column of 'businesses' in the schema cache";
+    expect(parseMissingColumnNames(msg)).toEqual(['quotation_prefix']);
+  });
+
+  it('reads the older PGRST204 schema-cache error (schema first)', () => {
     const msg =
       "Could not find the 'public' column 'pin_code' in the schema cache";
-    expect(parseMissingColumnNames(msg)).toContain('pin_code');
+    expect(parseMissingColumnNames(msg)).toEqual(['pin_code']);
+  });
+
+  it('reads both PGRST204 shapes from one message', () => {
+    const msg =
+      "Could not find the 'tnc_invoice' column of 'businesses' in the schema cache";
+    expect(parseMissingColumnNames(msg)).toContain('tnc_invoice');
   });
 
   it('returns an empty list for unrelated errors', () => {
@@ -128,6 +142,30 @@ describe('discoverBusinessColumns', () => {
     expect(columns).not.toContain('quotation_prefix');
     expect(columns).not.toContain('tnc_invoice');
     expect(attempted.length).toBeGreaterThan(1);
+  });
+
+  it('converges on the live PGRST204 shape instead of falling back to the seed', async () => {
+    // PBS-155: with the dead regex the probe could never name the missing
+    // column, so discovery always ended in the "not a column problem -> trust
+    // the seed" branch and the unmigrated columns stayed withheld forever.
+    const attempted: string[][] = [];
+    const probe = async (selectList: string[]) => {
+      attempted.push(selectList);
+      if (selectList.includes('quotation_prefix')) {
+        return {
+          message:
+            "Could not find the 'quotation_prefix' column of 'businesses' in the schema cache",
+        };
+      }
+      return null;
+    };
+    const columns = await discoverBusinessColumns(probe);
+    expect(columns).not.toContain('quotation_prefix');
+    // The seed is smaller than the candidate list: a converged probe returns
+    // MORE columns than the seed, a seed fallback returns exactly the seed.
+    expect(columns.length).toBeGreaterThan(BUSINESS_KNOWN_PRESENT_COLUMNS.length);
+    expect(attempted.length).toBeGreaterThan(1);
+    expect(attempted[attempted.length - 1].length).toBeLessThan(attempted[0].length);
   });
 
   it('falls back to the verified seed when the probe cannot run', async () => {
