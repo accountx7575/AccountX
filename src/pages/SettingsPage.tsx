@@ -8,17 +8,39 @@ import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input, FormField, Select, Textarea } from '@/components/ui/Input';
-import { Settings, Building2, Save, ShieldCheck, Upload, X, BellRing, FileText, Landmark, Sun, Moon, ArrowRight } from 'lucide-react';
+import { Settings, Building2, Save, ShieldCheck, Upload, X, BellRing, FileText, Landmark, Sun, Moon, ArrowRight, Hash } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { CommunicationCenterPanel } from '@/components/settings/CommunicationCenterPanel';
 import { MessageTemplatesPanel } from '@/components/settings/MessageTemplatesPanel';
 import { ScheduledReportsPanel } from '@/components/settings/ScheduledReportsPanel';
 import { can, capabilityTooltip, roleLabel } from '@/lib/rbac';
 import { PageMotion } from '@/lib/motion';
-import { DRIFTED_EXTRAS_KEYS, isMissingColumnError, stashBusinessExtras, type BusinessExtras } from '@/lib/businessExtras';
+import {
+  clearBusinessExtras,
+  DRIFTED_EXTRAS_KEYS,
+  flushBusinessColumnStash,
+  isMissingColumnError,
+  stashBusinessColumns,
+  stashBusinessExtras,
+  type BusinessExtras,
+} from '@/lib/businessExtras';
+import {
+  discoverBusinessColumns,
+  parseMissingColumnNames,
+  planBusinessSave,
+  trimPayloadValues,
+} from '@/lib/businessSchema';
+import {
+  readDocPrefixes,
+  stashDocPrefixes,
+  normalizePrefix,
+  DEFAULT_PREFIXES,
+  DOC_PREFIX_KEYS,
+  NEW_PREFIX_KEYS,
+  type DocPrefixKey,
+} from '@/lib/docPrefixes';
 import { saveTncCache, readTncCache, STANDARD_TNC_DEFAULTS, type TncDocType } from '@/lib/tncDefaults';
 
-const TNC_PAYLOAD_KEYS = ['tnc_invoice', 'tnc_quotation', 'tnc_sales_order', 'tnc_purchase'] as const;
 const tncMirrorFromPayload = (payload: Record<string, unknown>): Record<TncDocType, string | null> => ({
   sales_invoice: (payload.tnc_invoice as string | null) || null,
   quotation: (payload.tnc_quotation as string | null) || null,
@@ -124,6 +146,8 @@ export function SettingsPage() {
     name: '', legal_name: '', phone: '', email: '', address: '', city: '', state: 'Maharashtra',
     pincode: '',
     gstin: '', pan: '', financial_year: '2026-27', currency_symbol: '₹', invoice_prefix: 'INV',
+    quotation_prefix: 'QT', sales_order_prefix: 'SO', purchase_order_prefix: 'PO',
+    purchase_bill_prefix: 'PB', credit_note_prefix: 'CN', debit_note_prefix: 'DN',
     gst_registered: false,
     stamp_url: '' as string | null,
     logo_url: '' as string | null,
@@ -146,11 +170,12 @@ export function SettingsPage() {
   // PBS-121: strict exclusive tab rendering (human spec) — one card in the DOM
   // at a time; the tab pin is a render switch, not an anchor scroll. Form state
   // lives at page level, so switching never remounts or resets unsaved edits.
-  type SettingsTab = 'profile' | 'bank' | 'tnc' | 'taxes' | 'preferences';
+  type SettingsTab = 'profile' | 'bank' | 'tnc' | 'numbering' | 'taxes' | 'preferences';
   const TAB_TO_HASH: Record<SettingsTab, string> = {
     profile: 'settings-profile',
     bank: 'settings-bank',
     tnc: 'settings-docs',
+    numbering: 'settings-numbering',
     taxes: 'settings-tax',
     preferences: 'settings-prefs',
   };
@@ -158,6 +183,7 @@ export function SettingsPage() {
     'settings-profile': 'profile',
     'settings-bank': 'bank',
     'settings-docs': 'tnc',
+    'settings-numbering': 'numbering',
     'settings-tax': 'taxes',
     'settings-prefs': 'preferences',
   };
@@ -196,7 +222,7 @@ export function SettingsPage() {
         pan: activeBusiness.pan || '',
         financial_year: activeBusiness.financial_year || '2026-27',
         currency_symbol: activeBusiness.currency_symbol || '₹',
-        invoice_prefix: activeBusiness.invoice_prefix || 'INV',
+        ...readDocPrefixes(activeBusiness),
         gst_registered: activeBusiness.gst_registered,
         stamp_url: activeBusiness.stamp_url || '',
         logo_url: activeBusiness.logo_url || '',
@@ -271,6 +297,16 @@ export function SettingsPage() {
     return fyOptions;
   }, [fyOptions, form.financial_year]);
 
+  /** Live sample numbers for the Numbering Prefixes tab, e.g. QT/26-27/1. */
+  const prefixPreview = useMemo(() => {
+    const m = /^(\d{4})-(\d{2})$/.exec(form.financial_year || '');
+    const fy = m ? `${m[1].slice(2)}-${m[2]}` : form.financial_year || 'FY';
+    return DOC_PREFIX_KEYS.map((key) => {
+      const prefix = normalizePrefix(form[key]) || DEFAULT_PREFIXES[key];
+      return `${prefix}/${fy}/1`;
+    });
+  }, [form]);
+
   const clearError = (field: string) => {
     setErrors((prev) => {
       if (!(field in prev)) return prev;
@@ -295,6 +331,9 @@ export function SettingsPage() {
     if (form.upi_id.trim() && !UPI_ID_REGEX.test(form.upi_id.trim())) e.upi_id = 'Invalid UPI ID — use only letters, numbers, dots, @ and dashes (e.g. business@upi)';
     if (form.bank_ifsc_code.trim() && !IFSC_REGEX.test(form.bank_ifsc_code.trim())) e.bank_ifsc_code = 'Invalid IFSC - format SBIN0001234';
     if (form.bank_account_number.trim() && !/^[0-9][0-9 -]{4,18}[0-9]$/.test(form.bank_account_number.trim())) e.bank_account_number = 'Account number must be 6-20 digits (spaces/dashes allowed)';
+    for (const key of DOC_PREFIX_KEYS) {
+      if (!normalizePrefix(form[key])) e[key] = 'Prefix is required';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -315,6 +354,12 @@ export function SettingsPage() {
         financial_year: form.financial_year,
         currency_symbol: form.currency_symbol,
         invoice_prefix: form.invoice_prefix,
+        quotation_prefix: normalizePrefix(form.quotation_prefix),
+        sales_order_prefix: normalizePrefix(form.sales_order_prefix),
+        purchase_order_prefix: normalizePrefix(form.purchase_order_prefix),
+        purchase_bill_prefix: normalizePrefix(form.purchase_bill_prefix),
+        credit_note_prefix: normalizePrefix(form.credit_note_prefix),
+        debit_note_prefix: normalizePrefix(form.debit_note_prefix),
         gst_registered: form.gst_registered,
         stamp_url: form.stamp_url || null,
         logo_url: form.logo_url || null,
@@ -335,44 +380,93 @@ export function SettingsPage() {
       if (form.gst_registered) {
         payload.gstin = form.gstin || null;
       }
+      // Trim every string once; addresses keep their '#', '-', '/', ',' characters.
+      const trimmed = trimPayloadValues(payload);
+
       // Mirror on save: localStorage fallback while the businesses T&C columns migration is pending.
-      saveTncCache(activeBusiness.id, tncMirrorFromPayload(payload));
+      saveTncCache(activeBusiness.id, tncMirrorFromPayload(trimmed));
+
+      // PBS-149: discover the columns public.businesses actually has (cached
+      // select-probe) so the save sends ONE PATCH with only existing columns —
+      // no 400 from unmigrated columns, no console error.
+      const existingColumns = await discoverBusinessColumns();
+
+      // Values stashed while a column was missing are flushed back now that the
+      // column exists (post-migration).
+      const flushable = flushBusinessColumnStash(activeBusiness.id, existingColumns);
+
+      const { send, missing, missingValues, stashed, prefixStash, extrasStash } = planBusinessSave(
+        { ...flushable, ...trimmed },
+        existingColumns,
+        { prefixKeys: DOC_PREFIX_KEYS, extrasKeys: DRIFTED_EXTRAS_KEYS, normalizePrefix },
+      );
+
+      // Columns the DB does not have (yet) are stashed locally, never sent.
+      if (missing.length) {
+        stashBusinessColumns(activeBusiness.id, missingValues);
+        if (Object.keys(prefixStash).length) {
+          stashDocPrefixes(activeBusiness.id, prefixStash as Record<DocPrefixKey, string>);
+        }
+        if (Object.keys(extrasStash).length) {
+          stashBusinessExtras(activeBusiness.id, extrasStash as BusinessExtras);
+        }
+      }
+
       const tryUpdate = async (p: Record<string, unknown>) => {
         const { error } = await supabase.from('businesses').update(p).eq('id', activeBusiness.id);
         return error;
       };
-      const firstError = await tryUpdate(payload);
-      if (!firstError) return { stashed: [] };
+
+      const firstError = await tryUpdate(send);
+      if (!firstError) {
+        // The values are persisted server-side now: drop the legacy local copies
+        // so the render overlay can never show a stale value for a cleared field.
+        clearBusinessExtras(
+          activeBusiness.id,
+          DRIFTED_EXTRAS_KEYS.filter((k) => k in send),
+        );
+        return { stashed };
+      }
+
       if (!isMissingColumnError(firstError)) throw firstError;
-      // Live DB predates the extras migration: strip drifted keys, retry, stash locally.
-      const retry: Record<string, unknown> = { ...payload };
-      const stashed: string[] = [];
-      const stash: BusinessExtras = {};
-      for (const k of TNC_PAYLOAD_KEYS) {
+
+      // Safety net only: the schema changed between the probe and the PATCH.
+      // Drop the columns the server names, stash them and retry once — the
+      // normal path above never reaches this branch (single 200/204 PATCH).
+      const errMsg = typeof (firstError as { message?: unknown })?.message === 'string'
+        ? String((firstError as { message?: unknown }).message)
+        : '';
+      const named = parseMissingColumnNames(errMsg);
+      if (!named.length) {
+        // The server did not name a column: do NOT guess and do NOT retry with
+        // a stripped payload (that could wipe the profile). Surface it.
+        throw firstError;
+      }
+      const retry: Record<string, unknown> = { ...send };
+      const lateStash: Record<string, unknown> = {};
+      for (const k of named) {
+        if (!(k in retry)) continue;
         const v = retry[k];
         delete retry[k];
-        if (typeof v === 'string' && v) stashed.push(k);
+        if (v !== null && v !== undefined && v !== '') lateStash[k] = v;
       }
-      for (const k of DRIFTED_EXTRAS_KEYS) {
-        if (k in retry) {
-          const v = retry[k];
-          delete retry[k];
-          if (typeof v === 'string' && v) {
-            stash[k] = v;
-            stashed.push(k);
-          }
-        }
+      if (Object.keys(lateStash).length) {
+        stashBusinessColumns(activeBusiness.id, lateStash);
+        for (const k of Object.keys(lateStash)) stashed.push(k);
       }
       const secondError = await tryUpdate(retry);
       if (secondError) throw secondError;
-      if (stashed.length) stashBusinessExtras(activeBusiness.id, stash);
+      clearBusinessExtras(
+        activeBusiness.id,
+        DRIFTED_EXTRAS_KEYS.filter((k) => k in retry),
+      );
       return { stashed };
     },
     onSuccess: async ({ stashed }) => {
       await refreshBusinesses();
       toast(
         stashed.length
-          ? `Settings saved — ${stashed.join(', ')} stored locally until the DB migration is applied`
+          ? `Settings saved — ${stashed.length} field${stashed.length > 1 ? 's' : ''} kept locally until the DB migration is applied`
           : 'Business settings updated successfully',
         stashed.length ? 'info' : 'success'
       );
@@ -391,8 +485,9 @@ export function SettingsPage() {
           { id: 'profile', card: 'settings-profile', label: '1. Business Profile' },
           { id: 'bank', card: 'settings-bank', label: '2. Bank & UPI' },
           { id: 'tnc', card: 'settings-docs', label: '3. Terms & Conditions' },
-          { id: 'taxes', card: 'settings-tax', label: '4. Taxes & Currency' },
-          { id: 'preferences', card: 'settings-prefs', label: '5. Preferences' },
+          { id: 'numbering', card: 'settings-numbering', label: '4. Numbering Prefixes' },
+          { id: 'taxes', card: 'settings-tax', label: '5. Taxes & Currency' },
+          { id: 'preferences', card: 'settings-prefs', label: '6. Preferences' },
         ].map((s) => (
           <button
             key={s.id}
@@ -420,7 +515,7 @@ export function SettingsPage() {
         {/* 1. Business Profile */}
         {activeTab === 'profile' && (
         <div id="settings-profile" className="card p-6 scroll-mt-28">
-          <SectionHeader icon={<Building2 className="h-5 w-5" />} tone="primary" title="Business Profile" subtitle="Identity, tax registration, print branding and numbering" />
+          <SectionHeader icon={<Building2 className="h-5 w-5" />} tone="primary" title="Business Profile" subtitle="Identity, tax registration and print branding" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Business Name" required error={errors.name}>
               <Input value={form.name} disabled={!canEditSettings} title={!canEditSettings ? settingsLockTooltip : undefined} onChange={(e) => { clearError('name'); setForm({ ...form, name: e.target.value }); }} />
@@ -499,9 +594,6 @@ export function SettingsPage() {
                 onChange={(e) => setForm((prev) => ({ ...prev, invoice_signature_name: e.target.value }))}
               />
               <p className="text-xs text-secondary-400 mt-1">Printed above the signature block when set</p>
-            </FormField>
-            <FormField label="Invoice Prefix">
-              <Input value={form.invoice_prefix} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, invoice_prefix: e.target.value })} placeholder="INV" />
             </FormField>
             <FormField label="Financial Year">
               <Select value={form.financial_year} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, financial_year: e.target.value })}>
@@ -614,7 +706,103 @@ export function SettingsPage() {
         )}
 
 
-        {/* 4. Taxes & Currency */}
+        {/* 4. Numbering Prefixes */}
+        {activeTab === 'numbering' && (
+        <div id="settings-numbering" className="card p-6 scroll-mt-28">
+          <SectionHeader icon={<Hash className="h-5 w-5" />} tone="primary" title="Document Numbering Prefixes" subtitle="Prefixes used in every document number (e.g., QT/26-27/2). Letters, numbers, dash, underscore and dot only, max 12 characters" />
+          <div className="max-w-[260px]">
+            <FormField label="Financial Year">
+              <Select value={form.financial_year} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, financial_year: e.target.value })}>
+                {fyList.map((fy) => <option key={fy} value={fy}>{fy}</option>)}
+              </Select>
+            </FormField>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+            <FormField label="Tax Invoice Prefix" error={errors.invoice_prefix}>
+              <Input
+                value={form.invoice_prefix}
+                disabled={!canEditSettings}
+                maxLength={12}
+                placeholder="INV"
+                onChange={(e) => { clearError('invoice_prefix'); setForm({ ...form, invoice_prefix: e.target.value }); }}
+              />
+            </FormField>
+            <FormField label="Quotation / Estimate Prefix" error={errors.quotation_prefix}>
+              <Input
+                value={form.quotation_prefix}
+                disabled={!canEditSettings}
+                maxLength={12}
+                placeholder="QT"
+                onChange={(e) => { clearError('quotation_prefix'); setForm({ ...form, quotation_prefix: e.target.value }); }}
+              />
+            </FormField>
+            <FormField label="Sales Order Prefix" error={errors.sales_order_prefix}>
+              <Input
+                value={form.sales_order_prefix}
+                disabled={!canEditSettings}
+                maxLength={12}
+                placeholder="SO"
+                onChange={(e) => { clearError('sales_order_prefix'); setForm({ ...form, sales_order_prefix: e.target.value }); }}
+              />
+            </FormField>
+            <FormField label="Purchase Order Prefix" error={errors.purchase_order_prefix}>
+              <Input
+                value={form.purchase_order_prefix}
+                disabled={!canEditSettings}
+                maxLength={12}
+                placeholder="PO"
+                onChange={(e) => { clearError('purchase_order_prefix'); setForm({ ...form, purchase_order_prefix: e.target.value }); }}
+              />
+            </FormField>
+            <FormField label="Purchase Bill Prefix" error={errors.purchase_bill_prefix}>
+              <Input
+                value={form.purchase_bill_prefix}
+                disabled={!canEditSettings}
+                maxLength={12}
+                placeholder="PB"
+                onChange={(e) => { clearError('purchase_bill_prefix'); setForm({ ...form, purchase_bill_prefix: e.target.value }); }}
+              />
+            </FormField>
+            <FormField label="Credit Note Prefix" error={errors.credit_note_prefix}>
+              <Input
+                value={form.credit_note_prefix}
+                disabled={!canEditSettings}
+                maxLength={12}
+                placeholder="CN"
+                onChange={(e) => { clearError('credit_note_prefix'); setForm({ ...form, credit_note_prefix: e.target.value }); }}
+              />
+            </FormField>
+            <FormField label="Debit Note Prefix" error={errors.debit_note_prefix}>
+              <Input
+                value={form.debit_note_prefix}
+                disabled={!canEditSettings}
+                maxLength={12}
+                placeholder="DN"
+                onChange={(e) => { clearError('debit_note_prefix'); setForm({ ...form, debit_note_prefix: e.target.value }); }}
+              />
+            </FormField>
+          </div>
+          <div className="mt-5 rounded-lg border border-secondary-200 dark:border-secondary-700 bg-secondary-50/60 dark:bg-secondary-800/40 p-4">
+            <p className="text-xs font-medium text-secondary-700 dark:text-secondary-300 mb-2">Preview</p>
+            <div className="flex flex-wrap gap-2">
+              {prefixPreview.map((sample) => (
+                <span
+                  key={sample}
+                  className="rounded-md border border-secondary-200 dark:border-secondary-700 bg-white dark:bg-secondary-900/60 px-2 py-1 font-mono text-xs text-secondary-700 dark:text-secondary-300"
+                >
+                  {sample}
+                </span>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-secondary-500 dark:text-secondary-400">
+              Sequence numbers continue from the highest number already used for that document type.
+            </p>
+          </div>
+        </div>
+        )}
+
+
+        {/* 5. Taxes & Currency */}
         {activeTab === 'taxes' && (
         <div id="settings-tax" className="card p-6 scroll-mt-28">
           <SectionHeader icon={<Settings className="h-5 w-5" />} tone="success" title="Taxes &amp; Currency" subtitle="GST behaviour and currency display" />

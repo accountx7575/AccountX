@@ -2,17 +2,24 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { documentNumberTaken } from '@/lib/numbering';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
+import {
+  DocumentNumberField,
+  DUPLICATE_DOCUMENT_NUMBER_MESSAGE,
+} from '@/components/documents/DocumentNumberField';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { DatePicker } from '@/components/common/DatePicker';
 import { Input } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
-import { Plus, Trash2, Save, ArrowLeft, Sparkles, Upload } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, ScanText, Upload } from 'lucide-react';
 import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
 import { computeDocLine } from '@/lib/payloads';
+import { extractBillText } from '@/lib/billTextExtractor';
+import { parseBillText } from '@/lib/billParser';
 import type { Supplier, Product, PurchaseBill, PurchaseBillItem } from '@/types/db';
 
 type LineItem = {
@@ -49,12 +56,15 @@ export function PurchaseBillCreatePage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
 
   const { id: editId } = useParams<{ id: string }>();
   const isEdit = Boolean(editId);
 
   const [supplierId, setSupplierId] = useState('');
   const [billNumber, setBillNumber] = useState('');
+  // PBS-142: duplicate document number guard (per business).
+  const [billNumberError, setBillNumberError] = useState<string | null>(null);
   const [billDate, setBillDate] = useState(todayDateString());
   const [dueDate, setDueDate] = useState('');
   const [items, setItems] = useState<LineItem[]>([{ ...emptyItem }]);
@@ -216,108 +226,46 @@ export function PurchaseBillCreatePage() {
   const addItem = () => setItems((prev) => [...prev, { ...emptyItem }]);
   const removeItem = (idx: number) => setItems((prev) => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
 
-  // AI Scan & Auto Fill Handler
+  // Offline Scan & Auto Fill Handler — text extraction and field mapping run
+  // entirely in the browser (no API key, no external service).
   const handleScanBill = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('gemini_api_key');
-    if (!apiKey) {
-      toast('Please set your Gemini API key in .env (VITE_GEMINI_API_KEY)', 'error');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-
     setScanning(true);
+    setScanProgress(0);
     try {
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(',')[1]);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      const text = await extractBillText(file, (p) => setScanProgress(p.percent));
+      setScanProgress(98);
+      const parsed = parseBillText(text);
 
-      const mimeType = file.type || 'image/jpeg';
-      const prompt = `Extract structured purchase bill/invoice details from this document.
-Return ONLY a valid JSON object matching this schema without markdown fences:
-{
-  "supplier_name": "Supplier or Vendor Name",
-  "bill_number": "Invoice or Bill Number",
-  "bill_date": "YYYY-MM-DD",
-  "due_date": "YYYY-MM-DD",
-  "items": [
-    {
-      "name": "Product or item description",
-      "quantity": 1,
-      "rate": 100,
-      "tax_rate": 18
-    }
-  ],
-  "notes": "Any payment terms or notes"
-}
-If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
-
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: prompt },
-                  {
-                    inline_data: {
-                      mime_type: mimeType,
-                      data: base64Data,
-                    },
-                  },
-                ],
-              },
-            ],
-            generationConfig: {
-              response_mime_type: 'application/json',
-            },
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errJson = await response.json();
-        throw new Error(errJson.error?.message || 'Failed to analyze bill document');
-      }
-
-      const resData = await response.json();
-      const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!rawText) throw new Error('No readable data detected in the uploaded file');
-
-      const extracted = JSON.parse(rawText);
-
-      // 1. Match & set Supplier
-      if (extracted.supplier_name && suppliers?.length) {
-        const cleanName = extracted.supplier_name.toLowerCase().trim();
-        const matched = suppliers.find((s) => s.name.toLowerCase().includes(cleanName) || cleanName.includes(s.name.toLowerCase()));
-        if (matched) {
-          setSupplierId(matched.id);
-        }
+      // 1. Match & set Supplier — GSTIN first (exact), then name.
+      if (suppliers?.length) {
+        const gstin = parsed.supplierGstin?.toLowerCase();
+        const name = parsed.supplierName?.toLowerCase().trim();
+        const matched =
+          (gstin ? suppliers.find((s) => (s.gstin || '').toLowerCase() === gstin) : undefined) ||
+          (name
+            ? suppliers.find((s) => {
+                const sn = s.name.toLowerCase().trim();
+                return sn.includes(name) || name.includes(sn);
+              })
+            : undefined);
+        if (matched) setSupplierId(matched.id);
       }
 
       // 2. Set Bill Details
-      if (extracted.bill_number) setBillNumber(String(extracted.bill_number));
-      if (extracted.bill_date && /^\d{4}-\d{2}-\d{2}$/.test(extracted.bill_date)) setBillDate(extracted.bill_date);
-      if (extracted.due_date && /^\d{4}-\d{2}-\d{2}$/.test(extracted.due_date)) setDueDate(extracted.due_date);
-      if (extracted.notes) setNotes(String(extracted.notes));
+      if (parsed.billNumber) setBillNumber(parsed.billNumber);
+      if (parsed.billDate) setBillDate(parsed.billDate);
+      if (parsed.dueDate) setDueDate(parsed.dueDate);
+      if (parsed.notes) setNotes(parsed.notes);
 
-      // 3. Populate Items with full calculation
-      if (Array.isArray(extracted.items) && extracted.items.length > 0) {
-        const parsedItems: LineItem[] = extracted.items.map((it: any) => {
+      // 3. Populate Items with full calculation (totals recalculate from items)
+      if (parsed.items.length > 0) {
+        const parsedItems: LineItem[] = parsed.items.map((it) => {
           const qty = Number(it.quantity) || 1;
           const r = Number(it.rate) || 0;
-          const tax = Number(it.tax_rate) || 0;
+          const tax = Number(it.taxRate) || 0;
           const line = computeDocLine({
             quantity: qty,
             rate: r,
@@ -342,13 +290,38 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
           };
         });
         setItems(parsedItems);
+
+        // 4. Surface a reconciliation difference: if the bill's own total does
+        //    not match what the scanned rows add up to (missing tax, freight,
+        //    round-off), the user has to see it instead of saving a wrong
+        //    payable figure.
+        if (parsed.totalAmount && parsedItems.length) {
+          const itemTotal = parsedItems.reduce((sum, l) => sum + Number(l.total_amount || 0), 0);
+          if (Math.abs(roundTo2(itemTotal) - roundTo2(parsed.totalAmount)) > 1) {
+            toast(
+              `Bill total ${formatCurrency(parsed.totalAmount, sym)} does not match the scanned items ` +
+                `(${formatCurrency(itemTotal, sym)}). Please check tax and charges.`,
+              'warning'
+            );
+          }
+        }
       }
 
-      toast('Bill scanned & data auto-filled successfully!', 'success');
+      const filled = [
+        parsed.billNumber,
+        parsed.billDate,
+        parsed.items.length > 0 ? 'items' : '',
+      ].filter(Boolean).length;
+      if (!filled) {
+        throw new Error('Could not read any bill details from this file — try a clearer photo or a text-based PDF');
+      }
+
+      toast('Bill data scanned and filled successfully!', 'success');
     } catch (err: any) {
       toast(err.message || 'Failed to scan bill', 'error');
     } finally {
       setScanning(false);
+      setScanProgress(0);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -437,6 +410,20 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
       // Determine the bill number: custom if typed, else fetch fresh from
       // the atomic counter right before the RPC.
       let finalBillNumber = billNumber.trim();
+      if (finalBillNumber) {
+        const taken = await documentNumberTaken({
+          table: 'purchase_bills',
+          column: 'bill_number',
+          businessId: activeBusiness.id,
+          value: finalBillNumber,
+          excludeId: editId ?? undefined,
+        });
+        if (taken) {
+          setBillNumberError(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
+          throw new Error(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
+        }
+        setBillNumberError(null);
+      }
       if (!finalBillNumber) {
         const { data: nextNum, error: nextErr } = await supabase.rpc('next_document_number', {
           p_business_id: activeBusiness.id,
@@ -549,7 +536,7 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
       <PageHeader
         title={isEdit ? 'Edit Purchase Bill' : 'New Purchase Bill'}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <Button
               type="button"
               variant="secondary"
@@ -557,9 +544,22 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
               onClick={() => fileInputRef.current?.click()}
               className="border-primary-300 text-primary-700 dark:text-primary-300 bg-primary-50/70 dark:bg-primary-950/40"
             >
-              <Sparkles className="h-4 w-4 text-primary-600" />
+              <ScanText className="h-4 w-4 text-primary-600" />
               {scanning ? 'Scanning Bill...' : 'Scan & Auto-fill Bill'}
             </Button>
+            {scanning && (
+              <div className="w-44">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary-200 dark:bg-secondary-700">
+                  <div
+                    className="h-full rounded-full bg-primary-500 transition-[width] duration-200"
+                    style={{ width: `${Math.min(100, Math.max(2, scanProgress))}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-secondary-500 dark:text-secondary-400">
+                  Extracting text... {scanProgress}%
+                </p>
+              </div>
+            )}
             <Button variant="secondary" onClick={() => navigate('/app/purchase-bills')}>
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
@@ -569,25 +569,29 @@ If any field is missing, set it to null. Ensure dates are strictly YYYY-MM-DD.`;
 
       <div className="card p-6">
         <FormSection>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-start">
             <div>
               <label className="label">Supplier <span className="text-error-500">*</span></label>
-              <select className="input" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+              <select className="input h-10" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
                 <option value="">Select supplier...</option>
                 {suppliers?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="label">Bill Number</label>
-              <Input value={billNumber} onChange={(e) => setBillNumber(e.target.value)} placeholder="Auto — enter to override" />
+              <DocumentNumberField
+                value={billNumber}
+                onChange={setBillNumber}
+                error={billNumberError}
+                className="h-10"
+              />
             </div>
             <div>
               <label className="label">Bill Date</label>
-              <DatePicker value={billDate} onChange={setBillDate} />
+              <DatePicker className="input h-10" value={billDate} onChange={setBillDate} />
             </div>
             <div>
               <label className="label">Due Date</label>
-              <DatePicker value={dueDate} onChange={setDueDate} />
+              <DatePicker className="input h-10" value={dueDate} onChange={setDueDate} />
             </div>
           </div>
           {isInterState && (

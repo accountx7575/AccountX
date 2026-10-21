@@ -17,6 +17,12 @@ export type Business = {
   currency: string;
   currency_symbol: string;
   invoice_prefix: string;
+  quotation_prefix?: string | null;
+  sales_order_prefix?: string | null;
+  purchase_order_prefix?: string | null;
+  purchase_bill_prefix?: string | null;
+  credit_note_prefix?: string | null;
+  debit_note_prefix?: string | null;
   logo_url: string | null;
   gst_registered: boolean;
   stamp_url?: string | null;

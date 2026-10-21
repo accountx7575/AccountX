@@ -21,3 +21,10 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# build-generated offline OCR runtime (recreated by `npm run prepare:ocr`)
+public/ocr
+
+# temporary files written by `npm run smoke:scanner`
+public/__smoke.html
+public/__smoke-bill*.pdf
