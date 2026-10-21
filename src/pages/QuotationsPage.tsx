@@ -33,7 +33,8 @@ import {
   Search,
   Download,
 } from 'lucide-react';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, formatTimeOfDay } from '@/lib/utils';
+import { convertQuotationToInvoice } from '@/lib/quotationConvert';
 import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
 import { openWhatsAppShare } from '@/lib/whatsapp';
 import type { Quotation, QuotationItem } from '@/types/db';
@@ -145,6 +146,7 @@ export function QuotationsPage() {
         docNumber: q.quotation_number,
         dateLabel: 'Quote Date',
         dateValue: formatDate(q.quote_date),
+        time: formatTimeOfDay(q.created_at),
         expiryLabel: 'Valid Until',
         expiryValue: q.expiry_date,
         partyLabel: 'Customer',
@@ -187,6 +189,7 @@ export function QuotationsPage() {
         docNumber: q.quotation_number,
         dateLabel: 'Quote Date',
         dateValue: formatDate(q.quote_date),
+        time: formatTimeOfDay(q.created_at),
         expiryLabel: 'Valid Until',
         expiryValue: q.expiry_date,
         partyLabel: 'Customer',
@@ -352,14 +355,12 @@ export function QuotationsPage() {
   const convertMutation = useMutation({
     mutationFn: async () => {
       if (!activeBusiness || !convertTarget) throw new Error('Nothing to convert');
-      const { data, error } = await supabase.rpc('convert_quotation_to_invoice', {
-        p_business_id: activeBusiness.id,
-        p_quotation_id: convertTarget.id,
-        p_invoice_date: convertDate,
-        p_due_date: convertDue || null,
+      return convertQuotationToInvoice({
+        businessId: activeBusiness.id,
+        quotationId: convertTarget.id,
+        invoiceDate: convertDate,
+        dueDate: convertDue || null,
       });
-      if (error) throw error;
-      return data as { new_doc_id: string; new_doc_number: string } | null;
     },
     onSuccess: (d) => {
       invalidateAll();

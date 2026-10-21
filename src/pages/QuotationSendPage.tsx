@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { ArrowLeft, Send, Mail, FileText, CheckCircle2 } from 'lucide-react';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, formatTimeOfDay } from '@/lib/utils';
 import { renderDocSheetToPdfBlob } from '@/lib/docPrint';
 import type { Quotation, QuotationItem } from '@/types/db';
 
@@ -79,6 +79,7 @@ export function QuotationSendPage() {
           docNumber: quote.quotation_number,
           dateLabel: 'Quote Date',
           dateValue: formatDate(quote.quote_date),
+          time: formatTimeOfDay(quote.created_at),
           expiryLabel: 'Valid Until',
           expiryValue: quote.expiry_date,
           partyLabel: 'Customer',

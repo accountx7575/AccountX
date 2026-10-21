@@ -9,6 +9,7 @@ import { ToastProvider } from '@/context/ToastContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SuperAdminRoute } from '@/components/auth/SuperAdminRoute';
+import { SuperAdminShell } from '@/components/superadmin/SuperAdminShell';
 
 const LoginPage = lazy(() => import('@/pages/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import('@/pages/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })));
@@ -21,6 +22,8 @@ const SalesInvoicesPage = lazy(() => import('@/pages/SalesInvoicesPage').then((m
 const SalesInvoiceViewPage = lazy(() => import('@/pages/SalesInvoiceViewPage').then((m) => ({ default: m.SalesInvoiceViewPage })));
 const SalesInvoiceCreatePage = lazy(() => import('@/pages/SalesInvoiceCreatePage').then((m) => ({ default: m.SalesInvoiceCreatePage })));
 const PurchaseBillsPage = lazy(() => import('@/pages/PurchaseBillsPage').then((m) => ({ default: m.PurchaseBillsPage })));
+const PurchaseOrderViewPage = lazy(() => import('@/pages/PurchaseOrderViewPage').then((m) => ({ default: m.PurchaseOrderViewPage })));
+const PurchaseBillViewPage = lazy(() => import('@/pages/PurchaseBillViewPage').then((m) => ({ default: m.PurchaseBillViewPage })));
 const PurchaseBillCreatePage = lazy(() => import('@/pages/PurchaseBillCreatePage').then((m) => ({ default: m.PurchaseBillCreatePage })));
 const CustomerCreatePage = lazy(() => import('@/pages/CustomerCreatePage').then((m) => ({ default: m.CustomerCreatePage })));
 const SupplierCreatePage = lazy(() => import('@/pages/SupplierCreatePage').then((m) => ({ default: m.SupplierCreatePage })));
@@ -32,6 +35,7 @@ const QuotationCreatePage = lazy(() => import('@/pages/QuotationCreatePage').the
 const QuotationViewPage = lazy(() => import('@/pages/QuotationViewPage').then((m) => ({ default: m.QuotationViewPage })));
 const QuotationSendPage = lazy(() => import('@/pages/QuotationSendPage').then((m) => ({ default: m.QuotationSendPage })));
 const SalesOrderCreatePage = lazy(() => import('@/pages/SalesOrderCreatePage').then((m) => ({ default: m.SalesOrderCreatePage })));
+const SalesOrderDetailPage = lazy(() => import('@/pages/SalesOrderDetailPage').then((m) => ({ default: m.SalesOrderDetailPage })));
 const PurchaseOrderCreatePage = lazy(() => import('@/pages/PurchaseOrderCreatePage').then((m) => ({ default: m.PurchaseOrderCreatePage })));
 const ForgotPasswordPage = lazy(() => import('@/pages/auth/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })));
 const CreditNoteCreatePage = lazy(() => import('@/pages/CreditNoteCreatePage').then((m) => ({ default: m.CreditNoteCreatePage })));
@@ -81,6 +85,13 @@ const DemoQuotationPreviewPage = lazy(() => import('@/pages/demo/DemoDocPreviewP
 const DemoInvoicePreviewPage = lazy(() => import('@/pages/demo/DemoDocPreviewPage').then((m) => ({ default: m.DemoInvoicePreviewPage })));
 const DemoOrderPreviewPage = lazy(() => import('@/pages/demo/DemoDocPreviewPage').then((m) => ({ default: m.DemoOrderPreviewPage })));
 
+const SuperAdminDashboardPage = lazy(() => import('@/pages/superadmin/SuperAdminDashboardPage').then((m) => ({ default: m.DashboardPage })));
+const SuperAdminUsersPage = lazy(() => import('@/pages/superadmin/SuperAdminUsersPage').then((m) => ({ default: m.UsersPage })));
+const SuperAdminDocumentsPage = lazy(() => import('@/pages/superadmin/SuperAdminDocumentsPage').then((m) => ({ default: m.InvoicesPage })));
+const SuperAdminSupportPage = lazy(() => import('@/pages/superadmin/SupportTicketsPage').then((m) => ({ default: m.SupportTicketsPage })));
+const SuperAdminPlansPage = lazy(() => import('@/pages/superadmin/PlansPage').then((m) => ({ default: m.PlansPage })));
+const SuperAdminBroadcastPage = lazy(() => import('@/pages/superadmin/BroadcastPage').then((m) => ({ default: m.BroadcastPage })));
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -113,7 +124,15 @@ function AppRoutes() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/setup-business" element={<ProtectedRoute><BusinessSetupPage /></ProtectedRoute>} />
-      <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminPage /></SuperAdminRoute>} />
+      <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminShell /></SuperAdminRoute>}>
+        <Route index element={<SuperAdminDashboardPage />} />
+        <Route path="users" element={<SuperAdminUsersPage />} />
+        <Route path="documents" element={<SuperAdminDocumentsPage />} />
+        <Route path="plans" element={<SuperAdminPlansPage />} />
+        <Route path="support" element={<SuperAdminSupportPage />} />
+        <Route path="broadcast" element={<SuperAdminBroadcastPage />} />
+        <Route path="console" element={<SuperAdminPage />} />
+      </Route>
       
       <Route
         path="/app"
@@ -139,6 +158,7 @@ function AppRoutes() {
         <Route path="sales-invoices/:id/edit" element={<SalesInvoiceCreatePage />} />
         <Route path="purchase-bills" element={<PurchaseBillsPage />} />
         <Route path="purchase-bills/new" element={<PurchaseBillCreatePage />} />
+        <Route path="purchase-bills/:id" element={<PurchaseBillViewPage />} />
         <Route path="purchase-bills/:id/edit" element={<PurchaseBillCreatePage />} />
         <Route path="payments-received" element={<PaymentsReceivedPage />} />
         <Route path="credit-notes" element={<CreditNotesPage />} />
@@ -195,9 +215,11 @@ function AppRoutes() {
 
         <Route path="sales-orders" element={<SalesOrdersPage />} />
         <Route path="sales-orders/new" element={<SalesOrderCreatePage />} />
+        <Route path="sales-orders/:id" element={<SalesOrderDetailPage />} />
         <Route path="sales-orders/:id/edit" element={<SalesOrderCreatePage />} />
         <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
         <Route path="purchase-orders/new" element={<PurchaseOrderCreatePage />} />
+        <Route path="purchase-orders/:id" element={<PurchaseOrderViewPage />} />
         <Route path="purchase-orders/:id/edit" element={<PurchaseOrderCreatePage />} />
         <Route path="warehouses" element={<WarehousesPage />} />
         <Route path="stock-transfer" element={<StockTransferPage />} />

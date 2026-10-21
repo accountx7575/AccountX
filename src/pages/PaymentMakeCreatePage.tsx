@@ -128,18 +128,16 @@ export function PaymentMakeCreatePage() {
         </FormSection>
 
         <FormSection title="Payment">
-          <div className="space-y-4 max-w-xl">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Amount" required><Input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0.00" /></FormField>
-              <FormField label="Date" required><DatePicker value={form.date} onChange={(date) => setForm({ ...form, date })} /></FormField>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-start">
+              <FormField label="Amount" required><Input className="h-10" type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0.00" /></FormField>
+              <FormField label="Date" required><DatePicker className="input h-10" value={form.date} onChange={(date) => setForm({ ...form, date })} /></FormField>
               <FormField label="Payment Method">
-                <select className="input" value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>
+                <select className="input h-10" value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>
                   <option value="cash">Cash</option><option value="upi">UPI</option><option value="bank">Bank</option><option value="card">Card</option><option value="cheque">Cheque</option>
                 </select>
               </FormField>
-              <FormField label="Reference"><Input value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} placeholder="UTR / Cheque No." /></FormField>
+              <FormField label="Reference"><Input className="h-10" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} placeholder="UTR / Cheque No." /></FormField>
             </div>
             <FormField label="Notes"><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></FormField>
           </div>

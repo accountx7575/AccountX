@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Menu, Search, Bell, Moon, Sun, ChevronDown, User, Settings,
-  LogOut, Building2, Plus, HelpCircle,
+  LogOut, Building2, Plus, HelpCircle, Flag,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/Button';
 import { UserProfileModal } from '@/components/layout/UserProfileModal';
 import { AlertsDropdown, type StockAlert } from '@/components/layout/NotificationsDropdown';
 import { HelpDropdown } from '@/components/layout/HelpDropdown';
+import { ReportIssueModal } from '@/components/layout/ReportIssueModal';
+import { PromoBadge } from '@/components/common/PromoBadge';
 import { cn, getInitials } from '@/lib/utils';
 import { roleLabel } from '@/lib/rbac';
 import { dropdownPop, dropdownTransition } from '@/lib/motion';
@@ -35,6 +37,7 @@ export function Header({ onMobileMenu, onQuickAction, breadcrumbs }: HeaderProps
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const bizRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -172,7 +175,8 @@ export function Header({ onMobileMenu, onQuickAction, breadcrumbs }: HeaderProps
             </div>
             <div className="border-t border-zinc-200 dark:border-zinc-800 mt-1 pt-1">
               <button
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault();
                   setBizDropdown(false);
                   navigate('/setup-business');
                 }}
@@ -207,6 +211,7 @@ export function Header({ onMobileMenu, onQuickAction, breadcrumbs }: HeaderProps
 
       {/* Right Zone — pinned far right */}
       <div className="flex items-center gap-2 sm:gap-3 ml-auto shrink-0">
+        <PromoBadge />
         <Button onClick={onQuickAction} size="sm" className="hidden sm:flex">
           <Plus className="h-4 w-4" /> New
         </Button>
@@ -257,7 +262,15 @@ export function Header({ onMobileMenu, onQuickAction, breadcrumbs }: HeaderProps
           >
             <HelpCircle className="h-5 w-5" />
           </button>
-          {helpOpen && <HelpDropdown onClose={() => setHelpOpen(false)} />}
+          {helpOpen && (
+            <HelpDropdown
+              onClose={() => setHelpOpen(false)}
+              onReportIssue={() => {
+                setHelpOpen(false);
+                setReportOpen(true);
+              }}
+            />
+          )}
         </div>
 
         {/* User Menu */}
@@ -306,7 +319,11 @@ export function Header({ onMobileMenu, onQuickAction, breadcrumbs }: HeaderProps
                 <Settings className="h-4 w-4" /> Business Settings
               </button>
               <button
-                onClick={() => { setUserDropdown(false); navigate('/setup-business'); }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setUserDropdown(false);
+                  navigate('/setup-business');
+                }}
                 className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
               >
                 <Building2 className="h-4 w-4" /> Add Business
@@ -332,6 +349,7 @@ export function Header({ onMobileMenu, onQuickAction, breadcrumbs }: HeaderProps
           {breadcrumbs}
         </nav>
       )}
+      <ReportIssueModal open={reportOpen} onClose={() => setReportOpen(false)} />
       <UserProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
     </div>
   );

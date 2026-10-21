@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { BroadcastBanner } from './BroadcastBanner';
 import { QuickActions } from '@/components/QuickActions';
 import { useAuth } from '@/context/AuthContext';
 import { useAdminTelemetry } from '@/hooks/useAdminTelemetry';
@@ -17,11 +18,23 @@ const ACTIVE_BUSINESS_KEY = 'accountx_active_business_id';
 const OSCAR_TENANT_KEY = 'impersonated_tenant_id';
 const LEGACY_TENANT_KEY = 'accountx_impersonating_business_id';
 
-function clearImpersonationFlags() {
+/**
+ * Drop the impersonation markers.
+ *
+ * `clearActiveBusiness` also drops the pinned active-business id. That key is
+ * how the console pins the session to the impersonated tenant, so it may only
+ * be removed when we deliberately LEAVE impersonation (the exit path). The
+ * scrub path (a non-admin carrying stray flags) must leave it alone, otherwise
+ * we would un-pin a legitimate business of an ordinary user.
+ */
+function clearImpersonationFlags(options?: { clearActiveBusiness?: boolean }) {
   localStorage.removeItem(LEGACY_IMPERSONATING_KEY);
   localStorage.removeItem(OSCAR_IMPERSONATING_KEY);
   localStorage.removeItem(OSCAR_TENANT_KEY);
   localStorage.removeItem(LEGACY_TENANT_KEY);
+  if (options?.clearActiveBusiness) {
+    localStorage.removeItem(ACTIVE_BUSINESS_KEY);
+  }
 }
 
 const announcementStyles: Record<string, string> = {
@@ -37,16 +50,17 @@ export function AppLayout() {
   const [quickOpen, setQuickOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, activeBusiness } = useAuth();
+  const { user, activeBusiness, refreshBusinesses } = useAuth();
   const { logAdminEvent } = useAdminTelemetry();
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [impersonatedName, setImpersonatedName] = useState<string | null>(null);
   const wasImpersonating = useRef(false);
   const { announcement, dismiss: dismissAnnouncement } = usePlatformAnnouncement();
 
-  const isSuperAdmin =
-    Boolean(user?.app_metadata?.is_super_admin) ||
-    Boolean(user?.user_metadata?.is_super_admin);
+  // Server-side public.is_super_admin() trusts app_metadata ONLY: user_metadata
+  // is self-service (auth.updateUser({ data: { is_super_admin: true } })), so
+  // trusting it here would hand any user who sets it the impersonation path.
+  const isSuperAdmin = Boolean(user?.app_metadata?.is_super_admin);
 
   useEffect(() => {
     const flag =
@@ -116,13 +130,21 @@ export function AppLayout() {
     }
   }, [isImpersonating, isSuperAdmin, impersonatedName, logAdminEvent]);
 
-  const handleExitToControlCenter = () => {
+  const handleExitToControlCenter = async () => {
+    // (1) Capture the impersonated tenant id for the IMPERSONATION_END audit
+    // event BEFORE we tear down the impersonation markers (tenant is the only
+    // stable signal once they are gone).
     const tenantId =
       localStorage.getItem(OSCAR_TENANT_KEY) ||
       localStorage.getItem(ACTIVE_BUSINESS_KEY) ||
       localStorage.getItem(LEGACY_TENANT_KEY);
-    // Zero residual contamination: clear every impersonation key before routing.
-    clearImpersonationFlags();
+    void logAdminEvent('IMPERSONATION_END', tenantId, {
+      business_name: impersonatedName,
+    });
+    // (2) Drop every impersonation key INCLUDING the console's pinned active
+    // business id (otherwise the admin's session stays pinned to the tenant).
+    clearImpersonationFlags({ clearActiveBusiness: true });
+    // (3) The notice flag goes too.
     try {
       sessionStorage.removeItem('accountx_impersonation_notice_seen');
     } catch {
@@ -131,9 +153,15 @@ export function AppLayout() {
     setIsImpersonating(false);
     setImpersonatedName(null);
     wasImpersonating.current = false;
-    void logAdminEvent('IMPERSONATION_END', tenantId, {
-      business_name: impersonatedName,
-    });
+    // (4) Re-resolve the auth context so activeBusiness falls back to the
+    //     admin's own membership business instead of the impersonated tenant.
+    try {
+      await refreshBusinesses();
+    } catch {
+      // The impersonation keys are already gone; the context re-resolves on the
+      // next load. We must still reach the control centre.
+    }
+    // (5) Navigate to the control centre only after the context is clean.
     navigate('/super-admin');
   };
 
@@ -150,6 +178,7 @@ export function AppLayout() {
         onMobileClose={() => setMobileOpen(false)}
       />
       <div className="flex-1 flex flex-col min-w-0">
+        <BroadcastBanner />
         {showBanner && (
           <div className="sticky top-0 z-50 w-full bg-amber-400 text-amber-950 px-4 sm:px-6 py-2 flex items-center justify-center gap-2 text-sm font-medium">
             <span>
@@ -160,7 +189,9 @@ export function AppLayout() {
             <span aria-hidden="true">—</span>
             <button
               type="button"
-              onClick={handleExitToControlCenter}
+              onClick={() => {
+                void handleExitToControlCenter();
+              }}
               className="underline underline-offset-2 hover:text-amber-800 font-semibold"
             >
               Exit to Admin Control Center

@@ -15,12 +15,10 @@ import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
 import { PackageCheck, Plus, Lock, CheckCircle2, PackageOpen, Printer, Eye, Download, Pencil } from 'lucide-react';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, formatTimeOfDay } from '@/lib/utils';
 import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
 import {
-  OrderInvoiceModal,
   mapPurchaseOrderToUniversalData,
-  type UniversalDocumentData,
 } from '@/components/documents';
 import type { PurchaseOrder, PurchaseOrderItem, Supplier } from '@/types/db';
 
@@ -60,8 +58,6 @@ export function PurchaseOrdersPage() {
   const [confirmCancel, setConfirmCancel] = useState<PurchaseOrder | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
-  const [previewData, setPreviewData] = useState<UniversalDocumentData | null>(null);
   const [convertTarget, setConvertTarget] = useState<(PurchaseOrder & { supplier: { name: string } | null }) | null>(null);
   const [convertDate, setConvertDate] = useState('');
   const [convertDue, setConvertDue] = useState('');
@@ -99,6 +95,7 @@ export function PurchaseOrdersPage() {
       docNumber: o.order_number,
       dateLabel: 'Order Date',
       dateValue: formatDate(o.order_date),
+      time: formatTimeOfDay(o.created_at),
       expiryLabel: 'Expected On',
       expiryValue: o.expected_date,
       partyLabel: 'Supplier',
@@ -121,24 +118,6 @@ export function PurchaseOrdersPage() {
     };
 
     return { items: (items || []) as PurchaseOrderItem[], supplier, payload };
-  };
-
-  const handlePreviewOrder = async (o: PurchaseOrder) => {
-    if (!activeBusiness) return;
-    setPreviewLoadingId(o.id);
-    try {
-      const { items, supplier } = await fetchOrderDetails(o);
-      const universal = mapPurchaseOrderToUniversalData(
-        activeBusiness,
-        { ...o, supplier },
-        items
-      );
-      setPreviewData(universal);
-    } catch (err: any) {
-      toast(err?.message || 'Failed to load order preview', 'error');
-    } finally {
-      setPreviewLoadingId(null);
-    }
   };
 
   const printOrder = async (o: PurchaseOrder) => {
@@ -337,9 +316,8 @@ export function PurchaseOrdersPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          loading={previewLoadingId === o.id}
-                          onClick={() => handlePreviewOrder(o)}
-                          title="Preview Purchase Order in GST format"
+                          onClick={() => navigate(`/app/purchase-orders/${o.id}`)}
+                          title="Open the purchase order detail page"
                         >
                           <Eye className="h-3 w-3" /> View
                         </Button>
@@ -434,12 +412,6 @@ export function PurchaseOrdersPage() {
         </div>
       </Modal>
 
-      <OrderInvoiceModal
-        open={!!previewData}
-        onClose={() => setPreviewData(null)}
-        data={previewData}
-        title={previewData ? `Purchase Order - ${previewData.documentNumber}` : 'Purchase Order'}
-      />
     </div>
   );
 }

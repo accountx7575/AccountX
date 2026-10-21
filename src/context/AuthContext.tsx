@@ -62,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const target = bizData as Business;
         setActiveBusinessState(target);
         setActiveRole('super-admin');
+        setImpersonatingBusinessIdState(storedImpersonationId);
         return;
       }
       localStorage.removeItem(IMPERSONATION_STORAGE_KEY);
@@ -71,9 +72,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (localStorage.getItem(SUPER_ADMIN_IMPERSONATING_KEY) === 'true') {
       const { data: authData } = await supabase.auth.getUser();
       const authUser = authData?.user;
-      const isSuperAdmin =
-        Boolean(authUser?.app_metadata?.is_super_admin) ||
-        Boolean(authUser?.user_metadata?.is_super_admin);
+      // app_metadata ONLY: user_metadata is self-service, so a user can write
+      // is_super_admin into it. The server gate public.is_super_admin() trusts
+      // app_metadata only - the client must agree with it.
+      const isSuperAdmin = Boolean(authUser?.app_metadata?.is_super_admin);
       const storedActiveId = localStorage.getItem(STORAGE_KEY);
       if (!isSuperAdmin || !storedActiveId) {
         localStorage.removeItem(SUPER_ADMIN_IMPERSONATING_KEY);

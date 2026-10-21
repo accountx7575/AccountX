@@ -10,10 +10,10 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { ShoppingCart, Plus, Ban, CheckCircle2, Trash2, Printer, Pencil, FileDown, Share2, Mail } from 'lucide-react';
+import { ShoppingCart, Plus, Ban, CheckCircle2, Trash2, Printer, Pencil, FileDown, Share2, Mail, Eye } from 'lucide-react';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { usePagedList } from '@/hooks/usePagedList';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, formatTimeOfDay } from '@/lib/utils';
 import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
 import { openWhatsAppShare } from '@/lib/whatsapp';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
@@ -56,6 +56,7 @@ export function PurchaseBillsPage() {
         docNumber: b.bill_number,
         dateLabel: 'Bill Date',
         dateValue: formatDate(b.bill_date),
+        time: formatTimeOfDay(b.created_at),
         expiryLabel: 'Due Date',
         expiryValue: b.due_date,
         partyLabel: 'Supplier',
@@ -363,6 +364,7 @@ export function PurchaseBillsPage() {
                     {formatCurrency(b.grand_total, activeBusiness?.currency_symbol)}
                   </span>
                   <div className="flex items-center gap-1">
+                    <button onClick={() => navigate(`/app/purchase-bills/${b.id}`)} title="View bill" aria-label="View bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"><Eye className="h-4 w-4" /></button>
                     <button onClick={() => navigate(`/app/purchase-bills/${b.id}/edit`)} title="Edit bill" aria-label="Edit bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"><Pencil className="h-4 w-4" /></button>
                     <button onClick={() => handleDirectPrint(b)} title="Print bill" aria-label="Print bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-secondary-700 hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"><Printer className="h-4 w-4" /></button>
                     <button onClick={() => handleDownloadPdf(b)} disabled={downloadingId === b.id} title="Download PDF" aria-label="Download PDF" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors disabled:opacity-40"><FileDown className="h-4 w-4" /></button>
@@ -408,6 +410,14 @@ export function PurchaseBillsPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => navigate(`/app/purchase-bills/${b.id}`)}
+                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                          title="View bill"
+                          aria-label="View bill"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => navigate(`/app/purchase-bills/${b.id}/edit`)}
                           className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"

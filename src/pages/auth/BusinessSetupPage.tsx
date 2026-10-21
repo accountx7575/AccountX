@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, FormField, Textarea } from '@/components/ui/Input';
 import { useToast } from '@/context/ToastContext';
+import { validateBusinessName } from '@/lib/businessNameGuard';
 import { Calculator, Building2, Check, ChevronRight, ArrowLeft } from 'lucide-react';
 
 const INDIAN_STATES = [
@@ -41,15 +42,17 @@ export function BusinessSetupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim()) {
-      toast('Business name is required', 'error');
+    if (loading) return;
+    const nameCheck = validateBusinessName(form.name);
+    if (!nameCheck.ok) {
+      toast(nameCheck.error, 'error');
       return;
     }
     setLoading(true);
     try {
       const { data: businessId, error: rpcError } = await supabase.rpc('create_business_with_owner', {
-        p_name: form.name,
-        p_legal_name: form.legal_name || form.name,
+        p_name: nameCheck.value,
+        p_legal_name: form.legal_name.trim() || nameCheck.value,
         p_business_type: form.business_type,
         p_phone: form.phone || null,
         p_email: form.email || null,

@@ -1,8 +1,9 @@
 import { type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Calculator, CheckCircle2 } from 'lucide-react';
+import { Calculator, CheckCircle2, Sparkles } from 'lucide-react';
 import { AtlasTeamCarousel, type AtlasItem } from '@/components/landing/AtlasTeamCarousel';
 import { ContactDock } from '@/components/common/ContactDock';
+import { EARLY_ADOPTER_PROMO_TEXT } from '@/lib/plansConfig';
 
 type AuthLayoutProps = {
   headline: ReactNode;
@@ -32,6 +33,12 @@ export function AuthLayout({ headline, description, features = [], featureShowca
           <div className="max-w-lg">
             <h1 className="text-4xl xl:text-[2.75rem] font-bold leading-[1.15] tracking-tight text-white">{headline}</h1>
             <p className="mt-4 text-base text-primary-100/90 leading-relaxed">{description}</p>
+            <div className="mt-4">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-white/10 text-white ring-1 ring-white/20 backdrop-blur-sm">
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                {EARLY_ADOPTER_PROMO_TEXT}
+              </span>
+            </div>
           </div>
 
           {featureShowcase && featureShowcase.length > 0 ? (
@@ -56,6 +63,12 @@ export function AuthLayout({ headline, description, features = [], featureShowca
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-10 sm:px-8 bg-secondary-50 dark:bg-secondary-950">
+        <div className="lg:hidden w-full max-w-md mb-3">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-sm">
+            <Sparkles className="h-3.5 w-3.5 shrink-0" />
+            {EARLY_ADOPTER_PROMO_TEXT}
+          </span>
+        </div>
         <div className="lg:hidden flex items-center gap-2.5 mb-8">
           <div className="rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 p-2 shadow-glow-cash">
             <Calculator className="h-5 w-5 text-white" />

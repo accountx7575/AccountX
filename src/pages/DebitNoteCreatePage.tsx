@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { documentNumberTaken } from '@/lib/numbering';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
@@ -9,6 +10,11 @@ import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/common/DatePicker';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
+import {
+  DocumentNumberField,
+  DUPLICATE_DOCUMENT_NUMBER_MESSAGE,
+  useDocumentNumber,
+} from '@/components/documents/DocumentNumberField';
 import { ArrowLeft, Save } from 'lucide-react';
 import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
@@ -108,6 +114,14 @@ export function DebitNoteCreatePage() {
     };
   }, [lines, isInterState]);
 
+  const docNumberField = useDocumentNumber({
+    businessId: activeBusiness?.id,
+    docType: 'debit_note',
+    table: 'debit_notes',
+    numberColumn: 'debit_note_number',
+    date,
+  });
+
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!activeBusiness) throw new Error('No active business');
@@ -119,7 +133,20 @@ export function DebitNoteCreatePage() {
         if (l.quantity > l.maxQuantity) throw new Error(`Return qty for ${l.product_name} exceeds billed qty`);
       }
       const { data: userData } = await supabase.auth.getUser();
-      const tempNumber = `DRAFT-DN-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+      // PBS-142: editable, unique document number (typed value wins; otherwise
+      // the numbering service suggestion is used).
+      const typedNumber = docNumberField.value.trim();
+      let finalNumber = typedNumber;
+      if (typedNumber) {
+        const taken = await documentNumberTaken({
+          table: 'debit_notes',
+          column: 'debit_note_number',
+          businessId: activeBusiness.id,
+          value: typedNumber,
+        });
+        if (taken) throw new Error(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
+      }
+      const tempNumber = finalNumber || `DRAFT-DN-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
       const { data: note, error } = await supabase.from('debit_notes').insert({
         business_id: activeBusiness.id,
         debit_note_number: tempNumber,
@@ -187,16 +214,15 @@ export function DebitNoteCreatePage() {
 
       <div className="card p-6">
         <FormSection title="Against Bill" description="Debit notes reference a live purchase bill — pick one to load its lines">
-          <div className="space-y-3 max-w-xl">
-            <FormField label="Purchase Bill" required>
-              <select className="input" value={billId} onChange={(e) => loadBillItems(e.target.value)}>
-                <option value="">Select bill...</option>
-                {bills?.map((i) => <option key={i.id} value={i.id}>{i.bill_number}{i.supplier ? ` — ${i.supplier.name}` : ''}</option>)}
-              </select>
-            </FormField>
-            {selectedSupplierName && <p className="text-xs text-secondary-400">Supplier: {selectedSupplierName}{isInterState ? ' · Inter-state (IGST)' : ''}</p>}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Date" required><DatePicker value={date} onChange={setDate} /></FormField>
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 items-start">
+              <FormField label="Purchase Bill" required>
+                <select className="input h-10" value={billId} onChange={(e) => loadBillItems(e.target.value)}>
+                  <option value="">Select bill...</option>
+                  {bills?.map((i) => <option key={i.id} value={i.id}>{i.bill_number}{i.supplier ? ` — ${i.supplier.name}` : ''}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Date" required><DatePicker className="input h-10" value={date} onChange={setDate} /></FormField>
               <FormField label="Restock returned goods">
                 <label className="flex items-center gap-2 h-10 cursor-pointer select-none">
                   <input type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} className="h-4 w-4 accent-primary-600" />
@@ -204,6 +230,7 @@ export function DebitNoteCreatePage() {
                 </label>
               </FormField>
             </div>
+            {selectedSupplierName && <p className="text-xs text-secondary-400">Supplier: {selectedSupplierName}{isInterState ? ' · Inter-state (IGST)' : ''}</p>}
           </div>
         </FormSection>
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { Keyboard, BookOpen, LifeBuoy, ChevronDown } from 'lucide-react';
+import { Keyboard, BookOpen, LifeBuoy, ChevronDown, Flag } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { cn } from '@/lib/utils';
 import { dropdownPop, dropdownTransition } from '@/lib/motion';
@@ -14,9 +14,11 @@ const SHORTCUTS: { keys: string; action: string }[] = [
 
 type HelpDropdownProps = {
   onClose: () => void;
+  /** Opens the Report Issue modal owned by the Header (PBS-141). */
+  onReportIssue?: () => void;
 };
 
-export function HelpDropdown({ onClose }: HelpDropdownProps) {
+export function HelpDropdown({ onClose, onReportIssue }: HelpDropdownProps) {
   const { toast } = useToast();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const reduce = useReducedMotion();
@@ -63,6 +65,18 @@ export function HelpDropdown({ onClose }: HelpDropdownProps) {
       >
         <BookOpen className="h-4 w-4 text-zinc-400" />
         <span className="font-medium">GST &amp; Accounting Docs</span>
+      </button>
+
+      <button
+        onClick={() => {
+          onReportIssue?.();
+          onClose();
+        }}
+        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+      >
+        <Flag className="h-4 w-4 text-zinc-400" />
+        <span className="flex-1 font-medium">Report an Issue</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Ticket</span>
       </button>
 
       <a

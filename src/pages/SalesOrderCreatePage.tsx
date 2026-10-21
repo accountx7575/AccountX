@@ -2,7 +2,12 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { allocateDocumentNumber } from '@/lib/numbering';
+import { allocateDocumentNumber, documentNumberTaken } from '@/lib/numbering';
+import {
+  DocumentNumberField,
+  DUPLICATE_DOCUMENT_NUMBER_MESSAGE,
+  useDocumentNumber,
+} from '@/components/documents/DocumentNumberField';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
@@ -188,6 +193,19 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
     return { subtotal: roundTo2(subtotal), totalDiscount: roundTo2(totalDiscount), taxableAmount: roundTo2(taxableAmount), cgst: roundTo2(cgst), sgst: roundTo2(sgst), igst: roundTo2(igst), grandTotal };
   }, [lines, isInterState]);
 
+  // PBS-142: one document-number path for create + edit (suggestion, free-text
+  // override, duplicate guard scoped to this business).
+  const docNumber = useDocumentNumber({
+    businessId: activeBusiness?.id,
+    docType: 'sales_order',
+    table: 'sales_orders',
+    numberColumn: 'order_number',
+    date: orderDate,
+    initialValue: isEdit ? existingQuery.data?.order?.order_number ?? null : null,
+    excludeId: editId ?? null,
+    enabled: !demo,
+  });
+
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!activeBusiness) throw new Error('No active business');
@@ -249,9 +267,13 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
         if (!EDITABLE_STATUSES.has(loaded.order.status)) {
           throw new Error('This order is in a terminal state and can no longer be edited');
         }
+        const validatedNumber = await docNumber.validate();
+        if (!validatedNumber) throw new Error(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
+
         const { error: headerError } = await supabase
           .from('sales_orders')
           .update({
+            order_number: validatedNumber,
             customer_id: customerId,
             order_date: orderDate,
             expected_date: expectedDate || null,
@@ -305,13 +327,27 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
       let createdOrder: { id: string } | null = null;
       let insertError: any = null;
       for (let attempt = 0; attempt < 2; attempt++) {
-        const orderNumber = await allocateDocumentNumber({
-          businessId: activeBusiness.id,
-          docType: 'sales_order',
-          table: 'sales_orders',
-          numberColumn: 'order_number',
-          date: orderDate,
-        });
+        // PBS-142: a user-typed number is honoured verbatim; otherwise the
+        // numbering service suggests one (prefix + FY).
+        const typedNumber = docNumber.value.trim();
+        const orderNumber = typedNumber
+          ? typedNumber
+          : await allocateDocumentNumber({
+              businessId: activeBusiness.id,
+              docType: 'sales_order',
+              table: 'sales_orders',
+              numberColumn: 'order_number',
+              date: orderDate,
+            });
+        if (typedNumber) {
+          const taken = await documentNumberTaken({
+            table: 'sales_orders',
+            column: 'order_number',
+            businessId: activeBusiness.id,
+            value: typedNumber,
+          });
+          if (taken) throw new Error(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
+        }
 
         const res = await supabase.from('sales_orders').insert({
           business_id: activeBusiness.id,
@@ -403,15 +439,23 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
 
       <div className="card p-6">
         <FormSection>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-start">
+            <DocumentNumberField
+              value={docNumber.value}
+              onChange={docNumber.setValue}
+              error={docNumber.error}
+              suggesting={docNumber.suggesting}
+              className="h-10"
+            />
+
             <FormField label="Customer" required>
-              <select className="input" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+              <select className="input h-10" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
                 <option value="">Select customer...</option>
                 {customers?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </FormField>
-            <FormField label="Order Date" required><DatePicker value={orderDate} onChange={setOrderDate} /></FormField>
-            <FormField label="Expected Delivery"><DatePicker value={expectedDate} onChange={setExpectedDate} /></FormField>
+            <FormField label="Order Date" required><DatePicker className="input h-10" value={orderDate} onChange={setOrderDate} /></FormField>
+            <FormField label="Expected Delivery"><DatePicker className="input h-10" value={expectedDate} onChange={setExpectedDate} /></FormField>
           </div>
           {isInterState && (
             <div className="mt-3 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 text-warning-700 dark:text-warning-300 text-sm">

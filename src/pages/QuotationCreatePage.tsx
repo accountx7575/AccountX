@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { allocateDocumentNumber } from '@/lib/numbering';
+import { allocateDocumentNumber, documentNumberTaken } from '@/lib/numbering';
+import {
+  DocumentNumberField,
+  DUPLICATE_DOCUMENT_NUMBER_MESSAGE,
+  useDocumentNumber,
+} from '@/components/documents/DocumentNumberField';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
@@ -192,6 +197,16 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
     };
   }, [lines, isInterState]);
 
+  const docNumberField = useDocumentNumber({
+    businessId: activeBusiness?.id,
+    docType: 'quotation',
+    table: 'quotations',
+    numberColumn: 'quotation_number',
+    date: quoteDate,
+    initialValue: isEdit ? existingQuote?.quote?.quotation_number ?? null : null,
+    excludeId: editId ?? null,
+  });
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!activeBusiness) throw new Error('No active business');
@@ -249,9 +264,13 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
       let createdNewQuote = false;
 
       if (isEdit && targetQuoteId) {
+        const validatedNumber = await docNumberField.validate();
+        if (!validatedNumber) throw new Error(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
+
         const { error: updateErr } = await supabase
           .from('quotations')
           .update({
+            quotation_number: validatedNumber,
             customer_id: chosenCustomer.id,
             quote_date: quoteDate,
             expiry_date: expiryDate || null,
@@ -279,17 +298,29 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
         for (let attempt = 0; attempt < 2; attempt++) {
           let docNumber = '';
           let counterUnavailable = false;
-          try {
-            docNumber = await allocateDocumentNumber({
-              businessId: activeBusiness.id,
-              docType: 'quotation',
+          const typedNumber = docNumberField.value.trim();
+          if (typedNumber) {
+            docNumber = typedNumber;
+            const taken = await documentNumberTaken({
               table: 'quotations',
-              numberColumn: 'quotation_number',
-              date: quoteDate,
+              column: 'quotation_number',
+              businessId: activeBusiness.id,
+              value: typedNumber,
             });
-          } catch (rpcErr) {
-            console.warn('RPC fallback', rpcErr);
-            counterUnavailable = true;
+            if (taken) throw new Error(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
+          } else {
+            try {
+              docNumber = await allocateDocumentNumber({
+                businessId: activeBusiness.id,
+                docType: 'quotation',
+                table: 'quotations',
+                numberColumn: 'quotation_number',
+                date: quoteDate,
+              });
+            } catch (rpcErr) {
+              console.warn('RPC fallback', rpcErr);
+              counterUnavailable = true;
+            }
           }
           if (!docNumber) docNumber = `QT-${Date.now().toString().slice(-6)}${counterUnavailable ? '' : `-${attempt}`}`;
 
@@ -403,10 +434,18 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
 
       <div className="card p-6">
         <FormSection>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-start">
+            <DocumentNumberField
+              value={docNumberField.value}
+              onChange={docNumberField.setValue}
+              error={docNumberField.error}
+              suggesting={docNumberField.suggesting}
+              className="h-10"
+            />
+
             <FormField label="Customer" required>
               <select
-                className="input"
+                className="input h-10"
                 value={customerId}
                 onChange={(e) => setCustomerId(e.target.value)}
               >
@@ -419,7 +458,7 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
               </select>
             </FormField>
             <FormField label="Quote Date" required>
-              <DatePicker value={quoteDate} onChange={setQuoteDate} />
+              <DatePicker className="input h-10" value={quoteDate} onChange={setQuoteDate} />
             </FormField>
             <FormField label="Time">
               <Input
@@ -427,11 +466,11 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
                 value={quoteTime}
                 onChange={(e) => setQuoteTime(e.target.value)}
                 placeholder="12:00 PM"
-                className="figure"
+                className="h-10 figure"
               />
             </FormField>
             <FormField label="Valid Until">
-              <DatePicker value={expiryDate} onChange={setExpiryDate} />
+              <DatePicker className="input h-10" value={expiryDate} onChange={setExpiryDate} />
             </FormField>
           </div>
           {isInterState && (

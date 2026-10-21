@@ -2,10 +2,16 @@ import { useState, useMemo, useRef, useEffect, type KeyboardEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { documentNumberTaken } from '@/lib/numbering';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
+import {
+  DocumentNumberField,
+  DUPLICATE_DOCUMENT_NUMBER_MESSAGE,
+  useDocumentNumber,
+} from '@/components/documents/DocumentNumberField';
 import { DatePicker } from '@/components/common/DatePicker';
 import { Input } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
@@ -173,6 +179,11 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
     return !!(selectedCustomer && selectedCustomer.state && selectedCustomer.state !== activeBusiness.state);
   }, [activeBusiness, selectedCustomer]);
 
+  const placeOfSupply = useMemo(
+    () => selectedCustomer?.state || activeBusiness?.state || '',
+    [selectedCustomer, activeBusiness]
+  );
+
   const totals = useMemo(() => {
     let subtotal = 0, totalDiscount = 0, taxableAmount = 0;
     let cgst = 0, sgst = 0, igst = 0;
@@ -253,6 +264,17 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
     }
   };
 
+  const docNumberField = useDocumentNumber({
+    businessId: activeBusiness?.id,
+    docType: 'sales_invoice',
+    table: 'sales_invoices',
+    numberColumn: 'invoice_number',
+    date: invoiceDate,
+    initialValue: isEdit ? existingQuery.data?.invoice?.invoice_number ?? null : null,
+    excludeId: editId ?? null,
+    enabled: !demo,
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (status: 'issued' | 'draft') => {
       if (!activeBusiness) throw new Error('No active business');
@@ -319,9 +341,13 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
         const newBalance = Math.max(0, totals.grandTotal - Number(loaded.invoice.paid_amount || 0));
         const paymentStatus = newBalance <= 0 ? 'paid' : Number(loaded.invoice.paid_amount || 0) > 0 ? 'partially_paid' : 'unpaid';
 
+        const validatedNumber = await docNumberField.validate();
+        if (!validatedNumber) throw new Error(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
+
         const { error: headerError } = await supabase
           .from('sales_invoices')
           .update({
+            invoice_number: validatedNumber,
             customer_id: customerId,
             invoice_date: invoiceDate,
             due_date: dueDate || null,
@@ -376,8 +402,19 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
       }
 
       // Create mode
+      const typedNumber = docNumberField.value.trim();
+      if (typedNumber) {
+        const taken = await documentNumberTaken({
+          table: 'sales_invoices',
+          column: 'invoice_number',
+          businessId: activeBusiness.id,
+          value: typedNumber,
+        });
+        if (taken) throw new Error(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
+      }
       const p_invoice = {
         customer_id: customerId,
+        ...(typedNumber ? { invoice_number: typedNumber } : {}),
         invoice_date: invoiceDate,
         due_date: dueDate || null,
         place_of_supply: selectedCustomer?.state || activeBusiness.state,
@@ -564,21 +601,36 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
       <div>
         <div className="card p-6 min-w-0">
           <FormSection>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-start">
+              <DocumentNumberField
+                value={docNumberField.value}
+                onChange={docNumberField.setValue}
+                error={docNumberField.error}
+                suggesting={docNumberField.suggesting}
+                className="h-10"
+              />
               <div>
                 <label className="label">Customer <span className="text-error-500">*</span></label>
-                <select className="input" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+                <select className="input h-10" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
                   <option value="">Select customer...</option>
                   {customers?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="label">Invoice Date</label>
-                <DatePicker value={invoiceDate} onChange={setInvoiceDate} />
+                <label className="label">Invoice Date <span className="text-error-500">*</span></label>
+                <DatePicker className="input h-10" value={invoiceDate} onChange={setInvoiceDate} />
               </div>
               <div>
                 <label className="label">Due Date</label>
-                <DatePicker value={dueDate} onChange={setDueDate} />
+                <DatePicker className="input h-10" value={dueDate} onChange={setDueDate} />
+              </div>
+              <div>
+                <label className="label">Place of Supply</label>
+                <Input
+                  readOnly
+                  value={placeOfSupply}
+                  className="h-10 bg-secondary-50 dark:bg-secondary-800/50"
+                />
               </div>
             </div>
             {isInterState && (

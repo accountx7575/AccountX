@@ -141,9 +141,9 @@ export function StockTransferCreatePage() {
       <div className="max-w-3xl space-y-4">
         <div className="card p-6">
           <h3 className="text-sm font-semibold text-secondary-900 dark:text-secondary-100 mb-4">Route</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
             <FormField label="From warehouse" required>
-              <select className="input" value={fromWh} onChange={(e) => setFromWh(e.target.value)}>
+              <select className="input h-10" value={fromWh} onChange={(e) => setFromWh(e.target.value)}>
                 <option value="">Select source...</option>
                 {(warehouses || []).map((w) => (
                   <option key={w.id} value={w.id}>{w.name}{w.is_default ? ' (default)' : ''}</option>
@@ -151,7 +151,7 @@ export function StockTransferCreatePage() {
               </select>
             </FormField>
             <FormField label="To warehouse" required>
-              <select className="input" value={toWh} onChange={(e) => setToWh(e.target.value)}>
+              <select className="input h-10" value={toWh} onChange={(e) => setToWh(e.target.value)}>
                 <option value="">Select destination...</option>
                 {(warehouses || []).filter((w) => w.id !== fromWh).map((w) => (
                   <option key={w.id} value={w.id}>{w.name}{w.is_default ? ' (default)' : ''}</option>
@@ -159,7 +159,7 @@ export function StockTransferCreatePage() {
               </select>
             </FormField>
             <FormField label="Transfer date">
-              <DatePicker value={date} onChange={(iso) => setDate(iso)} />
+              <DatePicker className="input h-10" value={date} onChange={(iso) => setDate(iso)} />
             </FormField>
           </div>
           {!warehouses || warehouses.length < 2 ? (

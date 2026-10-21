@@ -9,7 +9,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { Eye, FileDown, Layers, Plus, Printer, Trash2, FileSpreadsheet } from 'lucide-react';
-import { formatDate, formatCurrency } from '@/lib/utils';
+import { formatDate, formatCurrency, formatTimeOfDay } from '@/lib/utils';
 import {
   listDemoDocs,
   deleteDemoDoc,
@@ -84,6 +84,7 @@ export function buildListPrintPayload(
     docNumber: record.number,
     dateLabel: cfg.dateLabel,
     dateValue: formatDate(String(header[cfg.dateKey] || new Date().toISOString())),
+    time: formatTimeOfDay(record.createdAt),
     expiryLabel: cfg.expiryLabel,
     expiryValue: header[cfg.expiryKey] ? String(header[cfg.expiryKey]) : null,
     partyLabel: cfg.partyLabel,

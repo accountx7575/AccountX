@@ -15,13 +15,8 @@ import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
 import { ShoppingCart, Plus, Lock, CheckCircle2, Printer, Eye, Download, Pencil } from 'lucide-react';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, formatTimeOfDay } from '@/lib/utils';
 import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
-import {
-  OrderInvoiceModal,
-  mapSalesOrderToUniversalData,
-  type UniversalDocumentData,
-} from '@/components/documents';
 import type { SalesOrder, SalesOrderItem, Customer } from '@/types/db';
 
 type LineItem = {
@@ -60,8 +55,6 @@ export function SalesOrdersPage() {
   const [confirmCancel, setConfirmCancel] = useState<SalesOrder | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
-  const [previewData, setPreviewData] = useState<UniversalDocumentData | null>(null);
   const [convertTarget, setConvertTarget] = useState<(SalesOrder & { customer: { name: string } | null }) | null>(null);
   const [convertDate, setConvertDate] = useState('');
   const [convertDue, setConvertDue] = useState('');
@@ -99,6 +92,7 @@ export function SalesOrdersPage() {
       docNumber: o.order_number,
       dateLabel: 'Order Date',
       dateValue: formatDate(o.order_date),
+      time: formatTimeOfDay(o.created_at),
       expiryLabel: 'Expected On',
       expiryValue: o.expected_date,
       partyLabel: 'Customer',
@@ -120,24 +114,6 @@ export function SalesOrdersPage() {
     };
 
     return { items: (items || []) as SalesOrderItem[], customer, payload };
-  };
-
-  const handlePreviewOrder = async (o: SalesOrder) => {
-    if (!activeBusiness) return;
-    setPreviewLoadingId(o.id);
-    try {
-      const { items, customer } = await fetchOrderDetails(o);
-      const universal = mapSalesOrderToUniversalData(
-        activeBusiness,
-        { ...o, customer },
-        items
-      );
-      setPreviewData(universal);
-    } catch (err: any) {
-      toast(err?.message || 'Failed to load order preview', 'error');
-    } finally {
-      setPreviewLoadingId(null);
-    }
   };
 
   const printOrder = async (o: SalesOrder) => {
@@ -336,11 +312,10 @@ export function SalesOrdersPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          loading={previewLoadingId === o.id}
-                          onClick={() => handlePreviewOrder(o)}
-                          title="Preview Sales Order in GST format"
+                          onClick={() => navigate(`/app/sales-orders/${o.id}`)}
+                          title="View Sales Order"
                         >
-                          <Eye className="h-3 w-3" /> View
+                          <Eye className="w-3 h-3" /> View
                         </Button>
                         <Button
                           size="sm"
@@ -430,13 +405,6 @@ export function SalesOrdersPage() {
           <Button onClick={() => convertMutation.mutate()} loading={convertMutation.isPending} disabled={!convertDate}>Convert</Button>
         </div>
       </Modal>
-
-      <OrderInvoiceModal
-        open={!!previewData}
-        onClose={() => setPreviewData(null)}
-        data={previewData}
-        title={previewData ? `Sales Order - ${previewData.documentNumber}` : 'Sales Order'}
-      />
     </div>
   );
 }

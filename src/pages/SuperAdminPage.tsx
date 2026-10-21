@@ -16,6 +16,7 @@ import {
   normalizePlanType,
   type CanonicalTierId,
 } from '@/lib/planTypes';
+import { validateBusinessName } from '@/lib/businessNameGuard';
 import {
   Building2, Users, LogOut, ShieldCheck, Search, CheckCircle, Ban, RefreshCw,
   X, Eye, FileText, Activity, Database, Server, HardDrive, Clock, Download,
@@ -52,6 +53,20 @@ interface Tenant {
   quota: number;
   quotaUsed: number;
   validity: string;
+}
+
+/**
+ * PBS-161 — one row per tenant from the `super_admin_tenant_metrics` RPC
+ * (Stanley owns the function; this page only consumes it).
+ */
+export interface TenantMetricsRow {
+  business_id: string;
+  business_name: string | null;
+  total_invoices: number;
+  total_orders: number;
+  total_billed_amount: number | null;
+  latest_invoice_numbers: string | null;
+  last_activity_at: string | null;
 }
 
 interface Announcement {
@@ -116,6 +131,78 @@ function stateCodeFromGstin(gstin: string): string {
   return m ? m[1] : '—';
 }
 
+/**
+ * The storage keys that pin the session to one tenant. These are the REAL
+ * keys of this tree (there is no `active_business_id` / `superadmin_*`).
+ */
+export const IMPERSONATION_STORAGE_KEYS = {
+  activeBusiness: 'accountx_active_business_id',
+  impersonatingBusiness: 'accountx_impersonating_business_id',
+  superAdmin: 'super_admin_impersonating',
+  impersonating: 'accountx_impersonating',
+  tenant: 'impersonated_tenant_id',
+} as const;
+
+/**
+ * PBS-161 — switch the pinned tenant.
+ *
+ * The previous tenant's keys are CLEARED first: a stale key left behind is
+ * what pinned the app to the old tenant after a switch. `localStorage.clear()`
+ * is never used — it would wipe unrelated app state (the impersonation notice
+ * flag, the active tab, …).
+ */
+export function applyImpersonationKeys(tenantId: string, storage: Storage = localStorage): Record<string, string> {
+  storage.removeItem(IMPERSONATION_STORAGE_KEYS.activeBusiness);
+  storage.removeItem(IMPERSONATION_STORAGE_KEYS.impersonatingBusiness);
+  storage.removeItem(IMPERSONATION_STORAGE_KEYS.tenant);
+
+  storage.setItem(IMPERSONATION_STORAGE_KEYS.activeBusiness, tenantId);
+  storage.setItem(IMPERSONATION_STORAGE_KEYS.impersonatingBusiness, tenantId);
+  storage.setItem(IMPERSONATION_STORAGE_KEYS.superAdmin, 'true');
+  storage.setItem(IMPERSONATION_STORAGE_KEYS.impersonating, 'true');
+  storage.setItem(IMPERSONATION_STORAGE_KEYS.tenant, tenantId);
+
+  return {
+    [IMPERSONATION_STORAGE_KEYS.activeBusiness]: tenantId,
+    [IMPERSONATION_STORAGE_KEYS.impersonatingBusiness]: tenantId,
+    [IMPERSONATION_STORAGE_KEYS.superAdmin]: 'true',
+    [IMPERSONATION_STORAGE_KEYS.impersonating]: 'true',
+    [IMPERSONATION_STORAGE_KEYS.tenant]: tenantId,
+  };
+}
+
+/**
+ * PBS-161 — the full tenant switch: clear the old keys, write the new ones,
+ * force the tenant context to RE-RESOLVE, and only then land on /app.
+ *
+ * A soft `navigate()` on its own is the bug: the in-memory activeBusiness
+ * stayed on the previous tenant. `refresh` re-runs the AuthContext business
+ * load (which reads the impersonation key and re-points activeBusiness at the
+ * new tenant). If that re-resolution is not possible, the hard navigation
+ * reloads the app, which re-initialises AuthContext from localStorage.
+ */
+export async function runImpersonation(options: {
+  tenantId: string;
+  storage?: Storage;
+  refresh?: () => Promise<void> | void;
+  softNavigate?: (url: string) => void;
+  hardNavigate?: (url: string) => void;
+}): Promise<'soft' | 'hard'> {
+  const target = '/app?mode=impersonation';
+  try {
+    applyImpersonationKeys(options.tenantId, options.storage ?? localStorage);
+  } catch { /* storage may be unavailable — still navigate */ }
+
+  try {
+    await options.refresh?.();
+  } catch {
+    options.hardNavigate?.(target);
+    return 'hard';
+  }
+  options.softNavigate?.(target);
+  return 'soft';
+}
+
 function severityStyles(sev: Severity): string {
   if (sev === 'Critical') return 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900';
   if (sev === 'Warning') return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900';
@@ -132,6 +219,26 @@ function inr(n: number): string {
   try {
     return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
   } catch { return `₹${n}`; }
+}
+
+/**
+ * "SO/26-27/3, SO/26-27/2, SO/26-27/1" — the recent document numbers of a
+ * tenant, with "+N more" when the list is longer than the shown slice.
+ */
+export function formatRecentInvoiceNumbers(raw: string | null | undefined, max = 5): string {
+  const parts = (raw ?? '').split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) return '';
+  const shown = parts.slice(0, max);
+  const rest = parts.length - shown.length;
+  return rest > 0 ? `${shown.join(', ')} +${rest} more` : shown.join(', ');
+}
+
+/** "4,53,000" — Indian digit grouping. Unknown (null) is an em dash, never 0. */
+export function formatInrVolume(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined) return '—';
+  const value = Number(amount);
+  if (!Number.isFinite(value)) return '—';
+  return value.toLocaleString('en-IN', { maximumFractionDigits: 0 });
 }
 
 function roleBadge(role: MemberRole): string {
@@ -154,11 +261,14 @@ const MEMBER_ROLES: MemberRole[] = ['Owner', 'Manager', 'Accountant', 'Billing S
 
 export function SuperAdminPage() {
   const navigate = useNavigate();
-  const { activeBusiness } = useAuth();
+  const { activeBusiness, refreshBusinesses } = useAuth();
   const { logAdminEvent } = useAdminTelemetry();
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
+  // PBS-161 — tenant invoice metrics, merged into the rows by business_id.
+  const [tenantMetrics, setTenantMetrics] = useState<Record<string, TenantMetricsRow>>({});
+  const [metricsAvailable, setMetricsAvailable] = useState(false);
   const [search, setSearch] = useState('');
   const [tierFilter, setTierFilter] = useState<'All' | Plan>('All');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Blocked'>('All');
@@ -326,6 +436,34 @@ export function SuperAdminPage() {
 
   useEffect(() => { if (activeTab === 'rbac') loadMembers(); }, [activeTab]);
 
+  // PBS-161 — the `super_admin_tenant_metrics` RPC is not on the live DB yet,
+  // so the first fetch degrades to an em dash in both new cells with NO toast.
+  useEffect(() => {
+    let cancelled = false;
+    const loadTenantMetrics = async () => {
+      try {
+        const { data, error } = await supabase.rpc('super_admin_tenant_metrics');
+        if (cancelled) return;
+        // A missing function returns an error object (PGRST202), it does not throw.
+        if (error || !Array.isArray(data)) {
+          setTenantMetrics({});
+          setMetricsAvailable(false);
+          return;
+        }
+        const map: Record<string, TenantMetricsRow> = {};
+        for (const row of data as TenantMetricsRow[]) {
+          if (row && row.business_id) map[String(row.business_id)] = row;
+        }
+        setTenantMetrics(map);
+        setMetricsAvailable(true);
+      } catch {
+        if (!cancelled) { setTenantMetrics({}); setMetricsAvailable(false); }
+      }
+    };
+    void loadTenantMetrics();
+    return () => { cancelled = true; };
+  }, []);
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     localStorage.clear();
@@ -333,17 +471,14 @@ export function SuperAdminPage() {
     window.location.href = '/login';
   };
 
-  const impersonate = (t: Tenant) => {
-    try {
-      localStorage.setItem('accountx_active_business_id', t.id);
-      localStorage.setItem('accountx_impersonating_business_id', t.id);
-      localStorage.setItem('super_admin_impersonating', 'true');
-      // Oscar spec keys (kept alongside legacy keys for compatibility).
-      localStorage.setItem('accountx_impersonating', 'true');
-      localStorage.setItem('impersonated_tenant_id', t.id);
-    } catch { /* storage may be unavailable — still navigate */ }
+  const impersonate = async (t: Tenant) => {
     void logAdminEvent('IMPERSONATION_START', t.id, { business_name: t.name });
-    navigate('/app?mode=impersonation');
+    await runImpersonation({
+      tenantId: t.id,
+      refresh: refreshBusinesses,
+      softNavigate: (url) => navigate(url),
+      hardNavigate: (url) => window.location.assign(url),
+    });
   };
 
   const toggleStatus = async (id: string, current: boolean) => {
@@ -527,7 +662,8 @@ export function SuperAdminPage() {
 
   const submitOnboard = async () => {
     setFormError('');
-    if (!form.legalName.trim()) { setFormError('Legal Name is required.'); return; }
+    const nameCheck = validateBusinessName(form.legalName);
+    if (!nameCheck.ok) { setFormError(nameCheck.error); return; }
     if (!GSTIN_RE.test(form.gstin.trim().toUpperCase())) { setFormError('GSTIN must be 15 characters (e.g. 09ABCDE1234F1Z5).'); return; }
     if (!/^\S+@\S+\.\S+$/.test(form.ownerEmail.trim())) { setFormError('Owner Email is invalid.'); return; }
     const now = new Date().toISOString();
@@ -750,7 +886,7 @@ export function SuperAdminPage() {
 
             <div className="card-solid overflow-hidden">
               <div className="flex-wrap">
-                <table className="w-full text-left text-sm min-w-[900px]">
+                <table className="w-full text-left text-sm min-w-[1100px]">
                   <thead className="bg-secondary-50 dark:bg-secondary-800/50 border-b border-secondary-200 dark:border-secondary-800 text-xs font-semibold text-secondary-500 uppercase tracking-wider">
                     <tr>
                       <th className="px-4 py-4"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label="Select all" /></th>
@@ -758,6 +894,8 @@ export function SuperAdminPage() {
                       <th className="px-4 py-4">Owner Email</th>
                       <th className="px-4 py-4">GSTIN</th>
                       <th className="px-4 py-4">Plan</th>
+                      <th className="px-4 py-4">Invoices</th>
+                      <th className="px-4 py-4">Total Volume</th>
                       <th className="px-4 py-4">Created</th>
                       <th className="px-4 py-4">Status</th>
                       <th className="px-4 py-4 text-right">Actions</th>
@@ -765,10 +903,15 @@ export function SuperAdminPage() {
                   </thead>
                   <tbody className="divide-y divide-secondary-100 dark:divide-secondary-800">
                     {loading ? (
-                      <tr><td colSpan={8} className="px-6 py-10 text-center text-secondary-400">Syncing live tenants from Supabase…</td></tr>
+                      <tr><td colSpan={10} className="px-6 py-10 text-center text-secondary-400">Syncing live tenants from Supabase…</td></tr>
                     ) : filteredTenants.length === 0 ? (
-                      <tr><td colSpan={8} className="px-6 py-10 text-center text-secondary-400">No tenants match the current filters.</td></tr>
-                    ) : filteredTenants.map(t => (
+                      <tr><td colSpan={10} className="px-6 py-10 text-center text-secondary-400">No tenants match the current filters.</td></tr>
+                    ) : filteredTenants.map(t => {
+                      // PBS-161 — the metrics row is merged by business_id; when
+                      // the RPC is unavailable both cells show an em dash.
+                      const metrics = metricsAvailable ? tenantMetrics[t.id] : undefined;
+                      const recent = metrics ? formatRecentInvoiceNumbers(metrics.latest_invoice_numbers) : '';
+                      return (
                       <tr key={t.id} className="bg-secondary-100/60 dark:bg-secondary-800/50 table-row-hover transition-colors">
                         <td className="px-4 py-4"><input type="checkbox" checked={selectedIds.includes(t.id)} onChange={() => toggleSelect(t.id)} aria-label={`Select ${t.name}`} /></td>
                         <td className="px-4 py-4">
@@ -778,6 +921,19 @@ export function SuperAdminPage() {
                         <td className="px-4 py-4 text-secondary-600 dark:text-secondary-300 font-mono text-xs">{t.ownerEmail}</td>
                         <td className="px-4 py-4 text-secondary-600 dark:text-secondary-300 font-mono text-xs">{t.gstin}</td>
                         <td className="px-4 py-4"><span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-secondary-100 dark:bg-secondary-800 text-secondary-700 dark:text-secondary-200 border border-secondary-200 dark:border-secondary-700">{t.plan}</span></td>
+                        <td className="px-4 py-4">
+                          {metrics ? (
+                            <>
+                              <div className="font-semibold text-secondary-900 dark:text-white">{Number(metrics.total_invoices || 0)}</div>
+                              {recent && <div className="text-xs text-secondary-400">{recent}</div>}
+                            </>
+                          ) : (
+                            <span className="text-secondary-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-secondary-600 dark:text-secondary-300 text-xs whitespace-nowrap">
+                          {metrics ? formatInrVolume(metrics.total_billed_amount) : <span className="text-secondary-400">—</span>}
+                        </td>
                         <td className="px-4 py-4 text-secondary-500 text-xs whitespace-nowrap">{t.createdAt}</td>
                         <td className="px-4 py-4">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
@@ -797,7 +953,8 @@ export function SuperAdminPage() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

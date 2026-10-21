@@ -62,6 +62,34 @@ export function formatDate(date: string | Date | null | undefined): string {
   });
 }
 
+const pad2 = (n: number | string): string => String(n).padStart(2, '0');
+
+/**
+ * Document header dates print as strict Indian DD/MM/YYYY (e.g. 24/08/2026).
+ * Callers hand over whatever the database holds — an ISO '2026-08-24', a
+ * timestamp, or an already formatted '24/08/2026' — so the value is
+ * normalised here instead of letting a raw ISO date leak into the print.
+ * ISO values are split part-wise, never through new Date(), so the day can
+ * never shift with the reader's timezone.
+ */
+export function formatDocDate(value: string | Date | null | undefined): string {
+  if (!value) return '';
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return '';
+    return `${pad2(value.getDate())}/${pad2(value.getMonth() + 1)}/${value.getFullYear()}`;
+  }
+  const raw = String(value).trim();
+  if (!raw) return '';
+  // Already DD/MM/YYYY (or D/M/YYYY, or with dashes).
+  const dmy = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(raw);
+  if (dmy) return `${pad2(dmy[1])}/${pad2(dmy[2])}/${dmy[3]}`;
+  // ISO 2026-08-24, with or without a time part.
+  const ymd = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(raw);
+  if (ymd) return `${pad2(ymd[3])}/${pad2(ymd[2])}/${ymd[1]}`;
+  const formatted = formatDate(raw);
+  return formatted === '—' ? raw : formatted;
+}
+
 /** Long form where space allows: DD MMM YYYY (e.g. 24 Aug 2026). */
 export function formatLongDate(date: string | Date | null | undefined): string {
   if (!date) return '—';
@@ -85,6 +113,17 @@ export function formatDateTime(date: string | Date | null | undefined): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+/** 12-hour clock label for document headers (e.g. '05:45 PM'). Empty string when unusable. */
+export function formatTimeOfDay(date: string | Date | null | undefined): string {
+  if (!date) return '';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (isNaN(d.getTime())) return '';
+  return d
+    .toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+    .toUpperCase()
+    .replace(/\s+/g, ' ');
 }
 
 export function toDateString(date: Date | string): string {
