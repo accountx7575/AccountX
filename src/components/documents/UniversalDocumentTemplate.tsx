@@ -558,7 +558,7 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
       <div className="grid grid-cols-1 items-start gap-x-6 gap-y-6 border-b-2 border-slate-900 pb-6 sm:grid-cols-[1fr_auto] sm:gap-y-[6px]">
         <div className="order-1 sm:col-start-1 sm:row-start-1">
           <div className="flex items-center gap-2">
-            <span className="grid place-items-center h-8 w-8 rounded-xl bg-emerald-600 text-white font-black text-sm uppercase">
+            <span className="grid place-items-center h-8 w-8 rounded-xl bg-emerald-700 text-white font-black text-sm uppercase">
               {companyName.charAt(0)}
             </span>
             <span className="font-display text-2xl font-black tracking-tight text-emerald-900">
@@ -604,11 +604,11 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
 
         {/* Invoice Meta Heading */}
         <div className="order-3 text-left sm:col-start-2 sm:row-start-1 sm:text-right">
-          <div className="inline-block rounded-md border border-emerald-200 bg-emerald-50/50 px-3 py-1 text-center">
-            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800">
+          <div className="inline-block rounded-md bg-emerald-50 border border-emerald-200 px-3 py-1 text-center">
+            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-900">
               {docTitle}
             </span>
-            <p className="text-[9px] font-semibold text-emerald-600">
+            <p className="text-[9px] font-semibold text-emerald-700">
               {badgeSubtitle}
             </p>
           </div>
@@ -719,7 +719,7 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
             <span className="text-slate-500 w-28">Payment Status:</span>
             <span
               className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold ${
-                isPaid ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-slate-100 border border-slate-200 text-slate-700'
+                isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
               }`}
             >
               <CheckCircle2 className="h-3 w-3" />
@@ -733,7 +733,7 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
       <div className="overflow-x-auto rounded-xl border border-slate-200 mb-6">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="bg-slate-50/80 border-y border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            <tr className="bg-slate-100/80 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-600">
               <th className="px-3 py-2.5 w-10 text-center">#</th>
               <th className="px-3 py-2.5">Item Description / Voucher</th>
               <th className="px-3 py-2.5 w-24 text-center">HSN/SAC</th>
@@ -751,7 +751,7 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
               const itemTaxRate = item.taxRate !== undefined ? item.taxRate : (item.tax_rate ?? effectiveTaxRate);
 
               return (
-                <tr key={item.id ?? idx} className="hover:bg-slate-50/40 border-b border-slate-100">
+                <tr key={item.id ?? idx} className="hover:bg-slate-50/40">
                   <td className="px-3 py-3 text-center font-mono text-[11px] text-slate-400">
                     {idx + 1}
                   </td>
@@ -793,7 +793,7 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
       {/* 4. Financial Breakdown & Words */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2 pb-6 border-b border-slate-200">
         <div className="flex flex-col justify-between space-y-4">
-          <div className="rounded-xl bg-slate-50/70 p-3.5 border border-slate-200/80">
+          <div className="rounded-xl bg-slate-50 p-3.5 border border-slate-200/70">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
               Amount Chargeable (in words)
             </p>
@@ -892,7 +892,7 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
               <span>- ₹{inrDecimal(data.discount)}</span>
             </div>
           ) : null}
-          <div className="flex justify-between items-center rounded-xl bg-emerald-50/60 border border-emerald-200/60 p-3 font-sans mt-3 text-emerald-950">
+          <div className="flex justify-between items-center rounded-xl bg-emerald-50/70 border border-emerald-200 p-3 font-sans mt-3">
             <span className="text-sm font-black text-emerald-950">Grand Total (INR):</span>
             <span className="text-base font-black font-mono text-emerald-900">
               ₹{inrDecimal(totalAmount)}

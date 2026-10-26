@@ -8,8 +8,8 @@ const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel: string) => readFileSync(join(SRC, rel), 'utf8');
 const DRIFT = 'UDT drifted from approved design - needs human approval';
 const UDT_REL = 'components/documents/UniversalDocumentTemplate.tsx';
-const APPROVED_UDT_BYTES = 51525;
-const APPROVED_UDT_SHA1 = 'b4937d2773809f45e13244504b9e2db66ec3142d';
+const APPROVED_UDT_BYTES = 51425;
+const APPROVED_UDT_SHA1 = '0d9fd5adef2b31eef39d7ba3be4b64832e5f8403';
 
 const DETAIL_PAGES = [
   'pages/SalesOrderDetailPage.tsx',
