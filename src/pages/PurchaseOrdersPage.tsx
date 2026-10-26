@@ -14,13 +14,10 @@ import { Input, FormField } from '@/components/ui/Input';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
-import { PackageCheck, Plus, Lock, CheckCircle2, PackageOpen, Printer, Eye, Download, Pencil } from 'lucide-react';
-import { formatCurrency, formatDate, formatTimeOfDay } from '@/lib/utils';
-import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
-import {
-  mapPurchaseOrderToUniversalData,
-} from '@/components/documents';
-import type { PurchaseOrder, PurchaseOrderItem, Supplier } from '@/types/db';
+import { PackageCheck, Plus, Lock, CheckCircle2, PackageOpen, Eye, Pencil, Printer, Download, Loader2 } from 'lucide-react';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { printDocument, downloadDocumentPdf } from '@/lib/documentActions';
+import type { PurchaseOrder } from '@/types/db';
 
 type LineItem = {
   product_id: string | null;
@@ -56,102 +53,32 @@ export function PurchaseOrdersPage() {
   const list = usePagedList();
   const [statusFilter, setStatusFilter] = useState('all');
   const [confirmCancel, setConfirmCancel] = useState<PurchaseOrder | null>(null);
-  const [printingId, setPrintingId] = useState<string | null>(null);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [convertTarget, setConvertTarget] = useState<(PurchaseOrder & { supplier: { name: string } | null }) | null>(null);
   const [convertDate, setConvertDate] = useState('');
   const [convertDue, setConvertDue] = useState('');
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  const handlePrint = (id: string) => {
+    printDocument('purchase_order', id, activeBusiness, navigate);
+  };
+
+  const handleDownload = async (id: string) => {
+    if (!activeBusiness || actionLoadingId) return;
+    setActionLoadingId(`${id}-download`);
+    try {
+      await downloadDocumentPdf('purchase_order', id, activeBusiness);
+      toast('PDF downloaded', 'success');
+    } catch (err: any) {
+      toast(err.message || 'Failed to download PDF', 'error');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
 
   const openConvert = (o: PurchaseOrder & { supplier: { name: string } | null }) => {
     setConvertTarget(o);
     setConvertDate(new Date().toISOString().slice(0, 10));
     setConvertDue('');
-  };
-
-  const fetchOrderDetails = async (o: PurchaseOrder) => {
-    const { data: items, error } = await supabase
-      .from('purchase_order_items')
-      .select('*')
-      .eq('purchase_order_id', o.id)
-      .order('created_at');
-    if (error) throw error;
-
-    let supplier: Partial<Supplier> | null = (o as any).supplier ?? null;
-    if (o.supplier_id && (!supplier || !supplier.address)) {
-      const { data: s } = await supabase
-        .from('suppliers')
-        .select('*')
-        .eq('id', o.supplier_id)
-        .maybeSingle();
-      if (s) supplier = s;
-    }
-
-    const supplierAddress = [supplier?.address, supplier?.city, supplier?.state, supplier?.pincode]
-      .filter(Boolean)
-      .join(', ');
-
-    const payload: PrintableDocData = {
-      docTitle: 'PURCHASE ORDER',
-      docNumber: o.order_number,
-      dateLabel: 'Order Date',
-      dateValue: formatDate(o.order_date),
-      time: formatTimeOfDay(o.created_at),
-      expiryLabel: 'Expected On',
-      expiryValue: o.expected_date,
-      partyLabel: 'Supplier',
-      partyName: supplier?.company_name || supplier?.name || (o as any).supplier?.name || '—',
-      partyAddress: supplierAddress || undefined,
-      partyGstin: supplier?.gstin || undefined,
-      partyPhone: supplier?.phone || undefined,
-      partyPlaceOfSupply: activeBusiness?.state || 'Uttar Pradesh',
-      isPurchaseBill: true,
-      status: o.status,
-      items: (items || []) as PurchaseOrderItem[],
-      subtotal: Number(o.subtotal),
-      taxableAmount: Number(o.taxable_amount),
-      cgst: Number(o.cgst_amount),
-      sgst: Number(o.sgst_amount),
-      igst: Number(o.igst_amount),
-      roundOff: Number(o.round_off) || 0,
-      grandTotal: Number(o.grand_total),
-      notes: o.notes,
-    };
-
-    return { items: (items || []) as PurchaseOrderItem[], supplier, payload };
-  };
-
-  const printOrder = async (o: PurchaseOrder) => {
-    if (!activeBusiness) return;
-    setPrintingId(o.id);
-    try {
-      const { payload } = await fetchOrderDetails(o);
-      await renderDocSheetToPdf(activeBusiness, payload);
-    } catch (err: any) {
-      toast(err?.message || 'PDF export failed', 'error');
-    } finally {
-      setPrintingId(null);
-    }
-  };
-
-  const handleDownloadPdf = async (o: PurchaseOrder) => {
-    if (!activeBusiness) return;
-    setDownloadingId(o.id);
-    try {
-      const { payload } = await fetchOrderDetails(o);
-      const blob = await renderDocSheetToPdfBlob(activeBusiness, payload);
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `${o.order_number}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-    } catch (err: any) {
-      toast(err?.message || 'Download PDF failed', 'error');
-    } finally {
-      setDownloadingId(null);
-    }
   };
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -321,24 +248,34 @@ export function PurchaseOrdersPage() {
                         >
                           <Eye className="h-3 w-3" /> View
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          loading={printingId === o.id}
-                          onClick={() => printOrder(o)}
-                          title="Print Purchase Order in clean A4 format"
+                        <button
+                          onClick={() => handlePrint(o.id)}
+                          disabled={!!actionLoadingId}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group"
+                          title="Print Purchase Order"
+                          aria-label="Print Purchase Order"
                         >
-                          <Printer className="h-3 w-3" /> Print
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          loading={downloadingId === o.id}
-                          onClick={() => handleDownloadPdf(o)}
-                          title="Download Purchase Order as PDF"
+                          {actionLoadingId === `${o.id}-print` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                          ) : (
+                            <Printer className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />
+                          )}
+                          <span>Print</span>
+                        </button>
+                        <button
+                          onClick={() => handleDownload(o.id)}
+                          disabled={!!actionLoadingId}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group"
+                          title="Download PDF"
+                          aria-label="Download PDF"
                         >
-                          <Download className="h-3 w-3" /> PDF
-                        </Button>
+                          {actionLoadingId === `${o.id}-download` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />
+                          )}
+                          <span>PDF</span>
+                        </button>
                         {LOCKED[o.status] && (
                           <span className="inline-flex items-center gap-1 text-xs text-secondary-400"><Lock className="h-3 w-3" /> Locked</span>
                         )}

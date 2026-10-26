@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -12,9 +12,9 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { captureElementToPdf } from '@/lib/pdfCapture';
 import {
   UniversalDocumentTemplate,
-  mapPurchaseOrderToUniversalData,
   printElementInIframe,
 } from '@/components/documents/UniversalDocumentTemplate';
+import { mapPurchaseOrderToUniversalData } from '@/lib/documentMappers';
 import { openWhatsAppShare } from '@/lib/whatsapp';
 
 const statusStyles: Record<string, string> = {
@@ -40,6 +40,7 @@ export function PurchaseOrderViewPage() {
   const { activeBusiness } = useAuth();
   const { toast } = useToast();
   const [printing, setPrinting] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [confirmCancel, setConfirmCancel] = useState(false);
 
   const { data, isLoading, error } = useQuery({
@@ -48,24 +49,59 @@ export function PurchaseOrderViewPage() {
       if (!activeBusiness || !id) return null;
       const { data: order, error: oErr } = await supabase
         .from('purchase_orders')
-        .select('*, supplier:suppliers(*)')
+        .select('*, supplier:supplier_id(*)')
         .eq('id', id)
         .eq('business_id', activeBusiness.id)
         .single();
       if (oErr) throw oErr;
+
+      let orderData = order as any;
+      if (orderData && !orderData.supplier && orderData.supplier_id) {
+        const { data: sData } = await supabase
+          .from('suppliers')
+          .select('*')
+          .eq('id', orderData.supplier_id)
+          .maybeSingle();
+        if (sData) {
+          orderData = { ...orderData, supplier: sData };
+        }
+      }
+
       const { data: items, error: iErr } = await supabase
         .from('purchase_order_items')
         .select('*')
         .eq('purchase_order_id', id)
         .order('created_at');
       if (iErr) throw iErr;
-      return { order: order as any, items: (items || []) as any[] };
+
+      let bizData: any = null;
+      if (activeBusiness?.id) {
+        const { data: b } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('id', activeBusiness.id)
+          .maybeSingle();
+        bizData = b;
+      }
+
+      return { order: orderData, items: (items || []) as any[], business: bizData || activeBusiness };
     },
     enabled: !!activeBusiness && !!id,
   });
 
   const order = data?.order;
   const items = data?.items || [];
+
+  // Deep-link auto-print support for list rows: ?action=print, ?print=1, or ?autoprint=true
+  useEffect(() => {
+    if (order && (searchParams.get('print') === '1' || searchParams.get('action') === 'print' || searchParams.get('autoprint') === 'true')) {
+      const t = setTimeout(() => {
+        printElementInIframe('invoice-printable-area', order.order_number);
+        setSearchParams({}, { replace: true });
+      }, 350);
+      return () => clearTimeout(t);
+    }
+  }, [order, searchParams, setSearchParams]);
 
   const statusMutation = useMutation({
     mutationFn: async (status: string) => {
@@ -91,7 +127,7 @@ export function PurchaseOrderViewPage() {
     if (!order) return;
     setPrinting(true);
     try {
-      const el = document.getElementById('purchase-order-print-area');
+      const el = document.getElementById('invoice-printable-area');
       if (el) await captureElementToPdf(el, `${order.order_number}.pdf`);
     } catch (e: any) {
       toast(e.message || 'PDF export failed', 'error');
@@ -153,7 +189,7 @@ export function PurchaseOrderViewPage() {
                 <Pencil className="h-4 w-4" /> Edit
               </Button>
             )}
-            <Button variant="secondary" onClick={() => printElementInIframe('purchase-order-print-area', order.order_number)}>
+            <Button variant="secondary" onClick={() => printElementInIframe('invoice-printable-area', order.order_number)}>
               <Printer className="h-4 w-4" /> Print
             </Button>
             <Button variant="secondary" onClick={handleDownloadPdf} loading={printing}>
@@ -197,9 +233,9 @@ export function PurchaseOrderViewPage() {
           </div>
         </div>
 
-        <div id="purchase-order-print-area">
+        <div id="invoice-printable-area">
           <UniversalDocumentTemplate
-            data={mapPurchaseOrderToUniversalData(activeBusiness, order, items)}
+            data={mapPurchaseOrderToUniversalData(data?.business || activeBusiness, order, items)}
             className="shadow-sm border border-secondary-200/80"
           />
         </div>

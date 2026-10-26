@@ -18,7 +18,7 @@ import { supabase } from '@/lib/supabase';
 /** Every column the app may try to write to public.businesses. */
 export const BUSINESS_COLUMN_CANDIDATES = [
   'name', 'legal_name', 'business_type', 'phone', 'email', 'address', 'city', 'state',
-  'pincode', 'country', 'gstin', 'pan', 'financial_year', 'currency', 'currency_symbol',
+  'pincode', 'country', 'gstin', 'pan', 'cin', 'website', 'financial_year', 'currency', 'currency_symbol',
   'invoice_prefix', 'quotation_prefix', 'sales_order_prefix', 'purchase_order_prefix',
   'purchase_bill_prefix', 'credit_note_prefix', 'debit_note_prefix', 'gst_registered',
   'stamp_url', 'logo_url', 'signature_url', 'upi_id', 'upi_qr_url', 'invoice_footer_text',
@@ -42,7 +42,7 @@ export const BUSINESS_KNOWN_MISSING_COLUMNS = [
   'quotation_prefix', 'sales_order_prefix', 'purchase_order_prefix', 'purchase_bill_prefix',
   'credit_note_prefix', 'debit_note_prefix', 'tnc_invoice', 'tnc_quotation',
   'tnc_sales_order', 'tnc_purchase', 'registered_address', 'signature_name', 'pin_code',
-  'is_active', 'plan_type', 'monthly_invoice_quota',
+  'is_active', 'plan_type', 'monthly_invoice_quota', 'cin', 'website',
 ] as const;
 
 const CACHE_KEY = 'ax:businesses:columns';

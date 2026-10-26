@@ -47,11 +47,11 @@ export const DEFAULT_PREFIXES: Record<DocPrefixKey, string> = {
   debit_note_prefix: 'DN',
 };
 
-const PREFIX_CHARS = /^[A-Za-z0-9\-_.]{1,12}$/;
+const PREFIX_CHARS = /^[A-Za-z0-9\-_.\/]{1,12}$/;
 
-/** Uppercase, strip anything but A-Z 0-9 dash underscore dot, cap at 12 chars. Empty -> ''. */
+/** Uppercase, strip anything but A-Z 0-9 slash dash underscore dot, cap at 12 chars. Empty -> ''. */
 export function normalizePrefix(raw: string | null | undefined): string {
-  return String(raw ?? '').toUpperCase().replace(/[^A-Z0-9\-_.]/g, '').slice(0, 12);
+  return String(raw ?? '').toUpperCase().replace(/[^A-Z0-9\-_.\/]/g, '').slice(0, 12);
 }
 
 export function isValidPrefix(raw: string | null | undefined): boolean {

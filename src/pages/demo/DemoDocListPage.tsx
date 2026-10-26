@@ -8,17 +8,15 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
-import { Eye, FileDown, Layers, Plus, Printer, Trash2, FileSpreadsheet } from 'lucide-react';
-import { formatDate, formatCurrency, formatTimeOfDay } from '@/lib/utils';
+import { Eye, Layers, Plus, Trash2, FileSpreadsheet } from 'lucide-react';
+import { formatDate, formatCurrency } from '@/lib/utils';
 import {
   listDemoDocs,
   deleteDemoDoc,
   downloadDemoCsv,
-  sanitizeDemoFilename,
   type DemoDocRecord,
   type DemoKind,
 } from '@/lib/demoStore';
-import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
 
 interface KindConfig {
   title: string;
@@ -65,48 +63,12 @@ const KIND_CONFIG: Record<DemoKind, KindConfig> = {
     numberKey: 'order_number',
     dateLabel: 'Order Date',
     dateKey: 'order_date',
-    expiryLabel: 'Expected',
+    expiryLabel: 'Expected Delivery',
     expiryKey: 'expected_date',
     partyLabel: 'Customer',
     docTitle: 'SALES ORDER',
   },
 };
-
-export function buildListPrintPayload(
-  kind: DemoKind,
-  record: DemoDocRecord,
-): PrintableDocData {
-  const cfg = KIND_CONFIG[kind];
-  const header = record.header as Record<string, number | string | null>;
-  const party = (record.party || {}) as Record<string, string | null>;
-  return {
-    docTitle: cfg.docTitle,
-    docNumber: record.number,
-    dateLabel: cfg.dateLabel,
-    dateValue: formatDate(String(header[cfg.dateKey] || new Date().toISOString())),
-    time: formatTimeOfDay(record.createdAt),
-    expiryLabel: cfg.expiryLabel,
-    expiryValue: header[cfg.expiryKey] ? String(header[cfg.expiryKey]) : null,
-    partyLabel: cfg.partyLabel,
-    partyName: String(party.company_name || party.name || '—'),
-    partyAddress: [party.address, [party.city, party.state].filter(Boolean).join(', '), party.pincode]
-      .filter(Boolean)
-      .join('\n'),
-    partyGstin: party.gstin ? String(party.gstin) : undefined,
-    status: String(header.status || 'draft'),
-    items: record.items as unknown as PrintableDocData['items'],
-    subtotal: Number(header.subtotal || 0),
-    taxableAmount: Number(header.taxable_amount ?? header.taxableAmount ?? header.subtotal ?? 0),
-    cgst: Number(header.cgst_amount || 0),
-    sgst: Number(header.sgst_amount || 0),
-    igst: Number(header.igst_amount || 0),
-    roundOff: Number(header.round_off || 0),
-    grandTotal: Number(header.grand_total || 0),
-    notes: (header.notes as string) || null,
-    // Demo sandbox: carries the header/watermark preset ('estimate'|'demo'|'clean').
-    demoHeader: record.headerMode,
-  };
-}
 
 function DemoDocListPage({ kind }: { kind: DemoKind }) {
   const cfg = KIND_CONFIG[kind];
@@ -118,7 +80,6 @@ function DemoDocListPage({ kind }: { kind: DemoKind }) {
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<DemoDocRecord | null>(null);
-  const [printingId, setPrintingId] = useState<string | null>(null);
 
   const docs = useQuery({
     queryKey: ['demo-docs', activeBusiness?.id, kind],
@@ -142,38 +103,6 @@ function DemoDocListPage({ kind }: { kind: DemoKind }) {
   const slice = filtered.slice(page * pageSize, page * pageSize + pageSize);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['demo-docs', activeBusiness?.id] });
-
-  const handlePrint = async (doc: DemoDocRecord) => {
-    if (!activeBusiness) return;
-    setPrintingId(doc.id);
-    try {
-      await renderDocSheetToPdf(activeBusiness, buildListPrintPayload(kind, doc));
-    } catch (err: unknown) {
-      toast((err as Error)?.message || 'Print failed', 'error');
-    } finally {
-      setPrintingId(null);
-    }
-  };
-
-  const handlePdf = async (doc: DemoDocRecord) => {
-    if (!activeBusiness) return;
-    setPrintingId(doc.id);
-    try {
-      const blob = await renderDocSheetToPdfBlob(activeBusiness, buildListPrintPayload(kind, doc));
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Demo_${cfg.docTitle}_${sanitizeDemoFilename(doc.number)}_${sanitizeDemoFilename(String((doc.party as Record<string, string> | null)?.company_name || (doc.party as Record<string, string> | null)?.name || '')).replace(/\s+/g, '-')}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (err: unknown) {
-      toast((err as Error)?.message || 'PDF export failed', 'error');
-    } finally {
-      setPrintingId(null);
-    }
-  };
 
   const handleExcel = (doc: DemoDocRecord) => {
     downloadDemoCsv(kind, cfg.docTitle, activeBusiness?.name || '', doc);
@@ -275,24 +204,6 @@ function DemoDocListPage({ kind }: { kind: DemoKind }) {
                             aria-label="Preview document"
                           >
                             <Eye className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => void handlePrint(doc)}
-                            disabled={printingId === doc.id}
-                            className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors disabled:opacity-50"
-                            title="Print document"
-                            aria-label="Print document"
-                          >
-                            <Printer className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => void handlePdf(doc)}
-                            disabled={printingId === doc.id}
-                            className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors disabled:opacity-50"
-                            title="Save as PDF"
-                            aria-label="Save as PDF"
-                          >
-                            <FileDown className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => handleExcel(doc)}

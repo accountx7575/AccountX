@@ -10,10 +10,11 @@ import {
 } from './docPrefixes';
 
 describe('normalizePrefix', () => {
-  it('uppercases and keeps only A-Z 0-9 dash underscore dot', () => {
+  it('uppercases and keeps only A-Z 0-9 slash dash underscore dot', () => {
     expect(normalizePrefix('est')).toBe('EST');
     expect(normalizePrefix('ABC-Q')).toBe('ABC-Q');
-    expect(normalizePrefix('in/v')).toBe('INV');
+    expect(normalizePrefix('in/v')).toBe('IN/V');
+    expect(normalizePrefix('QT/ABC/SE')).toBe('QT/ABC/SE');
     expect(normalizePrefix('quote 01')).toBe('QUOTE01');
     expect(normalizePrefix('A'.repeat(20))).toBe('A'.repeat(12));
   });
@@ -33,7 +34,8 @@ describe('isValidPrefix', () => {
     expect(isValidPrefix('A'.repeat(12))).toBe(true);
     expect(isValidPrefix('A'.repeat(13))).toBe(false);
     expect(isValidPrefix('IN V')).toBe(false);
-    expect(isValidPrefix('IN/V')).toBe(false);
+    expect(isValidPrefix('IN/V')).toBe(true);
+    expect(isValidPrefix('QT/ABC/SE')).toBe(true);
     expect(isValidPrefix('')).toBe(false);
   });
 });

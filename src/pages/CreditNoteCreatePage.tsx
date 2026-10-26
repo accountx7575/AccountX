@@ -16,7 +16,7 @@ import {
   useDocumentNumber,
 } from '@/components/documents/DocumentNumberField';
 import { ArrowLeft, Save } from 'lucide-react';
-import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
+import { formatCurrency, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
 import type { SalesInvoiceItem } from '@/types/db';
 
@@ -49,6 +49,7 @@ export function CreditNoteCreatePage() {
   const [reason, setReason] = useState('');
   const [restock, setRestock] = useState(true);
   const [date, setDate] = useState(todayDateString());
+  const [time, setTime] = useState(getLocalNowTime());
   const [lines, setLines] = useState<DraftLine[]>([]);
 
   const invoicesQ = useQuery({
@@ -153,6 +154,7 @@ export function CreditNoteCreatePage() {
         sales_invoice_id: invoiceId,
         customer_id: inv.customer_id,
         date,
+        created_at: combineDateTime(date, time),
         reason: reason || null,
         restock,
         subtotal: totals.subtotal,
@@ -226,7 +228,7 @@ export function CreditNoteCreatePage() {
 
         <FormSection title="Against Invoice" description="Credit notes reference a live sales invoice — pick one to load its lines">
           <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 items-start">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-start">
               <FormField label="Sales Invoice" required>
                 <select className="input h-10" value={invoiceId} onChange={(e) => loadInvoiceItems(e.target.value)}>
                   <option value="">Select invoice...</option>
@@ -234,6 +236,15 @@ export function CreditNoteCreatePage() {
                 </select>
               </FormField>
               <FormField label="Date" required><DatePicker className="input h-10" value={date} onChange={setDate} /></FormField>
+              <FormField label="Time">
+                <Input
+                  type="text"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  placeholder="12:00 PM"
+                  className="h-10 figure"
+                />
+              </FormField>
               <FormField label="Restock returned goods">
                 <label className="flex items-center gap-2 h-10 cursor-pointer select-none">
                   <input type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} className="h-4 w-4 accent-primary-600" />

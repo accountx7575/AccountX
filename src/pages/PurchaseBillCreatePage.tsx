@@ -16,7 +16,7 @@ import { DatePicker } from '@/components/common/DatePicker';
 import { Input } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { Plus, Trash2, Save, ArrowLeft, ScanText, Upload } from 'lucide-react';
-import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
+import { formatCurrency, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
 import { computeDocLine } from '@/lib/payloads';
 import { extractBillText } from '@/lib/billTextExtractor';
 import { parseBillText } from '@/lib/billParser';
@@ -66,6 +66,7 @@ export function PurchaseBillCreatePage() {
   // PBS-142: duplicate document number guard (per business).
   const [billNumberError, setBillNumberError] = useState<string | null>(null);
   const [billDate, setBillDate] = useState(todayDateString());
+  const [billTime, setBillTime] = useState(getLocalNowTime());
   const [dueDate, setDueDate] = useState('');
   const [items, setItems] = useState<LineItem[]>([{ ...emptyItem }]);
   const [notes, setNotes] = useState('');
@@ -122,6 +123,15 @@ export function PurchaseBillCreatePage() {
     setSupplierId(bill.supplier_id);
     setBillNumber(bill.bill_number);
     setBillDate(bill.bill_date);
+    if (bill.created_at) {
+      setBillTime(
+        new Date(bill.created_at).toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        })
+      );
+    }
     setDueDate(bill.due_date || '');
     setNotes(bill.notes || '');
     setPaymentMethod(bill.payment_method || '');
@@ -346,6 +356,7 @@ export function PurchaseBillCreatePage() {
             supplier_id: supplierId,
             bill_number: billNumber.trim() || loaded.bill.bill_number,
             bill_date: billDate,
+            created_at: combineDateTime(billDate, billTime),
             due_date: dueDate || null,
             subtotal: totals.subtotal,
             discount_amount: totals.totalDiscount,
@@ -484,6 +495,13 @@ export function PurchaseBillCreatePage() {
       }
       const result = rpcResult!.data as unknown as { bill_id?: string }[] | { bill_id?: string } | null;
       const billId = Array.isArray(result) ? result[0]?.bill_id : result?.bill_id;
+      if (billId) {
+        await supabase
+          .from('purchase_bills')
+          .update({ created_at: combineDateTime(billDate, billTime) })
+          .eq('business_id', activeBusiness.id)
+          .eq('id', billId);
+      }
       return { billId: billId || '', status, edited: false };
     },
     onSuccess: ({ status, edited }) => {
@@ -569,7 +587,7 @@ export function PurchaseBillCreatePage() {
 
       <div className="card p-6">
         <FormSection>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-start">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-start">
             <div>
               <label className="label">Supplier <span className="text-error-500">*</span></label>
               <select className="input h-10" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
@@ -588,6 +606,16 @@ export function PurchaseBillCreatePage() {
             <div>
               <label className="label">Bill Date</label>
               <DatePicker className="input h-10" value={billDate} onChange={setBillDate} />
+            </div>
+            <div>
+              <label className="label">Time</label>
+              <Input
+                type="text"
+                value={billTime}
+                onChange={(e) => setBillTime(e.target.value)}
+                placeholder="12:00 PM"
+                className="h-10 figure"
+              />
             </div>
             <div>
               <label className="label">Due Date</label>

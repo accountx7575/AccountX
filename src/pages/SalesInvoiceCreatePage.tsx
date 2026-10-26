@@ -16,14 +16,15 @@ import { DatePicker } from '@/components/common/DatePicker';
 import { Input } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { Plus, Trash2, Save, ArrowLeft, Printer, FileText, FileSpreadsheet, Rocket, Loader2 } from 'lucide-react';
-import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
+import { formatCurrency, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
 import { computeDocLine } from '@/lib/payloads';
 import { saveDemoDoc, defaultDemoNumber, countDemoDocs } from '@/lib/demoStore';
-import { InvoiceSheet, type InvoiceWithCustomer } from '@/components/invoice/InvoiceSheet';
+import { UniversalDocumentTemplate } from '@/components/documents/UniversalDocumentTemplate';
+import { mapSalesInvoiceToUniversalData } from '@/lib/documentMappers';
 import { mergeBusinessExtras } from '@/lib/businessExtras';
 import { Modal } from '@/components/ui/Modal';
 import { useSubscriptionQuota } from '@/hooks/useSubscriptionQuota';
-import { printInvoice, exportPdfFromElement, exportInvoiceExcel } from '@/lib/invoiceExport';
+import { printInvoice, exportPdfFromElement, exportInvoiceExcel, type InvoiceWithCustomer } from '@/lib/invoiceExport';
 import type { Customer, Product, SalesInvoice, SalesInvoiceItem } from '@/types/db';
 
 type LineItem = {
@@ -62,6 +63,7 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
   const [customerId, setCustomerId] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(todayDateString());
+  const [invoiceTime, setInvoiceTime] = useState(getLocalNowTime());
   const [dueDate, setDueDate] = useState('');
   const [items, setItems] = useState<LineItem[]>([{ ...emptyItem }]);
   const [notes, setNotes] = useState('');
@@ -103,6 +105,15 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
     setCustomerId(inv.customer_id);
     setInvoiceNumber(inv.invoice_number);
     setInvoiceDate(inv.invoice_date);
+    if (inv.created_at) {
+      setInvoiceTime(
+        new Date(inv.created_at).toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        })
+      );
+    }
     setDueDate(inv.due_date || '');
     setNotes(inv.notes || '');
     setPaymentMethod(inv.payment_method || '');
@@ -303,6 +314,7 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
           cess_amount: 0,
           total_amount: it.total_amount,
         }));
+        const combinedCreatedAt = combineDateTime(invoiceDate, invoiceTime);
         const saved = saveDemoDoc(
           activeBusiness.id,
           'sales_invoice',
@@ -310,6 +322,7 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
             invoice_number: defaultDemoNumber('sales_invoice', countDemoDocs(activeBusiness.id, 'sales_invoice') + 1),
             customer_id: customerId,
             invoice_date: invoiceDate,
+            created_at: combinedCreatedAt,
             due_date: dueDate || null,
             place_of_supply: selectedCustomer?.state || activeBusiness.state,
             subtotal: totals.subtotal,
@@ -344,12 +357,14 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
         const validatedNumber = await docNumberField.validate();
         if (!validatedNumber) throw new Error(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
 
+        const combinedCreatedAt = combineDateTime(invoiceDate, invoiceTime);
         const { error: headerError } = await supabase
           .from('sales_invoices')
           .update({
             invoice_number: validatedNumber,
             customer_id: customerId,
             invoice_date: invoiceDate,
+            created_at: combinedCreatedAt,
             due_date: dueDate || null,
             place_of_supply: selectedCustomer?.state || activeBusiness.state,
             subtotal: totals.subtotal,
@@ -458,6 +473,14 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
 
       const result = data as unknown as { invoice_id?: string }[] | { invoice_id?: string } | null;
       const invoiceId = Array.isArray(result) ? result[0]?.invoice_id : result?.invoice_id;
+      const combinedCreatedAt = combineDateTime(invoiceDate, invoiceTime);
+      if (invoiceId && combinedCreatedAt) {
+        await supabase
+          .from('sales_invoices')
+          .update({ created_at: combinedCreatedAt })
+          .eq('id', invoiceId)
+          .eq('business_id', activeBusiness.id);
+      }
       return { invoiceId: invoiceId || '', status, edited: false };
     },
     onSuccess: ({ invoiceId, status, edited }: any) => {
@@ -517,6 +540,7 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
     customer_id: customerId,
     invoice_number: invoiceNumber || `${activeBusiness?.invoice_prefix || 'INV'}/…/PREVIEW`,
     invoice_date: invoiceDate,
+    created_at: combineDateTime(invoiceDate, invoiceTime),
     due_date: dueDate || null,
     place_of_supply: selectedCustomer?.state || activeBusiness?.state || null,
     subtotal: totals.subtotal,
@@ -535,10 +559,16 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
     payment_method: paymentMethod || null,
     notes: notes || null,
     created_by: null,
-    created_at: '',
     updated_at: '',
     customer: selectedCustomer,
   } as unknown as InvoiceWithCustomer;
+
+  // Directive-10: live preview renders the ONE UniversalDocumentTemplate.
+  const previewDocData = mapSalesInvoiceToUniversalData(
+    mergeBusinessExtras(activeBusiness, activeBusiness?.id || ''),
+    previewInvoice,
+    previewItems.length > 0 ? previewItems : []
+  );
 
   const totalRows = (
     <div className="w-full sm:w-80 ml-auto space-y-2">
@@ -601,7 +631,7 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
       <div>
         <div className="card p-6 min-w-0">
           <FormSection>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-start">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-start">
               <DocumentNumberField
                 value={docNumberField.value}
                 onChange={docNumberField.setValue}
@@ -619,6 +649,16 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
               <div>
                 <label className="label">Invoice Date <span className="text-error-500">*</span></label>
                 <DatePicker className="input h-10" value={invoiceDate} onChange={setInvoiceDate} />
+              </div>
+              <div>
+                <label className="label">Time</label>
+                <Input
+                  type="text"
+                  value={invoiceTime}
+                  onChange={(e) => setInvoiceTime(e.target.value)}
+                  placeholder="12:00 PM"
+                  className="h-10 figure"
+                />
               </div>
               <div>
                 <label className="label">Due Date</label>
@@ -792,13 +832,7 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
 
         {/* Hidden A4 sheet render — print/PDF source only (no visible preview) */}
         <div aria-hidden="true" className="fixed -left-[9999px] top-0 w-[210mm] pointer-events-none select-none print:static print:w-auto">
-          <div id="invoice-print-area">
-            <InvoiceSheet
-              business={mergeBusinessExtras(activeBusiness, activeBusiness?.id || '')}
-              invoice={previewInvoice}
-              items={previewItems.length > 0 ? previewItems : []}
-            />
-          </div>
+          <UniversalDocumentTemplate data={previewDocData} id="invoice-printable-area" />
         </div>
       </div>
 
@@ -817,7 +851,7 @@ export function SalesInvoiceCreatePage({ demo = false }: { demo?: boolean } = {}
               className="h-10"
               onClick={async () => {
                 try {
-                  await exportPdfFromElement(document.getElementById('invoice-print-area'), previewInvoice.invoice_number, selectedCustomer?.company_name || selectedCustomer?.name);
+                  await exportPdfFromElement(document.getElementById('invoice-printable-area'), previewInvoice.invoice_number, selectedCustomer?.company_name || selectedCustomer?.name);
                   toast('PDF exported', 'success');
                 } catch (err) {
                   toast(err instanceof Error ? err.message : 'Failed to export PDF', 'error');

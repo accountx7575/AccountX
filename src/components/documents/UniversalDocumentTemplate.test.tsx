@@ -1,178 +1,556 @@
-/**
- * PBS-158 / header reset regression: the top header must be a TWO-CELL TABLE.
- *
- * The human reported the header as mangled — "Expected On", "Time" and
- * "Place of Supply" collapsed into the middle of the page and the company
- * details were merged across lines. The cause was CSS grid: a grid re-flows
- * its cells, so a short cell lets the next cell slide into the empty column.
- * A table cell owns its own lines, so the left cell can only hold company
- * details and the right cell only document metadata.
- *
- * Geometry is measured in a real browser; this test locks the structure so
- * the two-column contract cannot silently regress.
- */
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   UniversalDocumentTemplate,
+  getDocumentTitles,
+  inrDecimal,
+  numberToWordsINR,
+  formatPlaceOfSupply,
+  mapQuotationToUniversalData,
+  mapSalesOrderToUniversalData,
   type DocumentType,
   type UniversalDocumentData,
 } from './UniversalDocumentTemplate';
 
 const TYPES: DocumentType[] = [
+  'TAX_INVOICE',
   'SALES_ORDER',
   'QUOTATION',
-  'TAX_INVOICE',
   'PURCHASE_ORDER',
   'PURCHASE_BILL',
 ];
 
-function fixture(
-  documentType: DocumentType,
-  demoHeader?: UniversalDocumentData['demoHeader']
-): UniversalDocumentData {
+function baseData(overrides: Partial<UniversalDocumentData> = {}): UniversalDocumentData {
   return {
-    documentType,
-    documentNumber: 'SO-001',
+    documentType: 'TAX_INVOICE',
+    documentNumber: 'INV/26-27/42',
     date: '21/10/2026',
-    time: '05:45 PM',
-    placeOfSupply: 'Uttar Pradesh (09)',
-    seller: {
-      name: 'VERMA STEEL WORKS',
-      address: '12, Industrial Estate',
-      city: 'Kanpur',
+    paymentMethod: 'UPI',
+    paymentStatus: 'PAID',
+    orderNumber: 'ORD-1001',
+    paymentRef: 'UTR-778899',
+    company: {
+      name: 'GyftKart',
+      legalName: 'GyftKart Private Limited',
+      addressLine1: 'H.NO.AN/25, Lautabagh',
+      city: 'Barabanki',
       state: 'Uttar Pradesh',
-      pincode: '208012',
-      gstin: '09ABCDE1234F1Z5',
-      email: 'support@verma.example',
-      phone: '9876543210',
+      pincode: '225001',
+      gstin: '09AAHCT1158J1Z2',
+      pan: 'AAHCT1158',
+      cin: 'U74999UP2019PTC112218',
+      email: 'support@gyftkart.in',
+      website: 'www.gyftkart.in',
     },
-    buyer: {
-      name: 'KASHYAP TRADERS',
-      address: '44, Gandhi Road',
-      city: 'Kanpur',
-      state: 'Uttar Pradesh',
-      pincode: '208012',
-      gstin: '09XXXXX9999A1Z5',
+    customer: {
+      name: 'Ravi Kumar',
+      email: 'ravi@example.com',
+      phone: '+91 90000 00000',
+      billingAddress: '12 MG Road',
+      billingCity: 'Lucknow',
+      billingState: 'Uttar Pradesh',
+      billingPincode: '226001',
+      customerType: 'B2C',
     },
     items: [
-      { id: '1', name: 'TMT BAR 10MM', hsnSac: '7214', quantity: 10, rate: 50, taxRate: 18, total: 500 },
+      {
+        id: '1',
+        name: 'Amazon Gift Voucher',
+        hsnSac: '998434',
+        quantity: 2,
+        rate: 500,
+        taxRate: 0,
+        total: 1000,
+      },
     ],
-    subtotal: 500,
-    cgstAmount: 45,
-    sgstAmount: 45,
-    grandTotal: 590,
-    amountInWords: 'Five Hundred Ninety Rupees Only',
-    ...(demoHeader ? { demoHeader } : {}),
+    subtotal: 1000,
+    tax: 0,
+    totalAmount: 1000,
+    ...overrides,
   };
 }
 
-const headerTable = (html: string): string => {
-  const table = html.match(/<table[^>]*>[\s\S]*?<\/table>/);
-  expect(table).toBeTruthy();
-  return table![0];
+const render = (data: UniversalDocumentData, props: { id?: string; className?: string } = {}) =>
+  renderToStaticMarkup(<UniversalDocumentTemplate data={data} {...props} />);
+
+const headersOf = (html: string) =>
+  (html.match(/<th[^>]*>([\s\S]*?)<\/th>/g) || []).map((cell) =>
+    cell.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+  );
+
+const bodyRows = (html: string): string[] => {
+  const body = html.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/)?.[1] ?? '';
+  return body.match(/<tr[\s\S]*?<\/tr>/g) || [];
 };
 
-const headerCells = (html: string): { left: string; right: string } => {
-  const cells = headerTable(html).match(/<td[^>]*>[\s\S]*?<\/td>/g) || [];
-  expect(cells.length).toBe(2);
-  return { left: cells[0], right: cells[1] };
-};
-
-describe('UniversalDocumentTemplate — header is a two-cell table', () => {
-  it.each(TYPES)('renders exactly two header cells for %s', (type) => {
-    const html = renderToStaticMarkup(<UniversalDocumentTemplate data={fixture(type)} />);
-    const { left, right } = headerCells(html);
-    expect(left).toContain('width:55%');
-    expect(right).toContain('width:45%');
-    expect(left).toContain('vertical-align:top');
-    expect(right).toContain('vertical-align:top');
+describe('UniversalDocumentTemplate - approved GyftKart layout (directive-13)', () => {
+  it('renders the TAX INVOICE / RECEIPT pill for invoice documents', () => {
+    const html = render(baseData());
+    expect(html).toContain('TAX INVOICE / RECEIPT');
+    expect(html).toContain('Original for Recipient');
   });
 
-  it('uses no CSS grid for the header', () => {
-    const html = renderToStaticMarkup(<UniversalDocumentTemplate data={fixture('SALES_ORDER')} />);
-    const table = headerTable(html);
-    expect(table).not.toContain('grid-cols-2');
-    expect(table).not.toContain('display:grid');
-    expect(table).not.toContain('display: grid');
+  it('renders dynamic document badge per document type', () => {
+    for (const documentType of TYPES) {
+      const html = render(baseData({ documentType }));
+      if (documentType === 'QUOTATION') {
+        expect(html, documentType).toContain('QUOTATION');
+        expect(html, documentType).not.toContain('TAX INVOICE / RECEIPT');
+      } else if (documentType === 'SALES_ORDER') {
+        expect(html, documentType).toContain('SALES ORDER');
+        expect(html, documentType).not.toContain('TAX INVOICE / RECEIPT');
+      } else if (documentType === 'PURCHASE_ORDER') {
+        expect(html, documentType).toContain('PURCHASE ORDER');
+        expect(html, documentType).not.toContain('TAX INVOICE / RECEIPT');
+      } else if (documentType === 'PURCHASE_BILL') {
+        expect(html, documentType).toContain('PURCHASE BILL');
+        expect(html, documentType).not.toContain('TAX INVOICE / RECEIPT');
+      } else {
+        expect(html, documentType).toContain('TAX INVOICE / RECEIPT');
+      }
+    }
+    expect(getDocumentTitles('QUOTATION').title).toBe('QUOTATION');
+    expect(getDocumentTitles('SALES_ORDER').title).toBe('SALES ORDER');
+    expect(getDocumentTitles('PURCHASE_ORDER').title).toBe('PURCHASE ORDER');
+    expect(getDocumentTitles('PURCHASE_BILL').title).toBe('PURCHASE BILL');
+    expect(getDocumentTitles('TAX_INVOICE').title).toBe('TAX INVOICE / RECEIPT');
   });
 
-  it('keeps every date and time field inside the right cell', () => {
-    const html = renderToStaticMarkup(<UniversalDocumentTemplate data={fixture('SALES_ORDER')} />);
-    const { left, right } = headerCells(html);
-    for (const marker of ['Date:', 'Expected Delivery:', 'Time:', 'Place of Supply:', 'Order No:']) {
-      expect(right, `${marker} must be in the right cell`).toContain(marker);
-      expect(left, `${marker} must not leak into the left cell`).not.toContain(marker);
+  it('marks B2B recipients on the pill subtitle', () => {
+    const html = render(
+      baseData({
+        customer: {
+          name: 'Neha Sharma',
+          companyName: 'Verma Steel Works',
+          gstin: '09XXXXX9999A1Z5',
+          customerType: 'B2B',
+        },
+      })
+    );
+    expect(html).toContain('Original for Recipient (B2B Tax Invoice)');
+  });
+
+  it('marks B2C recipients on the pill subtitle', () => {
+    const html = render(baseData());
+    expect(html).toContain('Original for Recipient (B2C)');
+  });
+
+  it('renders the seller identity block with GSTIN, PAN, CIN and website when provided', () => {
+    const html = render(baseData());
+    expect(html).toContain('GyftKart Private Limited');
+    expect(html).toContain('09AAHCT1158J1Z2');
+    expect(html).toContain('AAHCT1158');
+    expect(html).toContain('CIN:');
+    expect(html).toContain('U74999UP2019PTC112218');
+    expect(html).toContain('support@gyftkart.in');
+    expect(html).toContain('Web:');
+    expect(html).toContain('www.gyftkart.in');
+  });
+
+  it('omits the CIN and website lines when they are missing or blank', () => {
+    for (const blank of [undefined, '', '   ']) {
+      const html = render(
+        baseData({
+          company: {
+            name: 'GyftKart',
+            legalName: 'GyftKart Private Limited',
+            gstin: '09AAHCT1158J1Z2',
+            pan: 'AAHCT1158',
+            email: 'support@gyftkart.in',
+            cin: blank,
+            website: blank,
+          },
+        })
+      );
+      expect(html, String(blank)).not.toContain('CIN:');
+      expect(html, String(blank)).not.toContain('Web:');
+      expect(html, String(blank)).not.toContain(' | ');
     }
   });
 
-  it('keeps the company details inside the left cell', () => {
-    const html = renderToStaticMarkup(<UniversalDocumentTemplate data={fixture('SALES_ORDER')} />);
-    const { left, right } = headerCells(html);
-    for (const marker of ['VERMA STEEL WORKS', '12, Industrial Estate', 'Kanpur, Uttar Pradesh - 208012', 'GSTIN:', 'PAN:', 'support:', 'Phone:']) {
-      expect(left, `${marker} must be in the left cell`).toContain(marker);
-      expect(right, `${marker} must not leak into the right cell`).not.toContain(marker);
+  it('labels the meta date row per document type', () => {
+    const quotation = render(baseData({ documentType: 'QUOTATION', expiryDate: '2026-11-30' }));
+    expect(quotation).toContain('Valid Until:');
+    expect(quotation).toContain('30/11/2026');
+
+    const salesOrder = render(baseData({ documentType: 'SALES_ORDER', expectedDeliveryDate: '2026-10-30' }));
+    expect(salesOrder).toContain('Expected Delivery:');
+    expect(salesOrder).toContain('30/10/2026');
+
+    const invoice = render(baseData({ documentType: 'TAX_INVOICE', dueDate: '2026-12-15' }));
+    expect(invoice).toContain('Due Date:');
+    expect(invoice).toContain('15/12/2026');
+
+    expect(render(baseData())).toContain('Place of Supply:');
+    expect(render(baseData())).toContain('Uttar Pradesh (09)');
+    expect(render(baseData())).not.toContain('Supply Type');
+  });
+
+  it('formats Place of Supply with 2-digit Indian GST State Code dynamically', () => {
+    expect(formatPlaceOfSupply('Uttar Pradesh')).toBe('Uttar Pradesh (09)');
+    expect(formatPlaceOfSupply('Uttar Pradesh (09)')).toBe('Uttar Pradesh (09)');
+    expect(formatPlaceOfSupply('Delhi')).toBe('Delhi (07)');
+    expect(formatPlaceOfSupply('Maharashtra')).toBe('Maharashtra (27)');
+    expect(formatPlaceOfSupply('Gujarat')).toBe('Gujarat (24)');
+    expect(formatPlaceOfSupply('Karnataka')).toBe('Karnataka (29)');
+    expect(formatPlaceOfSupply('09 - Uttar Pradesh')).toBe('Uttar Pradesh (09)');
+    expect(formatPlaceOfSupply('27')).toBe('Maharashtra (27)');
+    expect(formatPlaceOfSupply('', 'Tamil Nadu')).toBe('Tamil Nadu (33)');
+    expect(formatPlaceOfSupply(undefined)).toBe('Uttar Pradesh (09)');
+
+    const customDoc = render(baseData({ placeOfSupply: 'Delhi' }));
+    expect(customDoc).toContain('Place of Supply:');
+    expect(customDoc).toContain('Delhi (07)');
+
+    const maharashtraDoc = render(baseData({ placeOfSupply: 'Maharashtra' }));
+    expect(maharashtraDoc).toContain('Maharashtra (27)');
+  });
+
+  it('renders the Billed To card with the B2B corporate label', () => {
+    const html = render(
+      baseData({
+        customer: {
+          name: 'Neha Sharma',
+          companyName: 'Verma Steel Works',
+          gstin: '09XXXXX9999A1Z5',
+          customerType: 'B2B',
+        },
+      })
+    );
+    expect(html).toMatch(/Billed To \(/);
+    expect(html).toContain('Corporate Client');
+    expect(html).toContain('M/s Verma Steel Works');
+    expect(html).toContain('GSTIN: 09XXXXX9999A1Z5');
+    expect(html).toContain('Attn:');
+    expect(html).toContain('Neha Sharma');
+  });
+
+  it('renders the Billed To card with the B2C customer label and contact fields', () => {
+    const html = render(baseData());
+    expect(html).toContain('Customer Details');
+    expect(html).toContain('Ravi Kumar');
+    expect(html).toContain('ravi@example.com');
+    expect(html).toContain('+91 90000 00000');
+    expect(html).toContain('12 MG Road');
+  });
+
+  it('renders the Payment & Fulfillment card with order, mode and UTR', () => {
+    const html = render(baseData());
+    expect(html).toContain('Payment &amp; Fulfillment');
+    expect(html).toContain('Order Ref:');
+    expect(html).toContain('#ORD-1001');
+    expect(html).toContain('Payment Mode:');
+    expect(html).toContain('UPI');
+    expect(html).toContain('Ref / UTR No:');
+    expect(html).toContain('UTR-778899');
+  });
+
+  it('shows the paid state for confirmed statuses', () => {
+    for (const paymentStatus of ['PAID', 'SUCCESS', 'CONFIRMED', 'DELIVERED']) {
+      expect(render(baseData({ paymentStatus })), paymentStatus).toContain('PAID &amp; DELIVERED');
     }
   });
 
-  it('aligns the left cell left and the right cell right', () => {
-    const html = renderToStaticMarkup(<UniversalDocumentTemplate data={fixture('SALES_ORDER')} />);
-    const { left, right } = headerCells(html);
-    expect(left).toContain('text-align:left');
-    expect(right).toContain('text-align:right');
+  it('shows the raw status when unpaid', () => {
+    const html = render(baseData({ paymentStatus: 'pending' }));
+    expect(html).toContain('PENDING');
+    expect(html).not.toContain('PAID &amp; DELIVERED');
   });
 
-  it('has no centre alignment and no auto margins in the header', () => {
-    const html = renderToStaticMarkup(<UniversalDocumentTemplate data={fixture('SALES_ORDER')} />);
-    const table = headerTable(html);
-    expect(table).not.toContain('text-center');
-    expect(table).not.toContain('mx-auto');
+  it('renders exactly the seven approved item headers in order', () => {
+    const headers = headersOf(render(baseData()));
+    expect(headers).toEqual([
+      '#',
+      'Item Description / Voucher',
+      'HSN/SAC',
+      'Qty',
+      'Unit Rate (₹)',
+      'Tax (GST)',
+      'Total (₹)',
+    ]);
   });
-});
 
-// The document header used to render the date and the expected/delivery date
-// on ONE line ('Date: 21/10/2026 | Expected On: 2026-10-22'), and the expected
-// date leaked through as a raw ISO string. Each meta line gets its own row now,
-// and every date prints as strict Indian DD/MM/YYYY.
-describe('UniversalDocumentTemplate — date and expected date on their own rows', () => {
-  const withExpected = (dueDate?: string) => ({
-    ...fixture('SALES_ORDER'),
-    ...(dueDate ? { dueDate } : {}),
-  }) as UniversalDocumentData;
-
-  it('puts the date on its own row and the expected date on the next one', () => {
-    const html = renderToStaticMarkup(
-      <UniversalDocumentTemplate data={withExpected('22/10/2026')} />
+  it('renders one row per item with qty, rate, tax and total', () => {
+    const html = render(
+      baseData({
+        items: [
+          { id: 'a', name: 'Amazon Gift Voucher', hsnSac: '998434', quantity: 2, rate: 500, taxRate: 0, total: 1000 },
+          { id: 'b', name: 'Flipkart Gift Voucher', hsnSac: '998435', quantity: 3, rate: 250, taxRate: 18, total: 885 },
+        ],
+        subtotal: 1750,
+        tax: 90,
+        totalAmount: 1840,
+      })
     );
-    const { right } = headerCells(html);
-    expect(right).toMatch(/Date: 21\/10\/2026/);
-    expect(right).toMatch(/Expected Delivery: 22\/10\/2026/);
+    const rows = bodyRows(html);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain('Amazon Gift Voucher');
+    expect(rows[0]).toContain('998434');
+    expect(rows[0]).toContain('2');
+    expect(rows[0]).toContain('500.00');
+    expect(rows[0]).toContain('0.00%');
+    expect(rows[0]).toContain('1,000.00');
+    expect(rows[1]).toContain('Flipkart Gift Voucher');
+    expect(rows[1]).toContain('18.00%');
+    expect(rows[1]).toContain('885.00');
   });
 
-  it('never joins the two dates on one line with a pipe', () => {
-    const html = renderToStaticMarkup(
-      <UniversalDocumentTemplate data={withExpected('22/10/2026')} />
+  it('applies the approved item fallbacks and computes the row total', () => {
+    const html = render(
+      baseData({
+        items: [{ quantity: 4, denomination: 125 }],
+        subtotal: 500,
+        tax: 0,
+        totalAmount: 500,
+      })
     );
-    expect(html).not.toMatch(/Date: [^<]*\|/);
+    expect(html).toContain('GyftKart Digital Gift Voucher');
+    expect(html).toContain('998434');
+    expect(html).toContain('125.00');
+    expect(html).toContain('500.00');
   });
 
-  it('formats a raw ISO expected date as DD/MM/YYYY', () => {
-    const html = renderToStaticMarkup(
-      <UniversalDocumentTemplate data={withExpected('2026-10-22')} />
+  it('renders delivery email and voucher code extras', () => {
+    const html = render(
+      baseData({
+        items: [
+          {
+            name: 'Amazon Gift Voucher',
+            quantity: 1,
+            rate: 1000,
+            recipientEmail: 'gift@example.com',
+            code: 'AMZ-1234',
+          },
+        ],
+        subtotal: 1000,
+        totalAmount: 1000,
+      })
     );
-    expect(html).toMatch(/Expected Delivery: 22\/10\/2026/);
-    expect(html).not.toContain('2026-10-22');
+    expect(html).toContain('Delivered to: gift@example.com');
+    expect(html).toContain('Code: AMZ-1234');
   });
 
-  it('omits the expected row when the document has no expected date', () => {
-    const html = renderToStaticMarkup(<UniversalDocumentTemplate data={withExpected()} />);
-    expect(html).not.toContain('Expected Delivery');
-    expect(html).toMatch(/Date: 21\/10\/2026/);
+  it('prints the amount in words from the grand total', () => {
+    const html = render(baseData({ subtotal: 1000, tax: 90, totalAmount: 1090 }));
+    expect(html).toContain('Amount Chargeable (in words)');
+    expect(html).toContain(numberToWordsINR(1090));
+    expect(html).toContain('One Thousand Ninety Rupees Only');
   });
 
-  it('omits the time row when the document has no time', () => {
-    const data = { ...fixture('SALES_ORDER'), time: undefined } as UniversalDocumentData;
-    const html = renderToStaticMarkup(<UniversalDocumentTemplate data={data} />);
-    expect(html).not.toContain('Time:');
+  it('converts rupee amounts to Indian words', () => {
+    expect(numberToWordsINR(0)).toBe('Zero Rupees Only');
+    expect(numberToWordsINR(1000)).toBe('One Thousand Rupees Only');
+    expect(numberToWordsINR(100000)).toBe('One Lakh Rupees Only');
+    expect(numberToWordsINR(10000000)).toBe('One Crore Rupees Only');
+    expect(numberToWordsINR(1234)).toBe('One Thousand Two Hundred Thirty Four Rupees Only');
+  });
+
+  it('splits intra-state tax into CGST and SGST', () => {
+    const html = render(baseData({ subtotal: 1000, tax: 90, totalAmount: 1090 }));
+    expect(html).toContain('Subtotal (Taxable Value):');
+    expect(html).toMatch(/CGST [\d.]+%/);
+    expect(html).toMatch(/SGST [\d.]+%/);
+    expect(html).toContain('₹45.00');
+    expect(html).not.toContain('IGST');
+  });
+
+  it('renders a single IGST line for inter-state supply', () => {
+    const html = render(
+      baseData({ subtotal: 1000, tax: 90, igst: 90, totalAmount: 1090 })
+    );
+    expect(html).toMatch(/IGST [\d.]+%/);
+    expect(html).toContain('₹90.00');
+    expect(html).not.toContain('CGST');
+    expect(html).not.toContain('SGST');
+  });
+
+  it('renders the grand total with Indian number formatting', () => {
+    const html = render(baseData({ subtotal: 1000, tax: 90, totalAmount: 1090 }));
+    expect(html).toContain('Grand Total (INR):');
+    expect(html).toContain('₹1,090.00');
+    expect(inrDecimal(1090)).toBe('1,090.00');
+    expect(inrDecimal(1234567.5)).toBe('12,34,567.50');
+  });
+
+  it('renders a discount line when a discount is present', () => {
+    const html = render(baseData({ subtotal: 1000, totalAmount: 950, discount: 50 }));
+    expect(html).toContain('Discount:');
+    expect(html).toContain('- ₹50.00');
+  });
+
+  it('renders the authorized signatory block', () => {
+    const html = render(baseData());
+    expect(html).toContain('Authorized Signatory');
+    expect(html).toContain('For GyftKart');
+  });
+
+  it('renders dynamic stamp and signature image when provided', () => {
+    const html = render(
+      baseData({
+        company: {
+          name: 'GyftKart',
+          signatureUrl: 'https://example.com/stamp.png',
+          signatureName: 'Abdul Qari - Proprietor',
+        },
+      })
+    );
+    expect(html).toContain('src="https://example.com/stamp.png"');
+    expect(html).toContain('Abdul Qari - Proprietor');
+  });
+
+  it('renders the standard terms and conditions or dynamic terms', () => {
+    const html = render(baseData());
+    expect(html).toContain('Terms &amp; Conditions:');
+    expect(html).toContain('Standard terms &amp; conditions apply.');
+
+    const customHtml = render(
+      baseData({
+        terms: 'Prices valid for 15 days.\nPayment in advance.',
+      })
+    );
+    expect(customHtml).toContain('Prices valid for 15 days.');
+    expect(customHtml).toContain('Payment in advance.');
+  });
+
+  it('aligns Terms & Conditions and Signature block with items-start and equal mt-0 metrics', () => {
+    const html = render(baseData());
+    expect(html).toContain('items-start gap-6 pt-6');
+    expect(html).toContain('Terms &amp; Conditions:');
+    expect(html).toContain('For GyftKart');
+    expect(html).not.toContain('items-end gap-6 pt-6');
+  });
+
+  it('renders invoice footer text as a centered bottom bar when present', () => {
+    const withoutFooter = render(baseData());
+    expect(withoutFooter).not.toContain('border-t border-slate-100 pt-2 pb-1 mt-6 text-center');
+
+    const withFooter = render(baseData({ invoiceFooterText: 'ye digital invoice hai' }));
+    expect(withFooter).toContain('ye digital invoice hai');
+    expect(withFooter).toContain('border-t border-slate-100 pt-2 pb-1 mt-6 text-center');
+  });
+
+  it('renders bank details cleanly as a single column list', () => {
+    const html = render(
+      baseData({
+        bankDetails: {
+          bankName: 'HDFC Bank',
+          accountHolderName: 'Avadh Boring Company',
+          accountNumber: '50200012345678',
+          ifsc: 'HDFC0001234',
+          upiId: 'avadh@upi',
+        },
+      })
+    );
+    expect(html).toContain('Bank &amp; Payment Details');
+    expect(html).toContain('flex flex-col space-y-0.5');
+    expect(html).toContain('Bank:');
+    expect(html).toContain('HDFC Bank');
+    expect(html).toContain('A/C Name:');
+    expect(html).toContain('Avadh Boring Company');
+    expect(html).toContain('A/C No:');
+    expect(html).toContain('50200012345678');
+    expect(html).toContain('IFSC:');
+    expect(html).toContain('HDFC0001234');
+    expect(html).toContain('UPI:');
+    expect(html).toContain('avadh@upi');
+  });
+
+  it('prefers a provided tax note over the default voucher note', () => {
+    const html = render(baseData({ taxNote: 'Custom GST treatment applies.' }));
+    expect(html).toContain('Custom GST treatment applies.');
+    expect(html).not.toContain('actionable claims');
+  });
+
+  it('defaults the wrapper id to invoice-printable-area and accepts an override', () => {
+    expect(render(baseData())).toContain('id="invoice-printable-area"');
+    expect(render(baseData(), { id: 'custom-doc' })).toContain('id="custom-doc"');
+  });
+
+  it('merges the provided className onto the printable wrapper', () => {
+    expect(render(baseData(), { className: 'shadow-sm' })).toContain('shadow-sm');
+  });
+
+  it('renders no watermark in any demo mode (approved layout has none)', () => {
+    for (const demoHeader of ['clean', 'estimate', 'demo'] as const) {
+      const html = render(baseData({ demoHeader }));
+      expect(html.toLowerCase(), demoHeader).not.toContain('watermark');
+      expect(html.toLowerCase(), demoHeader).not.toContain('sample');
+    }
+  });
+
+  it('renders purchase variants through the same approved layout', () => {
+    for (const documentType of ['PURCHASE_ORDER', 'PURCHASE_BILL'] as DocumentType[]) {
+      const html = render(baseData({ documentType, isPurchaseBill: true }));
+      expect(html, documentType).toContain(documentType === 'PURCHASE_ORDER' ? 'PURCHASE ORDER' : 'PURCHASE BILL');
+      expect(headersOf(html), documentType).toHaveLength(7);
+      expect(html, documentType).toContain('Authorized Signatory');
+    }
+  });
+
+  it('renders customer address with street and City, State - PIN matching header structure', () => {
+    const html = render(
+      baseData({
+        customer: {
+          name: 'Ayan',
+          address: '123 Business Street\nBarabanki, Uttar Pradesh - 225001',
+        },
+      })
+    );
+    expect(html).toContain('Ayan');
+    expect(html).toContain('123 Business Street');
+    expect(html).toContain('Barabanki, Uttar Pradesh - 225001');
+  });
+
+  it('mapQuotationToUniversalData constructs clean customer address lines', () => {
+    const quote = {
+      quotation_number: 'QT-2026-001',
+      customer: {
+        name: 'Ayan',
+        address: '123 Business Street',
+        city: 'Barabanki',
+        state: 'Uttar Pradesh',
+        pincode: '225001',
+      },
+    };
+    const mapped = mapQuotationToUniversalData({}, quote);
+    expect(mapped.customer.name).toBe('Ayan');
+    expect(mapped.customer.address).toBe('123 Business Street\nBarabanki, Uttar Pradesh - 225001');
+    const html = render(mapped);
+    expect(html).toContain('123 Business Street');
+    expect(html).toContain('Barabanki, Uttar Pradesh - 225001');
+  });
+
+  it('mapSalesOrderToUniversalData constructs clean customer address lines', () => {
+    const order = {
+      order_number: 'SO-2026-001',
+      customer: {
+        name: 'Ayan',
+        address: '123 Business Street',
+        city: 'Barabanki',
+        state: 'Uttar Pradesh',
+        pincode: '225001',
+      },
+    };
+    const mapped = mapSalesOrderToUniversalData({}, order);
+    expect(mapped.customer.name).toBe('Ayan');
+    expect(mapped.customer.address).toBe('123 Business Street\nBarabanki, Uttar Pradesh - 225001');
+    const html = render(mapped);
+    expect(html).toContain('123 Business Street');
+    expect(html).toContain('Barabanki, Uttar Pradesh - 225001');
+  });
+
+  it('renders city/state/pin fallback exactly once when customer address is empty', () => {
+    const html = render(
+      baseData({
+        customer: {
+          name: 'Ayan',
+          address: '',
+          city: 'Barabanki',
+          state: 'Uttar Pradesh',
+          pincode: '225001',
+        },
+      })
+    );
+    expect(html).toContain('Barabanki, Uttar Pradesh - 225001');
   });
 });

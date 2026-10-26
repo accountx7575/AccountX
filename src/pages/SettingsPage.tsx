@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { GSTIN_REGEX, PAN_REGEX } from '@/lib/validation';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -40,6 +40,7 @@ import {
   type DocPrefixKey,
 } from '@/lib/docPrefixes';
 import { saveTncCache, readTncCache, STANDARD_TNC_DEFAULTS, type TncDocType } from '@/lib/tncDefaults';
+import { syncDraftDocumentNumbersInDb, type DraftDocumentSyncResult } from '@/lib/numberingSync';
 
 const tncMirrorFromPayload = (payload: Record<string, unknown>): Record<TncDocType, string | null> => ({
   sales_invoice: (payload.tnc_invoice as string | null) || null,
@@ -142,10 +143,11 @@ export function SettingsPage() {
   const { activeBusiness, activeRole, refreshBusinesses } = useAuth();
   const { theme, setThemePreference } = useTheme();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState({
     name: '', legal_name: '', phone: '', email: '', address: '', city: '', state: 'Maharashtra',
     pincode: '',
-    gstin: '', pan: '', financial_year: '2026-27', currency_symbol: '₹', invoice_prefix: 'INV',
+    gstin: '', pan: '', cin: '', website: '', financial_year: '2026-27', currency_symbol: '₹', invoice_prefix: 'INV',
     quotation_prefix: 'QT', sales_order_prefix: 'SO', purchase_order_prefix: 'PO',
     purchase_bill_prefix: 'PB', credit_note_prefix: 'CN', debit_note_prefix: 'DN',
     gst_registered: false,
@@ -220,6 +222,8 @@ export function SettingsPage() {
         pincode: activeBusiness.pincode || '',
         gstin: activeBusiness.gstin || '',
         pan: activeBusiness.pan || '',
+        cin: activeBusiness.cin || '',
+        website: activeBusiness.website || '',
         financial_year: activeBusiness.financial_year || '2026-27',
         currency_symbol: activeBusiness.currency_symbol || '₹',
         ...readDocPrefixes(activeBusiness),
@@ -339,7 +343,11 @@ export function SettingsPage() {
   }
 
   const saveMutation = useMutation({
-    mutationFn: async (): Promise<{ stashed: string[] }> => {
+    mutationFn: async (): Promise<{
+      stashed: string[];
+      sync: DraftDocumentSyncResult | null;
+      syncError: string | null;
+    }> => {
       if (!activeBusiness) throw new Error('No active business');
       const payload: Record<string, unknown> = {
         name: form.name,
@@ -351,9 +359,11 @@ export function SettingsPage() {
         state: form.state,
         pincode: form.pincode.trim() || null,
         pan: form.pan || null,
+        cin: form.cin.trim().toUpperCase() || null,
+        website: form.website.trim() || null,
         financial_year: form.financial_year,
         currency_symbol: form.currency_symbol,
-        invoice_prefix: form.invoice_prefix,
+        invoice_prefix: normalizePrefix(form.invoice_prefix),
         quotation_prefix: normalizePrefix(form.quotation_prefix),
         sales_order_prefix: normalizePrefix(form.sales_order_prefix),
         purchase_order_prefix: normalizePrefix(form.purchase_order_prefix),
@@ -417,6 +427,23 @@ export function SettingsPage() {
         return error;
       };
 
+      // Settings are saved: renumber every open (draft/sent) document with the
+      // new prefix + financial year. A sync failure never rolls back the save.
+      const runDraftSync = async (): Promise<{
+        sync: DraftDocumentSyncResult | null;
+        syncError: string | null;
+      }> => {
+        try {
+          const sync = await syncDraftDocumentNumbersInDb({
+            businessId: activeBusiness.id,
+            businessSettings: trimmed,
+          });
+          return { sync, syncError: null };
+        } catch (err: any) {
+          return { sync: null, syncError: err?.message || 'Draft document renumbering failed' };
+        }
+      };
+
       const firstError = await tryUpdate(send);
       if (!firstError) {
         // The values are persisted server-side now: drop the legacy local copies
@@ -425,7 +452,8 @@ export function SettingsPage() {
           activeBusiness.id,
           DRIFTED_EXTRAS_KEYS.filter((k) => k in send),
         );
-        return { stashed };
+        const { sync, syncError } = await runDraftSync();
+        return { stashed, sync, syncError };
       }
 
       if (!isMissingColumnError(firstError)) throw firstError;
@@ -460,15 +488,30 @@ export function SettingsPage() {
         activeBusiness.id,
         DRIFTED_EXTRAS_KEYS.filter((k) => k in retry),
       );
-      return { stashed };
+      const { sync, syncError } = await runDraftSync();
+      return { stashed, sync, syncError };
     },
-    onSuccess: async ({ stashed }) => {
+    onSuccess: async ({ stashed, sync, syncError }) => {
       await refreshBusinesses();
+      await Promise.all(
+        ['quotations', 'sales_orders', 'sales_invoices', 'purchase_orders'].map((key) =>
+          queryClient.invalidateQueries({ queryKey: [key] })
+        )
+      );
+      const savedMsg = stashed.length
+        ? `Settings saved — ${stashed.length} field${stashed.length > 1 ? 's' : ''} kept locally until the DB migration is applied`
+        : 'Business settings updated successfully';
+      const syncedMsg = sync?.updated
+        ? ` · ${sync.updated} document number${sync.updated > 1 ? 's' : ''} synced`
+        : '';
+      const failedMsg = syncError
+        ? ` · number sync failed: ${syncError}`
+        : sync?.failed
+          ? ` · ${sync.failed} document number${sync.failed > 1 ? 's' : ''} could not be synced`
+          : '';
       toast(
-        stashed.length
-          ? `Settings saved — ${stashed.length} field${stashed.length > 1 ? 's' : ''} kept locally until the DB migration is applied`
-          : 'Business settings updated successfully',
-        stashed.length ? 'info' : 'success'
+        `${savedMsg}${syncedMsg}${failedMsg}`,
+        stashed.length || syncError || sync?.failed ? 'info' : 'success'
       );
     },
     onError: (err: any) => toast(err.message || 'Failed to update settings', 'error'),
@@ -542,9 +585,29 @@ export function SettingsPage() {
                 disabled={!canEditSettings}
               />
             </FormField>
+            <FormField label="CIN">
+              <Input
+                value={form.cin}
+                onChange={(e) => setForm({ ...form, cin: e.target.value.toUpperCase() })}
+                onBlur={(e) => setForm({ ...form, cin: e.target.value.toUpperCase().trim() })}
+                maxLength={21}
+                placeholder="U74999UP2019PTC112218"
+                disabled={!canEditSettings}
+              />
+            </FormField>
             <FormField label="Phone"><Input type="tel" value={form.phone} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></FormField>
             <FormField label="Email" error={errors.email}>
               <Input type="email" value={form.email} disabled={!canEditSettings} onChange={(e) => { clearError('email'); setForm({ ...form, email: e.target.value }); }} />
+            </FormField>
+            <FormField label="Website">
+              <Input
+                type="url"
+                value={form.website}
+                onChange={(e) => setForm({ ...form, website: e.target.value })}
+                onBlur={(e) => setForm({ ...form, website: e.target.value.trim() })}
+                placeholder="https://www.example.com"
+                disabled={!canEditSettings}
+              />
             </FormField>
           </div>
           <div className="mt-4">

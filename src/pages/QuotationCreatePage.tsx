@@ -16,7 +16,7 @@ import { DatePicker } from '@/components/common/DatePicker';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { ArrowLeft, Save, X } from 'lucide-react';
-import { formatCurrency, roundTo2 } from '@/lib/utils';
+import { formatCurrency, roundTo2, combineDateTime } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
 import { saveDemoDoc, defaultDemoNumber, countDemoDocs } from '@/lib/demoStore';
 import type { Customer, Product, Quotation, QuotationItem } from '@/types/db';
@@ -230,6 +230,7 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
             quotation_number: defaultDemoNumber('quotation', countDemoDocs(activeBusiness.id, 'quotation') + 1),
             customer_id: chosenCustomer.id,
             quote_date: quoteDate,
+            created_at: combineDateTime(quoteDate, quoteTime),
             expiry_date: expiryDate || null,
             subtotal: totals.subtotal,
             discount_amount: 0,
@@ -273,6 +274,7 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
             quotation_number: validatedNumber,
             customer_id: chosenCustomer.id,
             quote_date: quoteDate,
+            created_at: combineDateTime(quoteDate, quoteTime),
             expiry_date: expiryDate || null,
             subtotal: totals.subtotal,
             taxable_amount: totals.taxableAmount,
@@ -331,6 +333,7 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
               quotation_number: docNumber,
               customer_id: chosenCustomer.id,
               quote_date: quoteDate,
+              created_at: combineDateTime(quoteDate, quoteTime),
               expiry_date: expiryDate || null,
               subtotal: totals.subtotal,
               discount_amount: 0,

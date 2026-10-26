@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -12,9 +12,9 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { captureElementToPdf } from '@/lib/pdfCapture';
 import {
   UniversalDocumentTemplate,
-  mapPurchaseBillToUniversalData,
   printElementInIframe,
 } from '@/components/documents/UniversalDocumentTemplate';
+import { mapPurchaseBillToUniversalData } from '@/lib/documentMappers';
 import { openWhatsAppShare } from '@/lib/whatsapp';
 
 const statusStyles: Record<string, string> = {
@@ -41,6 +41,7 @@ export function PurchaseBillViewPage() {
   const { activeBusiness } = useAuth();
   const { toast } = useToast();
   const [printing, setPrinting] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
 
@@ -50,24 +51,59 @@ export function PurchaseBillViewPage() {
       if (!activeBusiness || !id) return null;
       const { data: bill, error: bErr } = await supabase
         .from('purchase_bills')
-        .select('*, supplier:suppliers(*)')
+        .select('*, supplier:supplier_id(*)')
         .eq('id', id)
         .eq('business_id', activeBusiness.id)
         .single();
       if (bErr) throw bErr;
+
+      let billData = bill as any;
+      if (billData && !billData.supplier && billData.supplier_id) {
+        const { data: sData } = await supabase
+          .from('suppliers')
+          .select('*')
+          .eq('id', billData.supplier_id)
+          .maybeSingle();
+        if (sData) {
+          billData = { ...billData, supplier: sData };
+        }
+      }
+
       const { data: items, error: iErr } = await supabase
         .from('purchase_bill_items')
         .select('*')
         .eq('bill_id', id)
         .order('created_at');
       if (iErr) throw iErr;
-      return { bill: bill as any, items: (items || []) as any[] };
+
+      let bizData: any = null;
+      if (activeBusiness?.id) {
+        const { data: b } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('id', activeBusiness.id)
+          .maybeSingle();
+        bizData = b;
+      }
+
+      return { bill: billData, items: (items || []) as any[], business: bizData || activeBusiness };
     },
     enabled: !!activeBusiness && !!id,
   });
 
   const bill = data?.bill;
   const items = data?.items || [];
+
+  // Deep-link auto-print support for list rows: ?action=print, ?print=1, or ?autoprint=true
+  useEffect(() => {
+    if (bill && (searchParams.get('print') === '1' || searchParams.get('action') === 'print' || searchParams.get('autoprint') === 'true')) {
+      const t = setTimeout(() => {
+        printElementInIframe('invoice-printable-area', bill.bill_number);
+        setSearchParams({}, { replace: true });
+      }, 350);
+      return () => clearTimeout(t);
+    }
+  }, [bill, searchParams, setSearchParams]);
 
   const invalidate = () => {
     ['purchase-bill', 'purchase-bills', 'dashboard-stats', 'accounts', 'journal-entries', 'trial-balance', 'products']
@@ -129,7 +165,7 @@ export function PurchaseBillViewPage() {
     if (!bill) return;
     setPrinting(true);
     try {
-      const el = document.getElementById('purchase-bill-print-area');
+      const el = document.getElementById('invoice-printable-area');
       if (el) await captureElementToPdf(el, `${bill.bill_number}.pdf`);
     } catch (e: any) {
       toast(e.message || 'PDF export failed', 'error');
@@ -191,7 +227,7 @@ export function PurchaseBillViewPage() {
                 <Pencil className="h-4 w-4" /> Edit
               </Button>
             )}
-            <Button variant="secondary" onClick={() => printElementInIframe('purchase-bill-print-area', bill.bill_number)}>
+            <Button variant="secondary" onClick={() => printElementInIframe('invoice-printable-area', bill.bill_number)}>
               <Printer className="h-4 w-4" /> Print
             </Button>
             <Button variant="secondary" onClick={handleDownloadPdf} loading={printing}>
@@ -237,9 +273,9 @@ export function PurchaseBillViewPage() {
           </div>
         </div>
 
-        <div id="purchase-bill-print-area">
+        <div id="invoice-printable-area">
           <UniversalDocumentTemplate
-            data={mapPurchaseBillToUniversalData(activeBusiness, bill, items)}
+            data={mapPurchaseBillToUniversalData(data?.business || activeBusiness, bill, items)}
             className="shadow-sm border border-secondary-200/80"
           />
         </div>

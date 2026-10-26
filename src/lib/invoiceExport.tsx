@@ -1,8 +1,9 @@
-import { createRoot } from 'react-dom/client';
-import { InvoiceSheet, type InvoiceWithCustomer } from '@/components/invoice/InvoiceSheet';
-import type { Business, Customer, SalesInvoiceItem } from '@/types/db';
+import type { Business, Customer, SalesInvoice, SalesInvoiceItem } from '@/types/db';
 import { formatDate, formatCurrency, formatNumber } from '@/lib/utils';
 import { captureElementToPdf } from '@/lib/pdfCapture';
+
+/** Invoice record joined with its customer (the shape the invoice pages carry). */
+export type InvoiceWithCustomer = SalesInvoice & { customer: Customer | null };
 
 function sanitizeFilenamePart(s: string): string {
   return (s || '').replace(/[/\\?%*:|"<>\n\r]+/g, '-').trim() || 'INV';
@@ -14,40 +15,15 @@ export function invoicePdfFilename(invoiceNumber: string, partyName?: string | n
 
 import { printElementInIframe } from '@/components/documents/UniversalDocumentTemplate';
 
-/** Isolated iframe print of #invoice-print-area for clean 1-page A4 output. */
+/** Isolated iframe print of the UniversalDocumentTemplate (#invoice-printable-area). */
 export function printInvoice(): void {
-  printElementInIframe('invoice-print-area', 'Tax Invoice');
+  printElementInIframe('invoice-printable-area', 'Tax Invoice');
 }
 
 /** Capture an already-rendered sheet element (live preview / view page). */
 export async function exportPdfFromElement(el: HTMLElement | null, invoiceNumber: string, partyName?: string | null): Promise<void> {
   if (!el) throw new Error('Invoice preview not found');
   await captureElementToPdf(el, invoicePdfFilename(invoiceNumber, partyName));
-}
-
-/**
- * Render an invoice offscreen with the shared InvoiceSheet and export as PDF.
- * Used from list rows where no sheet is mounted.
- */
-export async function renderInvoiceSheetToPdf(
-  business: Business | null,
-  invoice: InvoiceWithCustomer,
-  items: SalesInvoiceItem[],
-  partyName?: string | null
-): Promise<void> {
-  const host = document.createElement('div');
-  host.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:#ffffff;';
-  document.body.appendChild(host);
-  try {
-    const root = createRoot(host);
-    root.render(<InvoiceSheet business={business} invoice={invoice} items={items} />);
-    // Allow React commit + QR/SVG paint before rasterizing.
-    await new Promise((r) => setTimeout(r, 250));
-    await captureElementToPdf(host.firstElementChild as HTMLElement ?? host, invoicePdfFilename(invoice.invoice_number, partyName));
-    root.unmount();
-  } finally {
-    host.remove();
-  }
 }
 
 export async function fetchInvoiceItems(invoiceId: string): Promise<SalesInvoiceItem[]> {

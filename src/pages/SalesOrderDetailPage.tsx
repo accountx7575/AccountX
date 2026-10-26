@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -21,14 +21,14 @@ import {
   Download,
   Truck,
 } from 'lucide-react';
-import { formatCurrency, formatDate, formatTimeOfDay } from '@/lib/utils';
-import { renderDocSheetToPdfBlob } from '@/lib/docPrint';
-import { captureElementToPdf } from '@/lib/pdfCapture';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { captureElementToPdf, captureElementToPdfBlob } from '@/lib/pdfCapture';
 import {
   UniversalDocumentTemplate,
-  mapSalesOrderToUniversalData,
   printElementInIframe,
 } from '@/components/documents/UniversalDocumentTemplate';
+import { mapSalesOrderToUniversalData } from '@/lib/documentMappers';
+import { mergeBusinessExtras } from '@/lib/businessExtras';
 import { openWhatsAppShare } from '@/lib/whatsapp';
 import { SendDialog } from '@/components/comms/SendDialog';
 import type { SalesOrder, SalesOrderItem } from '@/types/db';
@@ -51,6 +51,7 @@ export function SalesOrderDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const [searchParams, setSearchParams] = useSearchParams();
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
@@ -62,24 +63,64 @@ export function SalesOrderDetailPage() {
     queryKey: ['sales-order', activeBusiness?.id, id],
     queryFn: async () => {
       if (!activeBusiness || !id) return null;
-      const { data: order, error: oErr } = await supabase
+
+      let orderData: (SalesOrder & { customer: any }) | null = null;
+      let itemsData: SalesOrderItem[] = [];
+
+      const { data: orderWithItems, error: oWithItemsErr } = await supabase
         .from('sales_orders')
-        .select('*, customer:customers(*)')
+        .select('*, items:sales_order_items(*), customer:customer_id(*)')
         .eq('id', id)
         .eq('business_id', activeBusiness.id)
-        .single();
-      if (oErr) throw oErr;
+        .maybeSingle();
 
-      const { data: items, error: iErr } = await supabase
-        .from('sales_order_items')
-        .select('*')
-        .eq('sales_order_id', id)
-        .order('created_at');
-      if (iErr) throw iErr;
+      if (!oWithItemsErr && orderWithItems && Array.isArray((orderWithItems as any).items) && (orderWithItems as any).items.length > 0) {
+        orderData = orderWithItems as SalesOrder & { customer: any };
+        itemsData = (orderWithItems as any).items as SalesOrderItem[];
+      } else {
+        const { data: order, error: oErr } = await supabase
+          .from('sales_orders')
+          .select('*, customer:customer_id(*)')
+          .eq('id', id)
+          .eq('business_id', activeBusiness.id)
+          .single();
+        if (oErr) throw oErr;
+        orderData = order as SalesOrder & { customer: any };
+
+        const { data: items, error: iErr } = await supabase
+          .from('sales_order_items')
+          .select('*')
+          .eq('sales_order_id', id)
+          .order('created_at');
+        if (iErr) throw iErr;
+        itemsData = (items || []) as SalesOrderItem[];
+      }
+
+      if (orderData && !orderData.customer && (orderData as any).customer_id) {
+        const { data: cData } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('id', (orderData as any).customer_id)
+          .maybeSingle();
+        if (cData) {
+          orderData = { ...orderData, customer: cData };
+        }
+      }
+
+      let bizData: any = null;
+      if (activeBusiness?.id) {
+        const { data: b } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('id', activeBusiness.id)
+          .maybeSingle();
+        bizData = b;
+      }
 
       return {
-        order: order as SalesOrder & { customer: any },
-        items: (items || []) as SalesOrderItem[],
+        order: orderData,
+        items: itemsData,
+        business: bizData || activeBusiness,
       };
     },
     enabled: !!activeBusiness && !!id,
@@ -87,6 +128,17 @@ export function SalesOrderDetailPage() {
 
   const order = data?.order;
   const items = data?.items || [];
+
+  // Deep-link auto-print support for list rows: ?action=print, ?print=1, or ?autoprint=true
+  useEffect(() => {
+    if (order && (searchParams.get('print') === '1' || searchParams.get('action') === 'print' || searchParams.get('autoprint') === 'true')) {
+      const t = setTimeout(() => {
+        printElementInIframe('invoice-printable-area', `Sales Order ${order.order_number}`);
+        setSearchParams({}, { replace: true });
+      }, 350);
+      return () => clearTimeout(t);
+    }
+  }, [order, searchParams, setSearchParams]);
 
   const invalidateAll = () => {
     ['sales-orders', 'sales-invoices', 'dashboard-stats'].forEach((k) =>
@@ -151,40 +203,9 @@ export function SalesOrderDetailPage() {
     if (!activeBusiness || !order) return;
     setPrinting(true);
     try {
-      const el = document.getElementById('sales-order-print-area');
-      if (el) {
-        await captureElementToPdf(el, `${order.order_number}.pdf`);
-      } else {
-        const blob = await renderDocSheetToPdfBlob(activeBusiness, {
-          docTitle: 'SALES ORDER',
-          docNumber: order.order_number,
-          dateLabel: 'Order Date',
-          dateValue: formatDate(order.order_date),
-          time: formatTimeOfDay(order.created_at),
-          expiryLabel: 'Expected On',
-          expiryValue: order.expected_date,
-          partyLabel: 'Customer',
-          partyName: order.customer?.company_name || order.customer?.name || '—',
-          status: order.status,
-          items,
-          subtotal: Number(order.subtotal),
-          taxableAmount: Number(order.taxable_amount),
-          cgst: Number(order.cgst_amount),
-          sgst: Number(order.sgst_amount),
-          igst: Number(order.igst_amount),
-          roundOff: Number(order.round_off) || 0,
-          grandTotal: Number(order.grand_total),
-          notes: order.notes,
-        });
-        const blobUrl = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = `${order.order_number}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(blobUrl);
-      }
+      const el = document.getElementById('invoice-printable-area');
+      if (!el) throw new Error('Document not ready');
+      await captureElementToPdf(el, `${order.order_number}.pdf`);
     } catch (e: any) {
       toast(e.message || 'PDF export failed', 'error');
     } finally {
@@ -255,7 +276,7 @@ export function SalesOrderDetailPage() {
                 <Pencil className="h-4 w-4" /> Edit
               </Button>
             )}
-            <Button variant="secondary" onClick={() => printElementInIframe('sales-order-print-area', order.order_number)}>
+            <Button variant="secondary" onClick={() => printElementInIframe('invoice-printable-area', `Sales Order ${order.order_number}`)}>
               <Printer className="h-4 w-4" /> Print
             </Button>
             <Button variant="secondary" onClick={handleDownloadPdf} loading={printing}>
@@ -310,10 +331,10 @@ export function SalesOrderDetailPage() {
           </div>
         </div>
 
-        <div id="sales-order-print-area">
+        <div id="invoice-printable-area">
           <UniversalDocumentTemplate
             data={mapSalesOrderToUniversalData(
-              activeBusiness,
+              mergeBusinessExtras(activeBusiness, activeBusiness?.id || '') || activeBusiness,
               {
                 ...order,
                 customer: order.customer,
@@ -387,27 +408,9 @@ export function SalesOrderDetailPage() {
               filename: `${order.order_number}.pdf`,
               build: async () => {
                 if (!activeBusiness) throw new Error('Business unavailable');
-                return renderDocSheetToPdfBlob(activeBusiness, {
-                  docTitle: 'SALES ORDER',
-                  docNumber: order.order_number,
-                  dateLabel: 'Order Date',
-                  dateValue: formatDate(order.order_date),
-                  time: formatTimeOfDay(order.created_at),
-                  expiryLabel: 'Expected On',
-                  expiryValue: order.expected_date,
-                  partyLabel: 'Customer',
-                  partyName: order.customer?.company_name || order.customer?.name || '—',
-                  status: order.status,
-                  items,
-                  subtotal: Number(order.subtotal),
-                  taxableAmount: Number(order.taxable_amount),
-                  cgst: Number(order.cgst_amount),
-                  sgst: Number(order.sgst_amount),
-                  igst: Number(order.igst_amount),
-                  roundOff: Number(order.round_off) || 0,
-                  grandTotal: Number(order.grand_total),
-                  notes: order.notes,
-                });
+                const el = document.getElementById('invoice-printable-area');
+                if (!el) throw new Error('Document not ready');
+                return captureElementToPdfBlob(el);
               },
             },
           ]}

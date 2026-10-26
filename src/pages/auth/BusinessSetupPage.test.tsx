@@ -82,6 +82,22 @@ describe('BusinessSetupPage — a tenant row is only created by an explicit, nam
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
+  it('refuses the POS149 Probe Star artefact at the surface too (PBS-173 witness)', async () => {
+    render(<BusinessSetupPage />);
+    fireEvent.change(nameInput(), { target: { value: 'POS149 Probe Star' } });
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses the RLSBoundaryProbe artefact at the surface too (PBS-173 witness)', async () => {
+    render(<BusinessSetupPage />);
+    fireEvent.change(nameInput(), { target: { value: 'RLSBoundaryProbe' } });
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
   it('creates exactly one tenant, with the trimmed name, on explicit submit', async () => {
     render(<BusinessSetupPage />);
     fireEvent.change(nameInput(), { target: { value: '  Sharma Traders  ' } });

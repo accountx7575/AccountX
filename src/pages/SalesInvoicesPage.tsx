@@ -11,11 +11,12 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
-import { FileText, Plus, Ban, Eye, Pencil, CheckCircle2, Trash2, Printer, FileDown, FileSpreadsheet, Share2, Truck } from 'lucide-react';
+import { FileText, Plus, Ban, Eye, Pencil, CheckCircle2, Trash2, FileSpreadsheet, Share2, Truck, Printer, Download, Loader2 } from 'lucide-react';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { usePagedList } from '@/hooks/usePagedList';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { fetchInvoiceItems, renderInvoiceSheetToPdf, exportInvoiceExcel } from '@/lib/invoiceExport';
+import { fetchInvoiceItems, exportInvoiceExcel } from '@/lib/invoiceExport';
+import { printDocument, downloadDocumentPdf } from '@/lib/documentActions';
 import { EWayBillModal } from '@/components/eway/EWayBillModal';
 import { openWhatsAppShare } from '@/lib/whatsapp';
 import type { Customer } from '@/types/db';
@@ -26,23 +27,35 @@ export function SalesInvoicesPage() {
   const { toast } = useToast();
 
   const [exportingId, setExportingId] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  const handlePrint = (id: string) => {
+    printDocument('sales_invoice', id, activeBusiness, navigate);
+  };
+
+  const handleDownload = async (id: string) => {
+    if (!activeBusiness || actionLoadingId) return;
+    setActionLoadingId(`${id}-download`);
+    try {
+      await downloadDocumentPdf('sales_invoice', id, activeBusiness);
+      toast('PDF downloaded', 'success');
+    } catch (err: any) {
+      toast(err.message || 'Failed to download PDF', 'error');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
 
   const handleRowExport = async (
-    inv: { id: string; invoice_number: string; customer?: { name: string | null } | null },
-    mode: 'pdf' | 'excel'
+    inv: { id: string; invoice_number: string; customer?: { name: string | null } | null }
   ) => {
     if (!activeBusiness || exportingId) return;
     setExportingId(inv.id);
     try {
       const items = await fetchInvoiceItems(inv.id);
       const withCustomer = { ...inv, customer: (inv.customer ?? { name: null }) as Customer };
-      if (mode === 'excel') {
-        exportInvoiceExcel(activeBusiness, withCustomer as never, items);
-        toast('Excel (.csv) exported', 'success');
-      } else {
-        await renderInvoiceSheetToPdf(activeBusiness, withCustomer as never, items, inv.customer?.name);
-        toast('PDF exported', 'success');
-      }
+      exportInvoiceExcel(activeBusiness, withCustomer as never, items);
+      toast('Excel (.csv) exported', 'success');
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Export failed', 'error');
     } finally {
@@ -250,8 +263,14 @@ export function SalesInvoicesPage() {
                   <div className="flex items-center gap-1">
                     <button onClick={() => navigate(`/app/sales-invoices/${inv.id}`)} title="View invoice" aria-label="View invoice" className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"><Eye className="h-4 w-4" /></button>
                     {inv.status !== 'cancelled' && <button onClick={() => navigate(`/app/sales-invoices/${inv.id}/edit`)} title="Edit invoice" aria-label="Edit invoice" className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"><Pencil className="h-4 w-4" /></button>}
-                    <button onClick={() => navigate(`/app/sales-invoices/${inv.id}?print=1`)} title="Print invoice" aria-label="Print invoice" className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-secondary-700 hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"><Printer className="h-4 w-4" /></button>
-                    <button onClick={() => handleRowExport(inv, 'pdf')} disabled={exportingId === inv.id} title="Save as PDF" aria-label="Save as PDF" className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors disabled:opacity-40"><FileDown className="h-4 w-4" /></button>
+                    <button onClick={() => handlePrint(inv.id)} disabled={!!actionLoadingId} title="Print invoice" aria-label="Print invoice" className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group">
+                      {actionLoadingId === `${inv.id}-print` ? <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" /> : <Printer className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />}
+                      <span>Print</span>
+                    </button>
+                    <button onClick={() => handleDownload(inv.id)} disabled={!!actionLoadingId} title="Download PDF" aria-label="Download PDF" className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group">
+                      {actionLoadingId === `${inv.id}-download` ? <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" /> : <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />}
+                      <span>PDF</span>
+                    </button>
                     {inv.status === 'draft' && <button onClick={() => issueDraftMutation.mutate(inv.id)} title="Issue invoice" aria-label="Issue invoice" className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors"><CheckCircle2 className="h-4 w-4" /></button>}
                     {['issued', 'partially_paid', 'paid'].includes(inv.status) && <button onClick={() => setCancelTarget(inv)} title="Cancel invoice" aria-label="Cancel invoice" className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"><Ban className="h-4 w-4" /></button>}
                   </div>
@@ -312,24 +331,35 @@ export function SalesInvoicesPage() {
                           </button>
                         )}
                         <button
-                          onClick={() => navigate(`/app/sales-invoices/${inv.id}?print=1`)}
-                          className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-secondary-700 hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"
+                          onClick={() => handlePrint(inv.id)}
+                          disabled={!!actionLoadingId}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group"
                           title="Print invoice"
                           aria-label="Print invoice"
                         >
-                          <Printer className={`h-4 w-4 ${exportingId === inv.id ? 'animate-pulse' : ''}`} />
+                          {actionLoadingId === `${inv.id}-print` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                          ) : (
+                            <Printer className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />
+                          )}
+                          <span>Print</span>
                         </button>
                         <button
-                          onClick={() => handleRowExport(inv, 'pdf')}
-                          disabled={exportingId === inv.id}
-                          className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors disabled:opacity-50"
-                          title="Save as PDF"
-                          aria-label="Save as PDF"
+                          onClick={() => handleDownload(inv.id)}
+                          disabled={!!actionLoadingId}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group"
+                          title="Download PDF"
+                          aria-label="Download PDF"
                         >
-                          <FileDown className="h-4 w-4" />
+                          {actionLoadingId === `${inv.id}-download` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />
+                          )}
+                          <span>PDF</span>
                         </button>
                         <button
-                          onClick={() => handleRowExport(inv, 'excel')}
+                          onClick={() => handleRowExport(inv)}
                           disabled={exportingId === inv.id}
                           className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors disabled:opacity-50"
                           title="Export to Excel (.csv)"

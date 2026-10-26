@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -8,12 +8,13 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { InvoiceSheet, type InvoiceWithCustomer } from '@/components/invoice/InvoiceSheet';
+import { UniversalDocumentTemplate } from '@/components/documents/UniversalDocumentTemplate';
+import { mapSalesInvoiceToUniversalData } from '@/lib/documentMappers';
 import { mergeBusinessExtras } from '@/lib/businessExtras';
 import { SendDialog } from '@/components/comms/SendDialog';
 import { ArrowLeft, Printer, FileDown, Ban, FileSpreadsheet, Share2, Send, History, Truck, Pencil } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
-import { printInvoice, exportPdfFromElement, exportInvoiceExcel } from '@/lib/invoiceExport';
+import { printInvoice, exportPdfFromElement, exportInvoiceExcel, type InvoiceWithCustomer } from '@/lib/invoiceExport';
 import { EWayBillModal } from '@/components/eway/EWayBillModal';
 import { findEWayBillByInvoiceId } from '@/lib/ewayBill';
 import { openWhatsAppShare } from '@/lib/whatsapp';
@@ -25,6 +26,7 @@ export function SalesInvoiceViewPage() {
   const navigate = useNavigate();
   const { activeBusiness } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [exporting, setExporting] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [ewayOpen, setEwayOpen] = useState(false);
@@ -34,21 +36,63 @@ export function SalesInvoiceViewPage() {
     queryKey: ['sales-invoice', invoiceId],
     queryFn: async () => {
       if (!invoiceId) throw new Error('No invoice selected');
-      const invRes = await supabase
+
+      let invoiceData: InvoiceWithCustomer | null = null;
+      let itemsData: SalesInvoiceItem[] = [];
+
+      const { data: invWithItems, error: invWithItemsErr } = await supabase
         .from('sales_invoices')
-        .select('*, customer:customers(*)')
+        .select('*, items:sales_invoice_items(*), customer:customer_id(*)')
         .eq('id', invoiceId)
-        .single();
-      if (invRes.error) throw invRes.error;
-      const itemsRes = await supabase
-        .from('sales_invoice_items')
-        .select('*')
-        .eq('invoice_id', invoiceId)
-        .order('created_at');
-      if (itemsRes.error) throw itemsRes.error;
+        .maybeSingle();
+
+      if (!invWithItemsErr && invWithItems && Array.isArray((invWithItems as any).items) && (invWithItems as any).items.length > 0) {
+        invoiceData = invWithItems as InvoiceWithCustomer;
+        itemsData = (invWithItems as any).items as SalesInvoiceItem[];
+      } else {
+        const invRes = await supabase
+          .from('sales_invoices')
+          .select('*, customer:customer_id(*)')
+          .eq('id', invoiceId)
+          .single();
+        if (invRes.error) throw invRes.error;
+        invoiceData = invRes.data as InvoiceWithCustomer;
+
+        const itemsRes = await supabase
+          .from('sales_invoice_items')
+          .select('*')
+          .eq('invoice_id', invoiceId)
+          .order('created_at');
+        if (itemsRes.error) throw itemsRes.error;
+        itemsData = (itemsRes.data || []) as SalesInvoiceItem[];
+      }
+
+      if (invoiceData && !invoiceData.customer && (invoiceData as any).customer_id) {
+        const { data: cData } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('id', (invoiceData as any).customer_id)
+          .maybeSingle();
+        if (cData) {
+          invoiceData = { ...invoiceData, customer: cData };
+        }
+      }
+
+      let bizData: any = null;
+      const bId = (invoiceData as any)?.business_id || activeBusiness?.id;
+      if (bId) {
+        const { data: b } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('id', bId)
+          .maybeSingle();
+        bizData = b;
+      }
+
       return {
-        invoice: invRes.data as InvoiceWithCustomer,
-        items: (itemsRes.data || []) as SalesInvoiceItem[],
+        invoice: invoiceData,
+        items: itemsData,
+        business: bizData || activeBusiness,
       };
     },
     enabled: !!invoiceId,
@@ -59,7 +103,7 @@ export function SalesInvoiceViewPage() {
     setExporting(true);
     try {
       await exportPdfFromElement(
-        document.getElementById('invoice-print-area'),
+        document.getElementById('invoice-printable-area'),
         data.invoice.invoice_number,
         data.invoice.customer?.company_name || data.invoice.customer?.name
       );
@@ -71,9 +115,9 @@ export function SalesInvoiceViewPage() {
     }
   };
 
-  // Deep-link support for list rows: /view?print=1 opens the doc and prints immediately.
+  // Deep-link support for list rows: /view?action=print or ?print=1 opens the doc and prints immediately.
   useEffect(() => {
-    if (data && searchParams.get('print') === '1') {
+    if (data && (searchParams.get('print') === '1' || searchParams.get('action') === 'print' || searchParams.get('autoprint') === 'true')) {
       const t = setTimeout(() => {
         printInvoice();
         setSearchParams({}, { replace: true });
@@ -100,6 +144,23 @@ export function SalesInvoiceViewPage() {
   }
 
   const { invoice } = data;
+
+  // Directive-10: the invoice document is the ONE UniversalDocumentTemplate.
+  // Mapping reuses the canonical UDT adapter (what the retired thin invoice
+  // wrapper used), so the printed/preview output is unchanged.
+  const liveBusiness = data?.business || activeBusiness;
+  const printBusiness = mergeBusinessExtras(liveBusiness, liveBusiness?.id || '');
+  const ewayBill = liveBusiness && invoiceId
+    ? findEWayBillByInvoiceId(liveBusiness.id, invoiceId)
+    : null;
+  const docData = mapSalesInvoiceToUniversalData(printBusiness, invoice, data.items);
+  if (ewayBill?.ewayBillNo || ewayBill?.vehicleNo) {
+    const ewayInfo = [
+      ewayBill.ewayBillNo ? `e-Way Bill No: ${ewayBill.ewayBillNo}` : '',
+      ewayBill.vehicleNo ? `Vehicle No: ${ewayBill.vehicleNo}` : '',
+    ].filter(Boolean).join(' • ');
+    docData.taxNote = docData.taxNote ? `${docData.taxNote} | ${ewayInfo}` : ewayInfo;
+  }
 
   const shareOnWhatsApp = () => {
     const opened = openWhatsAppShare({
@@ -192,16 +253,8 @@ export function SalesInvoiceViewPage() {
         </Badge>
       </div>
 
-      {/* Printable GST tax-invoice document (shared InvoiceSheet component). */}
-      <div id="invoice-print-area">
-        <InvoiceSheet
-          business={mergeBusinessExtras(activeBusiness, activeBusiness?.id || '')}
-          invoice={invoice}
-          items={data.items}
-          ewayBillNo={activeBusiness && invoiceId ? findEWayBillByInvoiceId(activeBusiness.id, invoiceId)?.ewayBillNo ?? null : null}
-          vehicleNo={activeBusiness && invoiceId ? findEWayBillByInvoiceId(activeBusiness.id, invoiceId)?.vehicleNo ?? null : null}
-        />
-      </div>
+      {/* Printable GST tax-invoice document — UniversalDocumentTemplate only (Directive-10). */}
+      <UniversalDocumentTemplate data={docData} id="invoice-printable-area" />
 
       <EWayBillModal
         open={ewayOpen}
@@ -240,7 +293,7 @@ export function SalesInvoiceViewPage() {
             label: 'Invoice PDF (as printed)',
             filename: `${invoice.invoice_number}.pdf`,
             build: async () => {
-              const el = document.getElementById('invoice-print-area');
+              const el = document.getElementById('invoice-printable-area');
               if (!el) throw new Error('Invoice document is not rendered yet.');
               return captureElementToPdfBlob(el);
             },

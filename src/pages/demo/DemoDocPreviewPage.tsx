@@ -7,12 +7,14 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { ArrowLeft, FileDown, Layers, Printer } from 'lucide-react';
 import {
-  mapQuotationToUniversalData,
-  mapSalesInvoiceToUniversalData,
-  mapSalesOrderToUniversalData,
   printElementInIframe,
   UniversalDocumentTemplate,
 } from '@/components/documents';
+import {
+  mapQuotationToUniversalData,
+  mapSalesInvoiceToUniversalData,
+  mapSalesOrderToUniversalData,
+} from '@/lib/documentMappers';
 import { captureElementToPdf } from '@/lib/pdfCapture';
 import {
   getDemoDoc,

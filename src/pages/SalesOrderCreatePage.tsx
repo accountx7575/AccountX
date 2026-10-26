@@ -16,7 +16,7 @@ import { DatePicker } from '@/components/common/DatePicker';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { ArrowLeft, Save, Trash2, Plus } from 'lucide-react';
-import { formatCurrency, roundTo2, todayDateString } from '@/lib/utils';
+import { formatCurrency, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
 import { computeDocLine } from '@/lib/payloads';
 import { saveDemoDoc, defaultDemoNumber, countDemoDocs } from '@/lib/demoStore';
@@ -54,6 +54,7 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
 
   const [customerId, setCustomerId] = useState('');
   const [orderDate, setOrderDate] = useState(todayDateString());
+  const [orderTime, setOrderTime] = useState(getLocalNowTime());
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<LineItem[]>([{ ...emptyLine }]);
@@ -85,6 +86,15 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
     if (!loaded) return;
     setCustomerId(loaded.order.customer_id);
     setOrderDate(loaded.order.order_date);
+    if (loaded.order.created_at) {
+      setOrderTime(
+        new Date(loaded.order.created_at).toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        })
+      );
+    }
     setExpectedDate(loaded.order.expected_date || '');
     setNotes(loaded.order.notes || '');
     if (loaded.items.length > 0) {
@@ -241,6 +251,7 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
             order_number: defaultDemoNumber('sales_order', countDemoDocs(activeBusiness.id, 'sales_order') + 1),
             customer_id: customerId,
             order_date: orderDate,
+            created_at: combineDateTime(orderDate, orderTime),
             expected_date: expectedDate || null,
             subtotal: totals.subtotal,
             discount_amount: totals.totalDiscount,
@@ -276,6 +287,7 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
             order_number: validatedNumber,
             customer_id: customerId,
             order_date: orderDate,
+            created_at: combineDateTime(orderDate, orderTime),
             expected_date: expectedDate || null,
             subtotal: totals.subtotal,
             discount_amount: totals.totalDiscount,
@@ -354,6 +366,7 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
           order_number: orderNumber,
           customer_id: customerId,
           order_date: orderDate,
+          created_at: combineDateTime(orderDate, orderTime),
           expected_date: expectedDate || null,
           subtotal: totals.subtotal,
           discount_amount: totals.totalDiscount,
@@ -439,7 +452,7 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
 
       <div className="card p-6">
         <FormSection>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-start">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-start">
             <DocumentNumberField
               value={docNumber.value}
               onChange={docNumber.setValue}
@@ -454,8 +467,21 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
                 {customers?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </FormField>
-            <FormField label="Order Date" required><DatePicker className="input h-10" value={orderDate} onChange={setOrderDate} /></FormField>
-            <FormField label="Expected Delivery"><DatePicker className="input h-10" value={expectedDate} onChange={setExpectedDate} /></FormField>
+            <FormField label="Order Date" required>
+              <DatePicker className="input h-10" value={orderDate} onChange={setOrderDate} />
+            </FormField>
+            <FormField label="Time">
+              <Input
+                type="text"
+                value={orderTime}
+                onChange={(e) => setOrderTime(e.target.value)}
+                placeholder="12:00 PM"
+                className="h-10 figure"
+              />
+            </FormField>
+            <FormField label="Expected Delivery">
+              <DatePicker className="input h-10" value={expectedDate} onChange={setExpectedDate} />
+            </FormField>
           </div>
           {isInterState && (
             <div className="mt-3 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 text-warning-700 dark:text-warning-300 text-sm">

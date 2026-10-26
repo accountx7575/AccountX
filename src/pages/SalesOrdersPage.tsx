@@ -14,10 +14,10 @@ import { Input, FormField } from '@/components/ui/Input';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
-import { ShoppingCart, Plus, Lock, CheckCircle2, Printer, Eye, Download, Pencil } from 'lucide-react';
-import { formatCurrency, formatDate, formatTimeOfDay } from '@/lib/utils';
-import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
-import type { SalesOrder, SalesOrderItem, Customer } from '@/types/db';
+import { ShoppingCart, Plus, Lock, CheckCircle2, Eye, Pencil, Printer, Download, Loader2 } from 'lucide-react';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { printDocument, downloadDocumentPdf } from '@/lib/documentActions';
+import type { SalesOrder } from '@/types/db';
 
 type LineItem = {
   product_id: string | null;
@@ -53,101 +53,32 @@ export function SalesOrdersPage() {
   const list = usePagedList();
   const [statusFilter, setStatusFilter] = useState('all');
   const [confirmCancel, setConfirmCancel] = useState<SalesOrder | null>(null);
-  const [printingId, setPrintingId] = useState<string | null>(null);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [convertTarget, setConvertTarget] = useState<(SalesOrder & { customer: { name: string } | null }) | null>(null);
   const [convertDate, setConvertDate] = useState('');
   const [convertDue, setConvertDue] = useState('');
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  const handlePrint = (id: string) => {
+    printDocument('sales_order', id, activeBusiness, navigate);
+  };
+
+  const handleDownload = async (id: string) => {
+    if (!activeBusiness || actionLoadingId) return;
+    setActionLoadingId(`${id}-download`);
+    try {
+      await downloadDocumentPdf('sales_order', id, activeBusiness);
+      toast('PDF downloaded', 'success');
+    } catch (err: any) {
+      toast(err.message || 'Failed to download PDF', 'error');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
 
   const openConvert = (o: SalesOrder & { customer: { name: string } | null }) => {
     setConvertTarget(o);
     setConvertDate(new Date().toISOString().slice(0, 10));
     setConvertDue('');
-  };
-
-  const fetchOrderDetails = async (o: SalesOrder) => {
-    const { data: items, error } = await supabase
-      .from('sales_order_items')
-      .select('*')
-      .eq('sales_order_id', o.id)
-      .order('created_at');
-    if (error) throw error;
-
-    let customer: Partial<Customer> | null = (o as any).customer ?? null;
-    if (o.customer_id && (!customer || !customer.address)) {
-      const { data: c } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('id', o.customer_id)
-        .maybeSingle();
-      if (c) customer = c;
-    }
-
-    const custAddress = [customer?.address, customer?.city, customer?.state, customer?.pincode]
-      .filter(Boolean)
-      .join(', ');
-
-    const payload: PrintableDocData = {
-      docTitle: 'SALES ORDER',
-      docNumber: o.order_number,
-      dateLabel: 'Order Date',
-      dateValue: formatDate(o.order_date),
-      time: formatTimeOfDay(o.created_at),
-      expiryLabel: 'Expected On',
-      expiryValue: o.expected_date,
-      partyLabel: 'Customer',
-      partyName: customer?.company_name || customer?.name || (o as any).customer?.name || '—',
-      partyAddress: custAddress || undefined,
-      partyGstin: customer?.gstin || undefined,
-      partyPhone: customer?.phone || undefined,
-      partyPlaceOfSupply: customer?.state || activeBusiness?.state || undefined,
-      status: o.status,
-      items: (items || []) as SalesOrderItem[],
-      subtotal: Number(o.subtotal),
-      taxableAmount: Number(o.taxable_amount),
-      cgst: Number(o.cgst_amount),
-      sgst: Number(o.sgst_amount),
-      igst: Number(o.igst_amount),
-      roundOff: Number(o.round_off) || 0,
-      grandTotal: Number(o.grand_total),
-      notes: o.notes,
-    };
-
-    return { items: (items || []) as SalesOrderItem[], customer, payload };
-  };
-
-  const printOrder = async (o: SalesOrder) => {
-    if (!activeBusiness) return;
-    setPrintingId(o.id);
-    try {
-      const { payload } = await fetchOrderDetails(o);
-      await renderDocSheetToPdf(activeBusiness, payload);
-    } catch (err: any) {
-      toast(err?.message || 'PDF export failed', 'error');
-    } finally {
-      setPrintingId(null);
-    }
-  };
-
-  const handleDownloadPdf = async (o: SalesOrder) => {
-    if (!activeBusiness) return;
-    setDownloadingId(o.id);
-    try {
-      const { payload } = await fetchOrderDetails(o);
-      const blob = await renderDocSheetToPdfBlob(activeBusiness, payload);
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `${o.order_number}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-    } catch (err: any) {
-      toast(err?.message || 'Download PDF failed', 'error');
-    } finally {
-      setDownloadingId(null);
-    }
   };
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -282,7 +213,7 @@ export function SalesOrdersPage() {
               <thead>
                 <tr className="border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
                   <th className="text-left px-4 py-3 font-medium">Order No.</th>
-                  <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Date</th>
+                  <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Date &amp; Time</th>
                   <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Customer</th>
                   <th className="text-right px-4 py-3 font-medium">Total</th>
                   <th className="text-left px-4 py-3 font-medium">Status</th>
@@ -293,7 +224,20 @@ export function SalesOrdersPage() {
                 {orders.map((o) => (
                   <tr key={o.id} className="border-b border-secondary-100 dark:border-secondary-800/50 table-row-hover">
                     <td className="px-4 py-3 font-medium text-secondary-500">{o.order_number}</td>
-                    <td className="px-4 py-3 hidden sm:table-cell text-secondary-500">{formatDate(o.order_date)}</td>
+                    <td className="px-4 py-3 hidden sm:table-cell text-secondary-500">
+                      <div className="font-medium text-secondary-900 dark:text-secondary-100">
+                        {formatDate(o.order_date)}
+                      </div>
+                      <div className="text-[11px] text-secondary-400">
+                        {o.created_at
+                          ? new Date(o.created_at).toLocaleTimeString('en-IN', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: true,
+                            })
+                          : ''}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 hidden md:table-cell text-secondary-900 dark:text-secondary-100">{o.customer?.name || '—'}</td>
                     <td className="px-4 py-3 text-right tabular-nums font-medium figure">{formatCurrency(o.grand_total, activeBusiness?.currency_symbol)}</td>
                     <td className="px-4 py-3"><span className={`badge ${statusStyles[o.status]}`}>{o.status}</span></td>
@@ -317,24 +261,34 @@ export function SalesOrdersPage() {
                         >
                           <Eye className="w-3 h-3" /> View
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          loading={printingId === o.id}
-                          onClick={() => printOrder(o)}
-                          title="Print Sales Order in clean A4 format"
+                        <button
+                          onClick={() => handlePrint(o.id)}
+                          disabled={!!actionLoadingId}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group"
+                          title="Print Sales Order"
+                          aria-label="Print Sales Order"
                         >
-                          <Printer className="h-3 w-3" /> Print
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          loading={downloadingId === o.id}
-                          onClick={() => handleDownloadPdf(o)}
-                          title="Download Sales Order as PDF"
+                          {actionLoadingId === `${o.id}-print` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                          ) : (
+                            <Printer className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />
+                          )}
+                          <span>Print</span>
+                        </button>
+                        <button
+                          onClick={() => handleDownload(o.id)}
+                          disabled={!!actionLoadingId}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group"
+                          title="Download PDF"
+                          aria-label="Download PDF"
                         >
-                          <Download className="h-3 w-3" /> PDF
-                        </Button>
+                          {actionLoadingId === `${o.id}-download` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />
+                          )}
+                          <span>PDF</span>
+                        </button>
                         {LOCKED[o.status] && (
                           <span className="inline-flex items-center gap-1 text-xs text-secondary-400"><Lock className="h-3 w-3" /> Locked</span>
                         )}

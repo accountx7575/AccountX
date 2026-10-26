@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -21,15 +21,15 @@ import {
   Mail,
   Download,
 } from 'lucide-react';
-import { formatCurrency, formatDate, formatTimeOfDay } from '@/lib/utils';
+import { formatCurrency, formatDate } from '@/lib/utils';
 import { convertQuotationToInvoice } from '@/lib/quotationConvert';
-import { renderDocSheetToPdf, renderDocSheetToPdfBlob } from '@/lib/docPrint';
-import { captureElementToPdf } from '@/lib/pdfCapture';
+import { captureElementToPdf, captureElementToPdfBlob } from '@/lib/pdfCapture';
 import {
   UniversalDocumentTemplate,
-  mapQuotationToUniversalData,
   printElementInIframe,
 } from '@/components/documents/UniversalDocumentTemplate';
+import { mapQuotationToUniversalData } from '@/lib/documentMappers';
+import { mergeBusinessExtras } from '@/lib/businessExtras';
 import { openWhatsAppShare } from '@/lib/whatsapp';
 import { SendDialog } from '@/components/comms/SendDialog';
 import type { Quotation, QuotationItem } from '@/types/db';
@@ -53,6 +53,7 @@ export function QuotationViewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const [searchParams, setSearchParams] = useSearchParams();
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
@@ -64,28 +65,78 @@ export function QuotationViewPage() {
     queryKey: ['quotation', activeBusiness?.id, id],
     queryFn: async () => {
       if (!activeBusiness || !id) return null;
-      const { data: quote, error: qErr } = await supabase
+
+      let quoteData: (Quotation & { customer: any }) | null = null;
+      let itemsData: QuotationItem[] = [];
+
+      const { data: quoteWithItems, error: qWithItemsErr } = await supabase
         .from('quotations')
-        .select('*, customer:customers(*)')
+        .select('*, items:quotation_items(*), customer:customer_id(*)')
         .eq('id', id)
         .eq('business_id', activeBusiness.id)
-        .single();
-      if (qErr) throw qErr;
+        .maybeSingle();
 
-      const { data: items, error: iErr } = await supabase
-        .from('quotation_items')
-        .select('*')
-        .eq('quotation_id', id)
-        .order('created_at');
-      if (iErr) throw iErr;
+      if (!qWithItemsErr && quoteWithItems && Array.isArray((quoteWithItems as any).items) && (quoteWithItems as any).items.length > 0) {
+        quoteData = quoteWithItems as Quotation & { customer: any };
+        itemsData = (quoteWithItems as any).items as QuotationItem[];
+      } else {
+        const { data: quote, error: qErr } = await supabase
+          .from('quotations')
+          .select('*, customer:customer_id(*)')
+          .eq('id', id)
+          .eq('business_id', activeBusiness.id)
+          .single();
+        if (qErr) throw qErr;
+        quoteData = quote as Quotation & { customer: any };
 
-      return { quote: quote as Quotation & { customer: any }, items: (items || []) as QuotationItem[] };
+        const { data: items, error: iErr } = await supabase
+          .from('quotation_items')
+          .select('*')
+          .eq('quotation_id', id)
+          .order('created_at');
+        if (iErr) throw iErr;
+        itemsData = (items || []) as QuotationItem[];
+      }
+
+      if (quoteData && !quoteData.customer && (quoteData as any).customer_id) {
+        const { data: cData } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('id', (quoteData as any).customer_id)
+          .maybeSingle();
+        if (cData) {
+          quoteData = { ...quoteData, customer: cData };
+        }
+      }
+
+      let bizData: any = null;
+      if (activeBusiness?.id) {
+        const { data: b } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('id', activeBusiness.id)
+          .maybeSingle();
+        bizData = b;
+      }
+
+      return { quote: quoteData, items: itemsData, business: bizData || activeBusiness };
     },
     enabled: !!activeBusiness && !!id,
   });
 
   const quote = data?.quote;
   const items = data?.items || [];
+
+  // Deep-link auto-print support for list rows: ?action=print, ?print=1, or ?autoprint=true
+  useEffect(() => {
+    if (quote && (searchParams.get('print') === '1' || searchParams.get('action') === 'print' || searchParams.get('autoprint') === 'true')) {
+      const t = setTimeout(() => {
+        printElementInIframe('invoice-printable-area', `Quotation ${quote.quotation_number}`);
+        setSearchParams({}, { replace: true });
+      }, 350);
+      return () => clearTimeout(t);
+    }
+  }, [quote, searchParams, setSearchParams]);
 
   const invalidateAll = () => {
     ['quotations', 'quotations-data', 'quotation', 'dashboard-stats'].forEach((k) =>
@@ -152,41 +203,9 @@ export function QuotationViewPage() {
     if (!activeBusiness || !quote) return;
     setPrinting(true);
     try {
-      const el = document.getElementById('quotation-print-area');
-      if (el) {
-        await captureElementToPdf(el, `${quote.quotation_number}.pdf`);
-      } else {
-        const blob = await renderDocSheetToPdfBlob(activeBusiness, {
-          docTitle: 'QUOTATION',
-          docNumber: quote.quotation_number,
-          dateLabel: 'Quote Date',
-          dateValue: formatDate(quote.quote_date),
-          time: formatTimeOfDay(quote.created_at),
-          expiryLabel: 'Valid Until',
-          expiryValue: quote.expiry_date,
-          partyLabel: 'Customer',
-          partyName: quote.customer?.name || '—',
-          status: quote.status,
-          items,
-          subtotal: Number(quote.subtotal),
-          taxableAmount: Number(quote.taxable_amount),
-          cgst: Number(quote.cgst_amount),
-          sgst: Number(quote.sgst_amount),
-          igst: Number(quote.igst_amount),
-          roundOff: Number(quote.round_off) || 0,
-          grandTotal: Number(quote.grand_total),
-          notes: quote.notes,
-          terms: quote.terms,
-        });
-        const blobUrl = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = `${quote.quotation_number}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(blobUrl);
-      }
+      const el = document.getElementById('invoice-printable-area');
+      if (!el) throw new Error('Document not ready');
+      await captureElementToPdf(el, `${quote.quotation_number}.pdf`);
     } catch (e: any) {
       toast(e.message || 'PDF export failed', 'error');
     } finally {
@@ -248,7 +267,7 @@ export function QuotationViewPage() {
                 <Pencil className="h-4 w-4" /> Edit
               </Button>
             )}
-            <Button variant="secondary" onClick={() => printElementInIframe('quotation-print-area', quote.quotation_number)}>
+            <Button variant="secondary" onClick={() => printElementInIframe('invoice-printable-area', `Quotation ${quote.quotation_number}`)}>
               <Printer className="h-4 w-4" /> Print
             </Button>
             <Button variant="secondary" onClick={handleDownloadPdf} loading={printing}>
@@ -306,9 +325,13 @@ export function QuotationViewPage() {
           </div>
         </div>
 
-        <div id="quotation-print-area">
+        <div id="invoice-printable-area">
           <UniversalDocumentTemplate
-            data={mapQuotationToUniversalData(activeBusiness, quote, items)}
+            data={mapQuotationToUniversalData(
+              mergeBusinessExtras(activeBusiness, activeBusiness?.id || '') || activeBusiness,
+              quote,
+              items
+            )}
             className="shadow-sm border border-secondary-200/80"
           />
         </div>
@@ -382,28 +405,9 @@ export function QuotationViewPage() {
               filename: `${quote.quotation_number}.pdf`,
               build: async () => {
                 if (!activeBusiness) throw new Error('Business unavailable');
-                return renderDocSheetToPdfBlob(activeBusiness, {
-                  docTitle: 'QUOTATION',
-                  docNumber: quote.quotation_number,
-                  dateLabel: 'Quote Date',
-                  dateValue: formatDate(quote.quote_date),
-                  time: formatTimeOfDay(quote.created_at),
-                  expiryLabel: 'Valid Until',
-                  expiryValue: quote.expiry_date,
-                  partyLabel: 'Customer',
-                  partyName: quote.customer?.name || '—',
-                  status: quote.status,
-                  items,
-                  subtotal: Number(quote.subtotal),
-                  taxableAmount: Number(quote.taxable_amount),
-                  cgst: Number(quote.cgst_amount),
-                  sgst: Number(quote.sgst_amount),
-                  igst: Number(quote.igst_amount),
-                  roundOff: Number(quote.round_off) || 0,
-                  grandTotal: Number(quote.grand_total),
-                  notes: quote.notes,
-                  terms: quote.terms,
-                });
+                const el = document.getElementById('invoice-printable-area');
+                if (!el) throw new Error('Document not ready');
+                return captureElementToPdfBlob(el);
               },
             },
           ]}

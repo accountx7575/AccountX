@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { amountInWordsIndian, numberToWordsIndian } from '@/lib/utils';
+import { amountInWordsIndian, numberToWordsIndian, combineDateTime, getLocalNowTime } from '@/lib/utils';
 
 describe('amountInWordsIndian — edge cases', () => {
   it('zero', () => {
@@ -68,5 +68,36 @@ describe('numberToWordsIndian — sign & scale', () => {
 
   it('paise component is rendered from the fractional part', () => {
     expect(amountInWordsIndian(105.5)).toBe('One Hundred Five Rupees and Fifty Paise Only');
+  });
+});
+
+describe('combineDateTime & getLocalNowTime', () => {
+  it('getLocalNowTime returns a valid 12-hour formatted time', () => {
+    const time = getLocalNowTime();
+    expect(time).toMatch(/^\d{1,2}:\d{2}\s*(am|pm)$/i);
+  });
+
+  it('combineDateTime combines date and 12-hour time into valid ISO string', () => {
+    const iso = combineDateTime('2026-10-27', '02:15 pm');
+    const d = new Date(iso);
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(9); // 0-indexed October
+    expect(d.getDate()).toBe(27);
+    expect(d.getHours()).toBe(14);
+    expect(d.getMinutes()).toBe(15);
+  });
+
+  it('combineDateTime handles 12:00 am correctly', () => {
+    const iso = combineDateTime('2026-10-27', '12:00 am');
+    const d = new Date(iso);
+    expect(d.getHours()).toBe(0);
+    expect(d.getMinutes()).toBe(0);
+  });
+
+  it('combineDateTime handles 12:00 pm correctly', () => {
+    const iso = combineDateTime('2026-10-27', '12:00 pm');
+    const d = new Date(iso);
+    expect(d.getHours()).toBe(12);
+    expect(d.getMinutes()).toBe(0);
   });
 });

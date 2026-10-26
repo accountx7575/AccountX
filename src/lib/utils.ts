@@ -135,6 +135,48 @@ export function todayDateString(): string {
   return toDateString(new Date());
 }
 
+export function getLocalNowTime(): string {
+  return new Date().toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+export function combineDateTime(dateStr: string, timeStr?: string): string {
+  if (!dateStr) return new Date().toISOString();
+  const rawDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+  if (!timeStr || !timeStr.trim()) {
+    const d = new Date(rawDate);
+    return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+  }
+
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!match) {
+    const d = new Date(rawDate);
+    return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+  }
+
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const seconds = match[3] ? parseInt(match[3], 10) : 0;
+  const meridiem = match[4]?.toLowerCase();
+
+  if (meridiem === 'pm' && hours < 12) hours += 12;
+  if (meridiem === 'am' && hours === 12) hours = 0;
+
+  const parts = rawDate.split('-').map(Number);
+  if (parts.length === 3 && !parts.some(isNaN)) {
+    const d = new Date(parts[0], parts[1] - 1, parts[2], hours, minutes, seconds);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  const d = new Date(rawDate);
+  if (isNaN(d.getTime())) return new Date().toISOString();
+  d.setHours(hours, minutes, seconds, 0);
+  return d.toISOString();
+}
+
 export function getInitials(name: string): string {
   if (!name) return '?';
   const parts = name.trim().split(/\s+/);

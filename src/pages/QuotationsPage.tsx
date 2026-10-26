@@ -21,7 +21,6 @@ import {
   Send,
   Check,
   X,
-  Printer,
   Mail,
   Eye,
   Pencil,
@@ -31,13 +30,15 @@ import {
   ArrowUp,
   ArrowDown,
   Search,
+  Printer,
   Download,
+  Loader2,
 } from 'lucide-react';
-import { formatCurrency, formatDate, formatTimeOfDay } from '@/lib/utils';
+import { formatCurrency, formatDate } from '@/lib/utils';
 import { convertQuotationToInvoice } from '@/lib/quotationConvert';
-import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
 import { openWhatsAppShare } from '@/lib/whatsapp';
-import type { Quotation, QuotationItem } from '@/types/db';
+import { printDocument, downloadDocumentPdf } from '@/lib/documentActions';
+import type { Quotation } from '@/types/db';
 
 type QuoteRow = Quotation & { customer: { name: string; phone: string | null; email: string | null } | null };
 
@@ -90,12 +91,28 @@ export function QuotationsPage() {
 
   const [confirmCancel, setConfirmCancel] = useState<Quotation | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<QuoteRow | null>(null);
-  const [printingId, setPrintingId] = useState<string | null>(null);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [convertTarget, setConvertTarget] = useState<QuoteRow | null>(null);
   const [convertDate, setConvertDate] = useState('');
   const [convertDue, setConvertDue] = useState('');
   const [convertMode, setConvertMode] = useState<ConvertMode>('invoice');
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  const handlePrint = (id: string) => {
+    printDocument('quotation', id, activeBusiness, navigate);
+  };
+
+  const handleDownload = async (id: string) => {
+    if (!activeBusiness || actionLoadingId) return;
+    setActionLoadingId(`${id}-download`);
+    try {
+      await downloadDocumentPdf('quotation', id, activeBusiness);
+      toast('PDF downloaded', 'success');
+    } catch (err: any) {
+      toast(err.message || 'Failed to download PDF', 'error');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -129,99 +146,6 @@ export function QuotationsPage() {
     if (!opened) toast('Could not open WhatsApp — allow popups and try again', 'error');
   };
 
-  // Native Print Preview Trigger
-  const handleDirectPrint = async (q: QuoteRow) => {
-    if (!activeBusiness) return;
-    setPrintingId(q.id);
-    try {
-      const { data: items, error } = await supabase
-        .from('quotation_items')
-        .select('*')
-        .eq('quotation_id', q.id)
-        .order('created_at');
-      if (error) throw error;
-
-      const payload: PrintableDocData = {
-        docTitle: 'QUOTATION',
-        docNumber: q.quotation_number,
-        dateLabel: 'Quote Date',
-        dateValue: formatDate(q.quote_date),
-        time: formatTimeOfDay(q.created_at),
-        expiryLabel: 'Valid Until',
-        expiryValue: q.expiry_date,
-        partyLabel: 'Customer',
-        partyName: q.customer?.name || '—',
-        status: q.status,
-        items: (items || []) as QuotationItem[],
-        subtotal: Number(q.subtotal),
-        taxableAmount: Number(q.taxable_amount),
-        cgst: Number(q.cgst_amount),
-        sgst: Number(q.sgst_amount),
-        igst: Number(q.igst_amount),
-        roundOff: Number(q.round_off) || 0,
-        grandTotal: Number(q.grand_total),
-        notes: q.notes,
-        terms: q.terms,
-      };
-
-      await renderDocSheetToPdf(activeBusiness, payload);
-    } catch (err: any) {
-      toast(err?.message || 'Print preview failed', 'error');
-    } finally {
-      setPrintingId(null);
-    }
-  };
-
-  // Handle PDF Download
-  const handleDownloadPdf = async (q: QuoteRow) => {
-    if (!activeBusiness) return;
-    setDownloadingId(q.id);
-    try {
-      const { data: items, error } = await supabase
-        .from('quotation_items')
-        .select('*')
-        .eq('quotation_id', q.id)
-        .order('created_at');
-      if (error) throw error;
-
-      const payload: PrintableDocData = {
-        docTitle: 'QUOTATION',
-        docNumber: q.quotation_number,
-        dateLabel: 'Quote Date',
-        dateValue: formatDate(q.quote_date),
-        time: formatTimeOfDay(q.created_at),
-        expiryLabel: 'Valid Until',
-        expiryValue: q.expiry_date,
-        partyLabel: 'Customer',
-        partyName: q.customer?.name || '—',
-        status: q.status,
-        items: (items || []) as QuotationItem[],
-        subtotal: Number(q.subtotal),
-        taxableAmount: Number(q.taxable_amount),
-        cgst: Number(q.cgst_amount),
-        sgst: Number(q.sgst_amount),
-        igst: Number(q.igst_amount),
-        roundOff: Number(q.round_off) || 0,
-        grandTotal: Number(q.grand_total),
-        notes: q.notes,
-        terms: q.terms,
-      };
-
-      const blob = await renderDocSheetToPdfBlob(activeBusiness, payload);
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `${q.quotation_number}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-    } catch (err: any) {
-      toast(err?.message || 'Failed to download PDF', 'error');
-    } finally {
-      setDownloadingId(null);
-    }
-  };
 
 
   const { data: rawData, isLoading, isError, refetch } = useQuery({
@@ -521,12 +445,9 @@ export function QuotationsPage() {
                 {pagedQuotes.map((q) => (
                   <tr key={q.id} className="border-b border-secondary-100 dark:border-secondary-800/50 table-row-hover">
                     <td className="px-4 py-3 font-medium text-secondary-900 dark:text-secondary-100">
-                      <button
-                        onClick={() => navigate(`/app/quotations/${q.id}`)}
-                        className="hover:text-primary-600 hover:underline font-semibold text-left"
-                      >
+                      <span className="font-medium text-secondary-900 dark:text-secondary-100">
                         {q.quotation_number}
-                      </button>
+                      </span>
                     </td>
                     <td className="px-4 py-3 hidden sm:table-cell text-secondary-500">
                       <div className="font-medium text-secondary-900 dark:text-secondary-100">
@@ -573,27 +494,35 @@ export function QuotationsPage() {
                           </button>
                         )}
 
-                        {/* Direct Native Print Preview */}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          loading={printingId === q.id}
-                          onClick={() => handleDirectPrint(q)}
-                          title="Print / Save PDF Preview"
+                        <button
+                          onClick={() => handlePrint(q.id)}
+                          disabled={!!actionLoadingId}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group"
+                          title="Print Quotation"
+                          aria-label="Print Quotation"
                         >
-                          <Printer className="h-3 w-3" /> Print
-                        </Button>
+                          {actionLoadingId === `${q.id}-print` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                          ) : (
+                            <Printer className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />
+                          )}
+                          <span>Print</span>
+                        </button>
 
-                        {/* Download PDF Button */}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          loading={downloadingId === q.id}
-                          onClick={() => handleDownloadPdf(q)}
+                        <button
+                          onClick={() => handleDownload(q.id)}
+                          disabled={!!actionLoadingId}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group"
                           title="Download PDF"
+                          aria-label="Download PDF"
                         >
-                          <Download className="h-3 w-3" /> PDF
-                        </Button>
+                          {actionLoadingId === `${q.id}-download` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />
+                          )}
+                          <span>PDF</span>
+                        </button>
 
                         {LOCKED[q.status] && (
                           <span className="inline-flex items-center gap-1 text-xs text-secondary-500 dark:text-secondary-400">

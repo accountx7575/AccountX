@@ -1,516 +1,731 @@
 import React from 'react';
-import { Building2, CreditCard, ShieldCheck, Printer, Download } from 'lucide-react';
-import { amountInWordsIndian, formatDate, formatCurrency, formatAddress2Line } from '@/lib/utils';
-import { cleanMedia, cleanText } from '@/lib/nullable';
-import { resolveTermsLines } from '@/lib/tncDefaults';
-
-/** Bare INR cell value for doc tables/totals: '1,80,000' (no symbol, '.00' trimmed). */
-const cellINR = (v: number | null | undefined): string => formatCurrency(v, '', { trimZeroDecimals: true });
+import {
+  Building2,
+  ShieldCheck,
+  CheckCircle2,
+  Landmark,
+} from 'lucide-react';
 
 export type DocumentType =
   | 'TAX_INVOICE'
-  | 'QUOTATION'
   | 'SALES_ORDER'
+  | 'QUOTATION'
   | 'PURCHASE_ORDER'
-  | 'PURCHASE_BILL';
+  | 'PURCHASE_BILL'
+  | 'ESTIMATE'
+  | 'PROFORMA'
+  | 'DEMO'
+  | string;
 
-export interface PartyDetails {
-  name: string;
-  companyName?: string;
+export interface UniversalItem {
+  id?: string;
+  name?: string;
+  product_name?: string;
+  description?: string;
+  hsn_sac?: string | null;
+  hsn_code?: string;
+  hsnSac?: string | null;
+  quantity: number;
+  unit?: string;
+  rate?: number;
+  unit_price?: number;
+  denomination?: number;
+  tax_rate?: number;
+  taxRate?: number;
+  tax?: number;
+  taxable_amount?: number;
+  total_amount?: number;
+  totalPrice?: number;
+  total?: number;
+  code?: string;
+  recipientEmail?: string;
+  [key: string]: any;
+}
+
+export interface UniversalBankDetails {
+  bankName?: string;
+  accountNumber?: string;
+  accountHolderName?: string;
+  ifsc?: string;
+  upiId?: string;
+  [key: string]: any;
+}
+
+export interface UniversalPartyInfo {
+  name?: string;
+  legalName?: string;
+  legal_name?: string;
+  tradeName?: string;
+  trade_name?: string;
+  brandTradeName?: string;
   address?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  billingAddress?: string;
   city?: string;
+  billingCity?: string;
   state?: string;
+  billingState?: string;
   pincode?: string;
+  billingPincode?: string;
   gstin?: string;
   pan?: string;
   cin?: string;
   email?: string;
   phone?: string;
+  website?: string;
   logoUrl?: string;
+  logo_url?: string;
+  signatureUrl?: string | null;
+  signature_url?: string | null;
+  signatureName?: string | null;
+  signature_name?: string | null;
+  stampUrl?: string | null;
+  stamp_url?: string | null;
+  invoice_footer_text?: string | null;
+  bankName?: string;
+  bank_name?: string;
+  accountNumber?: string;
+  bank_account_no?: string;
+  bank_account_number?: string;
+  account_number?: string;
+  accountHolderName?: string;
+  account_holder_name?: string;
+  account_name?: string;
+  ifsc?: string;
+  bank_ifsc?: string;
+  bank_ifsc_code?: string;
+  ifsc_code?: string;
+  upiId?: string;
+  upi_id?: string;
+  bankDetails?: UniversalBankDetails;
+  invoiceFooterText?: string | null;
+  companyName?: string;
+  customerType?: 'B2B' | 'B2C';
+  userId?: string;
+  [key: string]: any;
 }
 
-export interface DocumentLineItem {
-  id?: string;
-  name: string;
-  hsnSac?: string;
-  quantity: number;
-  rate: number;
-  discount?: number;
-  taxRate?: number;
-  taxAmount?: number;
-  total: number;
-  unit?: string;
-}
+// Backward compatibility alias for legacy tests
+export type PartyDetails = UniversalPartyInfo;
+export type DocumentLineItem = UniversalItem;
 
 export interface UniversalDocumentData {
   documentType: DocumentType;
   documentNumber: string;
+  invoiceNumber?: string;
   date: string;
-  dueDate?: string;
-  status?: string;
+  completedAt?: string;
+  time?: string;
+  dueDate?: string | null;
+  expiryDate?: string | null;
+  expectedDeliveryDate?: string | null;
+  expected_delivery_date?: string | null;
   placeOfSupply?: string;
-  supplyType?: string; // e.g. "Intra-State (CGST + SGST)" or "Inter-State (IGST)"
-  reverseCharge?: 'Yes' | 'No';
-  orderRef?: string;
+  supplyType?: string;
+  reverseCharge?: string | boolean;
+  status?: string;
+  orderId?: string;
+  orderNumber?: string;
+  paymentMethod?: string;
   paymentMode?: string;
   paymentStatus?: string;
-  seller: PartyDetails;
-  buyer: PartyDetails;
-  items: DocumentLineItem[];
+  paymentRef?: string;
+  notes?: string | null;
+  taxNote?: string | null;
+  terms?: string | string[] | null;
+  demoHeader?: 'estimate' | 'demo' | 'clean' | null;
+  isPurchaseBill?: boolean;
+  bankDetails?: UniversalBankDetails;
+  invoiceFooterText?: string | null;
+  invoice_footer_text?: string | null;
+
+  company?: UniversalPartyInfo;
+  seller?: UniversalPartyInfo;
+  customer: UniversalPartyInfo;
+
+  items: UniversalItem[];
   subtotal: number;
+  tax?: number;
+  taxableAmount?: number;
+  taxAmount?: number;
   cgstAmount?: number;
   sgstAmount?: number;
   igstAmount?: number;
+  cgst?: number;
+  sgst?: number;
+  igst?: number;
+  cgstRate?: number;
+  sgstRate?: number;
+  igstRate?: number;
+  isIntraState?: boolean;
   discount?: number;
   roundOff?: number;
-  grandTotal: number;
-  amountInWords?: string;
-  taxNote?: string;
-  /** Demo sandbox: 'estimate' | 'demo' | 'clean' — see UniversalDocumentTemplate. */
-  demoHeader?: 'estimate' | 'demo' | 'clean';
-  terms?: string[];
-  bankDetails?: {
-    bankName?: string;
-    accountName?: string;
-    accountNumber?: string;
-    ifsc?: string;
-  };
-  notes?: string;
+  totalAmount: number;
+  grandTotal?: number;
+
+  [key: string]: any;
 }
 
-export const getDocumentTitles = (type: DocumentType) => {
-  switch (type) {
-    case 'QUOTATION':
-      return { header: 'QUOTATION / ESTIMATE', sub: 'Commercial Quotation' };
-    case 'SALES_ORDER':
-      return { header: 'SALES ORDER', sub: 'Original Order Confirmation' };
-    case 'PURCHASE_ORDER':
-      return { header: 'PURCHASE ORDER', sub: 'Vendor Purchase Requisition' };
-    case 'PURCHASE_BILL':
-      return { header: 'PURCHASE BILL / INWARD', sub: 'Tax Inward Receipt' };
-    case 'TAX_INVOICE':
-    default:
-      return { header: 'TAX INVOICE / RECEIPT', sub: 'Original for Recipient' };
-  }
-};
-
-/**
- * Isolated iframe printing helper ensuring clean 1-page A4 output
- * with background colors preserved and without browser chrome or page clipping.
- */
-export function printElementInIframe(
-  target: string | HTMLElement,
-  title: string = 'Document'
-): void {
-  const element =
-    typeof target === 'string' ? document.getElementById(target) : target;
-  if (!element) {
-    window.print();
-    return;
-  }
-
-  // Remove existing print iframe if any
-  const oldIframe = document.getElementById('accountx-isolated-print-iframe');
-  if (oldIframe) {
-    oldIframe.remove();
-  }
-
-  const iframe = document.createElement('iframe');
-  iframe.id = 'accountx-isolated-print-iframe';
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  iframe.setAttribute('aria-hidden', 'true');
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentWindow?.document;
-  if (!doc) {
-    window.print();
-    return;
-  }
-
-  // Copy current stylesheets so Tailwind styling and fonts load in iframe
-  const styles = Array.from(
-    document.querySelectorAll('link[rel="stylesheet"], style')
-  )
-    .map((el) => el.outerHTML)
-    .join('\n');
-
-  doc.open();
-  doc.write(`
-    <!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <meta charset="utf-8" />
-        <title>${title}</title>
-        ${styles}
-        <style>
-          @page {
-            size: A4 portrait;
-            margin: 8mm;
-          }
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-            box-sizing: border-box;
-          }
-          html, body {
-            margin: 0;
-            padding: 0;
-            background: #ffffff !important;
-            color: #1e293b;
-            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-          }
-          #print-root {
-            width: 100%;
-            max-width: 194mm;
-            margin: 0 auto;
-          }
-        </style>
-      </head>
-      <body>
-        <div id="print-root">
-          ${element.outerHTML}
-        </div>
-      </body>
-    </html>
-  `);
-  doc.close();
-
-  setTimeout(() => {
-    iframe.contentWindow?.focus();
-    try {
-      iframe.contentWindow?.print();
-    } catch {
-      window.print();
-    }
-    setTimeout(() => {
-      if (document.body.contains(iframe)) {
-        iframe.remove();
-      }
-    }, 2500);
-  }, 400);
-}
-
-/**
- * UniversalDocumentTemplate:
- * Standardized GyftKart-inspired GST-compliant printable & preview document.
- */
-export const UniversalDocumentTemplate: React.FC<{
+export interface UniversalDocumentTemplateProps {
   data: UniversalDocumentData;
   className?: string;
   id?: string;
-}> = ({ data, className = '', id = 'universal-printable-area' }) => {
-  const stdTitles = getDocumentTitles(data.documentType);
-  // Demo/Proforma sandbox header override (PBS-112):
-  // 'estimate' → ESTIMATE / PROFORMA INVOICE · 'demo' → DEMO <doc kind> ·
-  // 'clean' (or unset) → byte-identical standard real-doc layout.
-  const demoMode = data.demoHeader === 'estimate' || data.demoHeader === 'demo' ? data.demoHeader : null;
-  const titles =
-    demoMode === 'estimate'
-      ? { header: 'ESTIMATE / PROFORMA INVOICE', sub: 'Not A Tax Invoice — Subject To Availability' }
-      : demoMode === 'demo'
-        ? { header: `DEMO ${stdTitles.header.split(' / ')[0]}`, sub: 'Not For Statutory Use' }
-        : stdTitles;
-  const isPurchase =
-    data.documentType === 'PURCHASE_BILL' ||
-    data.documentType === 'PURCHASE_ORDER';
+}
 
-  const sellerName = data.seller.companyName || data.seller.name || 'Company';
-  const buyerName = data.buyer.companyName || data.buyer.name || 'Party';
+export const inrDecimal = (val: number = 0): string => {
+  return new Intl.NumberFormat('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(val || 0));
+};
 
-  const sellerAddress = formatAddress2Line(data.seller);
+export function numberToWordsINR(num: number): string {
+  const a = [
+    '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
+    'Seventeen', 'Eighteen', 'Nineteen',
+  ];
+  const b = [
+    '', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety',
+  ];
 
-  const buyerAddress = formatAddress2Line(data.buyer);
+  const inWords = (n: number): string => {
+    let str = '';
+    if (n > 99) {
+      str += `${a[Math.floor(n / 100)]} Hundred `;
+      n %= 100;
+    }
+    if (n > 19) {
+      str += `${b[Math.floor(n / 10)]}${n % 10 ? ` ${a[n % 10]}` : ''} `;
+    } else if (n > 0) {
+      str += `${a[n]} `;
+    }
+    return str;
+  };
 
-  const amountWords =
-    data.amountInWords || amountInWordsIndian(Number(data.grandTotal || 0));
+  const rounded = Math.round(Number(num || 0));
+  if (rounded === 0) return 'Zero Rupees Only';
+
+  const crore = Math.floor(rounded / 10000000);
+  const lakh = Math.floor((rounded % 10000000) / 100000);
+  const thousand = Math.floor((rounded % 100000) / 1000);
+  const hundred = rounded % 1000;
+
+  let out = '';
+  if (crore) out += `${inWords(crore)}Crore `;
+  if (lakh) out += `${inWords(lakh)}Lakh `;
+  if (thousand) out += `${inWords(thousand)}Thousand `;
+  if (hundred) out += inWords(hundred);
+
+  return `${out.trim()} Rupees Only`;
+}
+
+const formatDocDateTime = (dateVal?: string | null) => {
+  if (!dateVal) return '—';
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return dateVal;
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  let hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12 || 12;
+  const formattedHours = String(hours).padStart(2, '0');
+  return `${day}/${month}/${year}, ${formattedHours}:${minutes} ${ampm}`;
+};
+
+const formatDocDate = (dateVal?: string | null) => {
+  if (!dateVal) return '—';
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateVal);
+  if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return dateVal;
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}/${d.getFullYear()}`;
+};
+
+export const GST_STATE_CODE_MAP: Record<string, { code: string; name: string }> = {
+  '01': { code: '01', name: 'Jammu and Kashmir' },
+  '02': { code: '02', name: 'Himachal Pradesh' },
+  '03': { code: '03', name: 'Punjab' },
+  '04': { code: '04', name: 'Chandigarh' },
+  '05': { code: '05', name: 'Uttarakhand' },
+  '06': { code: '06', name: 'Haryana' },
+  '07': { code: '07', name: 'Delhi' },
+  '08': { code: '08', name: 'Rajasthan' },
+  '09': { code: '09', name: 'Uttar Pradesh' },
+  '10': { code: '10', name: 'Bihar' },
+  '11': { code: '11', name: 'Sikkim' },
+  '12': { code: '12', name: 'Arunachal Pradesh' },
+  '13': { code: '13', name: 'Nagaland' },
+  '14': { code: '14', name: 'Manipur' },
+  '15': { code: '15', name: 'Mizoram' },
+  '16': { code: '16', name: 'Tripura' },
+  '17': { code: '17', name: 'Meghalaya' },
+  '18': { code: '18', name: 'Assam' },
+  '19': { code: '19', name: 'West Bengal' },
+  '20': { code: '20', name: 'Jharkhand' },
+  '21': { code: '21', name: 'Odisha' },
+  '22': { code: '22', name: 'Chhattisgarh' },
+  '23': { code: '23', name: 'Madhya Pradesh' },
+  '24': { code: '24', name: 'Gujarat' },
+  '26': { code: '26', name: 'Dadra and Nagar Haveli and Daman and Diu' },
+  '27': { code: '27', name: 'Maharashtra' },
+  '29': { code: '29', name: 'Karnataka' },
+  '30': { code: '30', name: 'Goa' },
+  '31': { code: '31', name: 'Lakshadweep' },
+  '32': { code: '32', name: 'Kerala' },
+  '33': { code: '33', name: 'Tamil Nadu' },
+  '34': { code: '34', name: 'Puducherry' },
+  '35': { code: '35', name: 'Andaman and Nicobar Islands' },
+  '36': { code: '36', name: 'Telangana' },
+  '37': { code: '37', name: 'Andhra Pradesh' },
+  '38': { code: '38', name: 'Ladakh' },
+  '97': { code: '97', name: 'Other Territory' },
+};
+
+export const GST_STATE_NAME_TO_CODE: Record<string, string> = {
+  'jammu and kashmir': '01',
+  'jammu & kashmir': '01',
+  'j&k': '01',
+  'himachal pradesh': '02',
+  'punjab': '03',
+  'chandigarh': '04',
+  'uttarakhand': '05',
+  'uttaranchal': '05',
+  'haryana': '06',
+  'delhi': '07',
+  'rajasthan': '08',
+  'uttar pradesh': '09',
+  'up': '09',
+  'bihar': '10',
+  'sikkim': '11',
+  'arunachal pradesh': '12',
+  'nagaland': '13',
+  'manipur': '14',
+  'mizoram': '15',
+  'tripura': '16',
+  'meghalaya': '17',
+  'assam': '18',
+  'west bengal': '19',
+  'wb': '19',
+  'jharkhand': '20',
+  'odisha': '21',
+  'orissa': '21',
+  'chhattisgarh': '22',
+  'madhya pradesh': '23',
+  'mp': '23',
+  'gujarat': '24',
+  'daman and diu': '26',
+  'dadra and nagar haveli': '26',
+  'dadra and nagar haveli and daman and diu': '26',
+  'maharashtra': '27',
+  'andhra pradesh': '37',
+  'karnataka': '29',
+  'goa': '30',
+  'lakshadweep': '31',
+  'kerala': '32',
+  'tamil nadu': '33',
+  'puducherry': '34',
+  'pondicherry': '34',
+  'andaman and nicobar islands': '35',
+  'andaman & nicobar': '35',
+  'telangana': '36',
+  'ladakh': '38',
+  'other territory': '97',
+};
+
+export function formatPlaceOfSupply(
+  rawPos?: string | null,
+  fallbackState?: string | null,
+  gstin?: string | null
+): string {
+  const candidate = String(rawPos || fallbackState || '').trim();
+  if (!candidate) return 'Uttar Pradesh (09)';
+
+  // If candidate is a 2-digit number like "09" or "27"
+  if (/^[0-9]{2}$/.test(candidate)) {
+    const entry = GST_STATE_CODE_MAP[candidate];
+    if (entry) return `${entry.name} (${entry.code})`;
+    return candidate;
+  }
+
+  // If already formatted with code in parentheses like "Uttar Pradesh (09)"
+  const parenMatch = candidate.match(/^(.+?)\s*\(([0-9]{2})\)$/);
+  if (parenMatch) {
+    const namePart = parenMatch[1].trim();
+    const codePart = parenMatch[2];
+    return `${namePart} (${codePart})`;
+  }
+
+  // If formatted as "09 - Uttar Pradesh"
+  const prefixMatch = candidate.match(/^([0-9]{2})\s*[-–]\s*(.+)$/);
+  if (prefixMatch) {
+    const codePart = prefixMatch[1];
+    const namePart = prefixMatch[2].trim();
+    return `${namePart} (${codePart})`;
+  }
+
+  // Lookup in name map
+  const cleanKey = candidate.toLowerCase().replace(/[^a-z0-9&]/g, ' ').replace(/\s+/g, ' ').trim();
+  const foundCode = GST_STATE_NAME_TO_CODE[cleanKey];
+  if (foundCode) {
+    const canonicalName = GST_STATE_CODE_MAP[foundCode]?.name || candidate;
+    return `${canonicalName} (${foundCode})`;
+  }
+
+  // Fallback: check if GSTIN starts with a 2-digit state code
+  if (gstin && /^[0-9]{2}/.test(gstin.trim())) {
+    const gCode = gstin.trim().slice(0, 2);
+    return `${candidate} (${gCode})`;
+  }
+
+  return candidate;
+}
+
+export function getDocumentTitles(
+  _docType: string,
+  _demoHeader?: 'estimate' | 'demo' | 'clean' | null
+): { header: string; title: string; subtitle: string } {
+  const type = String(_docType || '').toUpperCase().trim();
+  let title = 'TAX INVOICE / RECEIPT';
+  if (['QUOTATION', 'ESTIMATE', 'PROFORMA'].includes(type)) {
+    title = type === 'ESTIMATE' ? 'ESTIMATE' : type === 'PROFORMA' ? 'PROFORMA INVOICE' : 'QUOTATION';
+  } else if (type === 'SALES_ORDER') {
+    title = 'SALES ORDER';
+  } else if (type === 'PURCHASE_ORDER') {
+    title = 'PURCHASE ORDER';
+  } else if (type === 'PURCHASE_BILL') {
+    title = 'PURCHASE BILL';
+  } else if (type === 'DELIVERY_CHALLAN') {
+    title = 'DELIVERY CHALLAN';
+  } else if (type === 'CREDIT_NOTE') {
+    title = 'CREDIT NOTE';
+  } else if (type === 'DEBIT_NOTE') {
+    title = 'DEBIT NOTE';
+  }
+  return {
+    header: title,
+    title,
+    subtitle: 'Original for Recipient',
+  };
+}
+
+export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps> = ({
+  data,
+  className = '',
+  id = 'invoice-printable-area',
+}) => {
+  const statusStr = (data.status || data.paymentStatus || 'PAID').toUpperCase();
+  const isPaid =
+    statusStr === 'SUCCESS' ||
+    statusStr === 'CONFIRMED' ||
+    statusStr === 'DELIVERED' ||
+    statusStr === 'PAID';
+
+  const customer = data.customer || {};
+  const company = data.company || data.seller || {};
+
+  const isB2B =
+    customer.customerType === 'B2B' ||
+    Boolean(customer.gstin || customer.companyName);
+
+  const companyName = company.legalName || company.legal_name || company.name || 'GyftKart';
+  const tradeName = String(company.tradeName || company.trade_name || '').trim();
+  const showTradeSubtitle =
+    tradeName.length > 0 && tradeName.toLowerCase() !== String(companyName).trim().toLowerCase();
+  const signatureUrl = company.signatureUrl || company.signature_url || company.stampUrl || company.stamp_url || null;
+  const signatureName = company.signatureName || company.signature_name || 'Authorized Signatory';
+  const bankDetails = data.bankDetails || company.bankDetails || {};
+  const bankName =
+    bankDetails.bankName ||
+    company.bankName ||
+    company.bank_name ||
+    '';
+  const accountHolder =
+    bankDetails.accountHolderName ||
+    company.accountHolderName ||
+    company.account_holder_name ||
+    company.account_name ||
+    '';
+  const effectiveAccountHolder =
+    accountHolder ||
+    company.legalName ||
+    company.legal_name ||
+    company.name ||
+    '';
+  const accountNo =
+    bankDetails.accountNumber ||
+    company.accountNumber ||
+    company.bank_account_no ||
+    company.bank_account_number ||
+    company.account_number ||
+    '';
+  const ifsc =
+    bankDetails.ifsc ||
+    company.ifsc ||
+    company.bank_ifsc ||
+    company.bank_ifsc_code ||
+    company.ifsc_code ||
+    '';
+  const upiId =
+    bankDetails.upiId ||
+    company.upiId ||
+    company.upi_id ||
+    '';
+  const hasBankDetails = Boolean(bankName || accountNo || ifsc || upiId || accountHolder);
+  const termsText = typeof data.terms === 'string'
+    ? data.terms
+    : Array.isArray(data.terms)
+      ? data.terms.join('\n')
+      : ((company as any).terms || '');
+  const footerText =
+    data.invoiceFooterText ||
+    data.invoice_footer_text ||
+    company.invoiceFooterText ||
+    company.invoice_footer_text ||
+    null;
+  const custAddress = customer.address || customer.billingAddress || customer.addressLine1 || '';
+  const custCity = customer.city || customer.billingCity || '';
+  const custState = customer.state || customer.billingState || '';
+  const custPin = customer.pincode || customer.pin_code || customer.billingPincode || '';
+
+  const docNumber = data.invoiceNumber || data.documentNumber || data.orderNumber || 'INV-MANUAL-CR-WIPMIW';
+  const posLabel = formatPlaceOfSupply(
+    data.placeOfSupply || customer.state || (customer as any).billingState || company.state,
+    customer.state || (customer as any).billingState || company.state,
+    customer.gstin || company.gstin
+  );
+
+  const docTypeKey = String(data.documentType || '').toUpperCase().trim();
+  const isQuotationDoc = ['QUOTATION', 'ESTIMATE', 'PROFORMA'].includes(docTypeKey);
+  const isSalesOrderDoc = docTypeKey === 'SALES_ORDER';
+  const isTaxInvoiceDoc = docTypeKey === 'TAX_INVOICE' || docTypeKey === 'INVOICE' || !docTypeKey;
+
+  const docTitle = isQuotationDoc
+    ? (docTypeKey === 'ESTIMATE' ? 'ESTIMATE' : docTypeKey === 'PROFORMA' ? 'PROFORMA INVOICE' : 'QUOTATION')
+    : isSalesOrderDoc
+      ? 'SALES ORDER'
+      : docTypeKey === 'PURCHASE_ORDER'
+        ? 'PURCHASE ORDER'
+        : docTypeKey === 'PURCHASE_BILL'
+          ? 'PURCHASE BILL'
+          : docTypeKey === 'DELIVERY_CHALLAN'
+            ? 'DELIVERY CHALLAN'
+            : docTypeKey === 'CREDIT_NOTE'
+              ? 'CREDIT NOTE'
+              : docTypeKey === 'DEBIT_NOTE'
+                ? 'DEBIT NOTE'
+                : 'TAX INVOICE / RECEIPT';
+
+  const badgeSubtitle = !isTaxInvoiceDoc
+    ? 'Original for Recipient'
+    : isB2B
+      ? 'Original for Recipient (B2B Tax Invoice)'
+      : 'Original for Recipient (B2C)';
+  const dueDateLabel = isQuotationDoc ? 'Valid Until' : isSalesOrderDoc ? 'Expected Delivery' : 'Due Date';
+  const dueDateSource = isQuotationDoc
+    ? data.expiryDate || data.dueDate
+    : isSalesOrderDoc
+      ? data.expectedDeliveryDate || data.expected_delivery_date || data.dueDate
+      : data.dueDate;
+  const formattedDueDate = formatDocDate(dueDateSource);
+  
+  const subtotal = Number(data.subtotal || 0);
+  const totalTax = Number(data.tax ?? data.taxAmount ?? ((data.cgst || 0) + (data.sgst || 0) + (data.igst || 0)));
+  const totalAmount = Number(data.totalAmount ?? data.grandTotal ?? (subtotal + totalTax));
+
+  const effectiveTaxRate =
+    totalTax > 0 && subtotal > 0
+      ? Number(((totalTax / subtotal) * 100).toFixed(2))
+      : 0;
+
+  const isIntraState = data.isIntraState !== undefined ? data.isIntraState : (data.igst ?? 0) === 0;
+  const halfTaxRate = effectiveTaxRate / 2;
+  const cgstAmount = isIntraState ? (data.cgstAmount ?? (totalTax / 2)) : 0;
+  const sgstAmount = isIntraState ? (data.sgstAmount ?? (totalTax / 2)) : 0;
+  const igstAmount = !isIntraState ? (data.igstAmount ?? totalTax) : 0;
 
   return (
     <div
       id={id}
-      className={`relative bg-white p-6 sm:p-10 text-slate-800 text-xs leading-relaxed font-sans shadow-sm border border-slate-200/90 rounded-2xl ${className}`}
-      style={{ minHeight: '297mm', boxSizing: 'border-box' }}
+      className={`order-invoice-printable bg-white p-6 sm:p-10 text-slate-800 text-xs leading-relaxed font-sans ${className}`}
     >
-      {demoMode && (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden rounded-2xl"
-        >
-          <span
-            className={`select-none text-[88px] font-black uppercase tracking-[0.35em] ${
-              demoMode === 'estimate' ? 'text-rose-500/10' : 'text-amber-500/15'
-            }`}
-            style={{ transform: 'rotate(-28deg)' }}
-          >
-            {demoMode === 'estimate' ? 'ESTIMATE' : 'DEMO'}
-          </span>
-        </div>
-      )}
       {/* 1. Header Section */}
-      <div className="flex flex-col sm:flex-row justify-between items-start gap-6 border-b-2 border-slate-900 pb-6">
-        <div>
-          <div className="flex items-center gap-3">
-            {data.seller.logoUrl && (
-              <img
-                src={data.seller.logoUrl}
-                alt={sellerName}
-                className="h-10 w-auto max-w-[140px] object-contain rounded-md"
-              />
-            )}
-            <span className="text-2xl font-black tracking-tight text-slate-900">
-              {sellerName}
+      <div className="grid grid-cols-1 items-start gap-x-6 gap-y-6 border-b-2 border-slate-900 pb-6 sm:grid-cols-[1fr_auto] sm:gap-y-[6px]">
+        <div className="order-1 sm:col-start-1 sm:row-start-1">
+          <div className="flex items-center gap-2">
+            <span className="grid place-items-center h-8 w-8 rounded-xl bg-emerald-600 text-white font-black text-sm uppercase">
+              {companyName.charAt(0)}
+            </span>
+            <span className="font-display text-2xl font-black tracking-tight text-emerald-900">
+              {companyName}
             </span>
           </div>
-
-          {data.seller.companyName && data.seller.companyName !== data.seller.name && (
-            <p className="mt-1 text-[13px] font-extrabold text-slate-900">
-              {data.seller.companyName}
-            </p>
-          )}
-
-          {sellerAddress && (
-            <p className="mt-1 text-[11px] text-slate-600 max-w-sm whitespace-pre-line leading-snug">
-              {sellerAddress}
-            </p>
-          )}
-
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500 font-medium">
-            {data.seller.gstin && (
-              <span>
-                <strong className="text-slate-700">GSTIN:</strong>{' '}
-                <span className="font-mono font-bold text-slate-800">{data.seller.gstin}</span>
-              </span>
-            )}
-            {data.seller.pan && (
-              <span>
-                <strong className="text-slate-700">PAN:</strong>{' '}
-                <span className="font-mono">{data.seller.pan}</span>
-              </span>
-            )}
-            {data.seller.cin && (
-              <span>
-                <strong className="text-slate-700">CIN:</strong>{' '}
-                <span className="font-mono">{data.seller.cin}</span>
-              </span>
-            )}
-          </div>
-
-          {(data.seller.email || data.seller.phone) && (
-            <p className="mt-1 text-[10px] text-slate-500">
-              {data.seller.email && (
-                <>
-                  Support:{' '}
-                  <span className="font-medium text-slate-700">{data.seller.email}</span>
-                </>
-              )}
-              {data.seller.email && data.seller.phone && ' | '}
-              {data.seller.phone && (
-                <>
-                  Phone:{' '}
-                  <span className="font-medium text-slate-700">{data.seller.phone}</span>
-                </>
-              )}
-            </p>
+          {showTradeSubtitle && (
+            <p className="mt-1 text-[13px] font-extrabold text-slate-900">{tradeName}</p>
           )}
         </div>
 
-        {/* Document Meta Heading */}
-        <div className="text-left sm:text-right shrink-0">
-          <div className={`inline-block rounded-lg px-3.5 py-1.5 text-center shadow-xs ${demoMode === 'estimate' ? 'bg-rose-50 border border-rose-200' : demoMode === 'demo' ? 'bg-amber-50 border border-amber-200' : 'bg-slate-100 border border-slate-300'}`}>
-            <span
-              className={`text-[11px] font-black uppercase tracking-wider ${
-                demoMode === 'estimate' ? 'text-rose-700' : demoMode === 'demo' ? 'text-amber-700' : 'text-slate-900'
-              }`}
-            >
-              {titles.header}
+        <div className="order-2 space-y-1 leading-5 sm:col-start-1 sm:row-start-2">
+          <p className="text-[11px] text-slate-600 max-w-md truncate">
+            {company.addressLine1 || company.address || company.registeredAddress || company.registered_address || 'AN-25, LAUTA BAGH, AZADNAGAR, NAWABGANJ'}
+          </p>
+          <p className="text-[11px] text-slate-600 max-w-md">
+            {[company.city || 'Barabanki', company.state || 'Uttar Pradesh'].filter(Boolean).join(', ')}
+            {company.pincode ? ` - ${company.pincode}` : (company.pinCode ? ` - ${company.pinCode}` : (company.pin_code ? ` - ${company.pin_code}` : ' - 225001'))}
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-600 font-medium">
+            <span>
+              <strong className="text-slate-700">GSTIN:</strong> {company.gstin || '09AAHCT1158J1Z2'}
             </span>
-            <p className={`text-[9px] font-bold tracking-wide ${demoMode === 'estimate' ? 'text-rose-600' : demoMode === 'demo' ? 'text-amber-600' : 'text-violet-700'}`}>
-              {titles.sub}
-            </p>
-          </div>
-
-          <div className="mt-3 space-y-1 font-mono text-[11px]">
-            <p>
-              <span className="text-slate-500 font-sans">Number:</span>{' '}
-              <strong className="text-slate-900 text-xs font-mono font-bold">
-                {data.documentNumber}
-              </strong>
-            </p>
-            <p>
-              <span className="text-slate-500 font-sans">Date:</span>{' '}
-              <span className="text-slate-900 font-semibold">{data.date}</span>
-            </p>
-            {data.dueDate && (
-              <p>
-                <span className="text-slate-500 font-sans">Due Date:</span>{' '}
-                <span className="text-slate-900 font-semibold">{data.dueDate}</span>
-              </p>
+            <span>
+              <strong className="text-slate-700">PAN:</strong> {company.pan || 'AAHCT1158'}
+            </span>
+            {Boolean(company?.cin && String(company.cin).trim()) && (
+              <span>
+                <strong className="text-slate-700">CIN:</strong> {String(company.cin).trim()}
+              </span>
             )}
-            <p>
-              <span className="text-slate-500 font-sans">Place of Supply:</span>{' '}
-              <span className="text-slate-900 font-semibold">
-                {data.placeOfSupply || 'Uttar Pradesh (09)'}
-              </span>
-            </p>
-            <p>
-              <span className="text-slate-500 font-sans">Supply Type:</span>{' '}
-              <span className="text-slate-900 font-semibold">
-                {data.supplyType ||
-                  (data.igstAmount && Number(data.igstAmount) > 0
-                    ? 'Inter-State (IGST)'
-                    : 'Intra-State (CGST + SGST)')}
-              </span>
+          </div>
+          <p className="text-[11px] text-slate-600">
+            Support: <span className="font-medium text-slate-700">{company.email || 'support@gyftkart.in'}</span>
+            {Boolean(company?.website && String(company.website).trim()) && (
+              <>
+                <span className="text-slate-400"> | </span>
+                Web: <span className="font-medium text-slate-700">{String(company.website).trim()}</span>
+              </>
+            )}
+          </p>
+        </div>
+
+        {/* Invoice Meta Heading */}
+        <div className="order-3 text-left sm:col-start-2 sm:row-start-1 sm:text-right">
+          <div className="inline-block rounded-md border border-emerald-200 bg-emerald-50/50 px-3 py-1 text-center">
+            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800">
+              {docTitle}
+            </span>
+            <p className="text-[9px] font-semibold text-emerald-600">
+              {badgeSubtitle}
             </p>
           </div>
+        </div>
+
+        <div className="order-4 text-left font-mono text-[11px] space-y-1 leading-5 sm:col-start-2 sm:row-start-2 sm:text-right">
+          <p>
+            <span className="text-slate-500 font-sans text-[11px]">Invoice No:</span>{' '}
+            <strong className="text-slate-900 text-xs">{docNumber}</strong>
+          </p>
+          <p>
+            <span className="text-slate-500 font-sans">Date &amp; Time:</span>{' '}
+            <span className="text-slate-900 font-semibold">{formatDocDateTime(data.completedAt || data.date || (data as any).created_at)}</span>
+          </p>
+          <p>
+            <span className="text-slate-500 font-sans">{dueDateLabel}:</span>{' '}
+            <span className="text-slate-900 font-semibold">{formattedDueDate}</span>
+          </p>
+          <p>
+            <span className="text-slate-500 font-sans">Place of Supply:</span>{' '}
+            <span className="text-slate-900 font-semibold">{posLabel}</span>
+          </p>
         </div>
       </div>
 
-      {/* 2. Billed Details & Fulfillment Row */}
+      {/* 2. Details Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 my-6 p-4 rounded-xl bg-slate-50/70 border border-slate-200/80">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
-            <Building2 className="h-3 w-3 text-slate-400" />
-            {isPurchase ? 'BILLED BY (SUPPLIER DETAILS)' : 'BILLED TO (CUSTOMER DETAILS)'}
+            <Building2 className="h-3 w-3 text-slate-400" /> Billed To (
+            {isB2B ? 'Corporate Client' : 'Customer Details'})
           </p>
-          <p className="text-sm font-extrabold text-slate-900">
-            {isPurchase ? sellerName : buyerName}
-          </p>
-          {(isPurchase ? data.seller.gstin : data.buyer.gstin) && (
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-violet-50 border border-violet-200 text-[10px] font-mono font-bold text-violet-800">
-                GSTIN: {isPurchase ? data.seller.gstin : data.buyer.gstin}
-              </span>
-              {(isPurchase ? data.seller.pan : data.buyer.pan) && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
-                  PAN: {isPurchase ? data.seller.pan : data.buyer.pan}
-                </span>
+          {isB2B && customer.companyName ? (
+            <>
+              <p className="text-sm font-extrabold text-slate-900">
+                M/s {customer.companyName}
+              </p>
+              {(customer.brandTradeName || customer.tradeName || customer.trade_name) && (
+                <p className="text-[11px] font-medium text-slate-600">
+                  T/A {customer.brandTradeName || customer.tradeName || customer.trade_name}
+                </p>
               )}
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                {customer.gstin && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-emerald-800">
+                    GSTIN: {customer.gstin}
+                  </span>
+                )}
+                {customer.pan && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
+                    PAN: {customer.pan}
+                  </span>
+                )}
+              </div>
+              <p className="text-slate-600 text-[11px] mt-1.5">
+                <span className="text-slate-400">Attn:</span> {customer.name}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm font-extrabold text-slate-900">
+              {customer.name || 'Valued Customer'}
+            </p>
+          )}
+          <p className="text-slate-600 text-[11px] mt-0.5">{customer.email || '—'}</p>
+          {customer.phone && (
+            <p className="text-slate-600 text-[11px]">{customer.phone}</p>
+          )}
+          {custAddress ? (
+            <div className="text-slate-600 whitespace-pre-line leading-relaxed text-[11px] mt-1">
+              {custAddress}
             </div>
-          )}
-          {(isPurchase ? data.seller.email : data.buyer.email) && (
-            <p className="text-slate-600 text-[11px] mt-1">{isPurchase ? data.seller.email : data.buyer.email}</p>
-          )}
-          {(isPurchase ? data.seller.phone : data.buyer.phone) && (
-            <p className="text-slate-600 text-[11px]">{isPurchase ? data.seller.phone : data.buyer.phone}</p>
-          )}
-          {(isPurchase ? sellerAddress : buyerAddress) && (
-            <p className="text-slate-600 text-[11px] mt-1 whitespace-pre-line">{isPurchase ? sellerAddress : buyerAddress}</p>
+          ) : (custCity || custState || custPin) ? (
+            <div className="text-slate-600 leading-relaxed text-[11px] mt-1">
+              {[custCity, custState].filter(Boolean).join(', ')}
+              {custPin ? ` - ${custPin}` : ''}
+            </div>
+          ) : null}
+          {customer.userId && (
+            <p className="text-[10px] font-mono text-slate-400 mt-1">
+              Customer UUID: {customer.userId}
+            </p>
           )}
         </div>
 
-        {/* Payment & Fulfillment Side */}
         <div className="sm:border-l sm:border-slate-200 sm:pl-6 space-y-1 text-[11px]">
-          {isPurchase ? (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
-                <Building2 className="h-3 w-3 text-slate-400" />
-                BILLED TO (OUR BUSINESS DETAILS)
-              </p>
-              <p className="text-sm font-extrabold text-slate-900">
-                {buyerName}
-              </p>
-              {data.buyer.gstin && (
-                <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-violet-50 border border-violet-200 text-[10px] font-mono font-bold text-violet-800">
-                    GSTIN: {data.buyer.gstin}
-                  </span>
-                  {data.buyer.pan && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
-                      PAN: {data.buyer.pan}
-                    </span>
-                  )}
-                </div>
-              )}
-              {data.buyer.email && (
-                <p className="text-slate-600 text-[11px] mt-1">{data.buyer.email}</p>
-              )}
-              {data.buyer.phone && (
-                <p className="text-slate-600 text-[11px]">{data.buyer.phone}</p>
-              )}
-              {buyerAddress && (
-                <p className="text-slate-600 text-[11px] mt-1 whitespace-pre-line">{buyerAddress}</p>
-              )}
-              <div className="mt-3 pt-2 border-t border-slate-200 space-y-0.5">
-                {data.orderRef && (
-                  <p className="flex justify-between sm:justify-start sm:gap-4">
-                    <span className="text-slate-500 w-28">Ref / PO No:</span>
-                    <strong className="font-mono text-slate-900 font-semibold">{data.orderRef}</strong>
-                  </p>
-                )}
-                {data.paymentMode && (
-                  <p className="flex justify-between sm:justify-start sm:gap-4">
-                    <span className="text-slate-500 w-28">Payment Mode:</span>
-                    <span className="text-slate-900 font-semibold">{data.paymentMode}</span>
-                  </p>
-                )}
-                {data.paymentStatus && (
-                  <p className="flex justify-between sm:justify-start sm:gap-4">
-                    <span className="text-slate-500 w-28">Status:</span>
-                    <span className="text-slate-900 font-semibold uppercase">{data.paymentStatus}</span>
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
-                <CreditCard className="h-3 w-3 text-slate-400" /> Payment &amp; Terms
-              </p>
-              {data.orderRef && (
-                <p className="flex justify-between sm:justify-start sm:gap-4">
-                  <span className="text-slate-500 w-28">Ref No:</span>
-                  <strong className="font-mono text-slate-900 font-semibold">
-                    {data.orderRef}
-                  </strong>
-                </p>
-              )}
-              <p className="flex justify-between sm:justify-start sm:gap-4">
-                <span className="text-slate-500 w-28">Payment Mode:</span>
-                <span className="text-slate-900 font-semibold">
-                  {data.paymentMode || 'Bank / UPI / Credit'}
-                </span>
-              </p>
-              {data.paymentStatus && (
-                <p className="flex justify-between sm:justify-start sm:gap-4">
-                  <span className="text-slate-500 w-28">Status:</span>
-                  <span className="text-slate-900 font-semibold uppercase">
-                    {data.paymentStatus}
-                  </span>
-                </p>
-              )}
-              {data.bankDetails?.bankName && (
-                <div className="pt-1.5 text-[10px] space-y-0.5 border-t border-slate-200 mt-2">
-                  <p className="text-slate-500 font-bold uppercase">Bank Account Details:</p>
-                  <p>
-                    <span className="text-slate-500">Bank:</span>{' '}
-                    <span className="font-medium text-slate-800">{data.bankDetails.bankName}</span>
-                  </p>
-                  {data.bankDetails.accountName && (
-                    <p>
-                      <span className="text-slate-500">A/C Name:</span>{' '}
-                      <span className="font-medium text-slate-800">{data.bankDetails.accountName}</span>
-                    </p>
-                  )}
-                  {data.bankDetails.accountNumber && (
-                    <p>
-                      <span className="text-slate-500">A/C:</span>{' '}
-                      <span className="font-mono font-medium text-slate-800">{data.bankDetails.accountNumber}</span>
-                    </p>
-                  )}
-                  {data.bankDetails.ifsc && (
-                    <p>
-                      <span className="text-slate-500">IFSC:</span>{' '}
-                      <span className="font-mono font-medium text-slate-800">{data.bankDetails.ifsc}</span>
-                    </p>
-                  )}
-                </div>
-              )}
-            </>
-          )}
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
+            <ShieldCheck className="h-3 w-3 text-slate-400" /> Payment &amp; Fulfillment
+          </p>
+          <p className="flex justify-between sm:justify-start sm:gap-4">
+            <span className="text-slate-500 w-28">Order Ref:</span>
+            <strong className="font-mono text-slate-900 font-semibold">
+              #{data.orderId || data.orderNumber || docNumber}
+            </strong>
+          </p>
+          <p className="flex justify-between sm:justify-start sm:gap-4">
+            <span className="text-slate-500 w-28">Payment Mode:</span>
+            <span className="text-slate-900 font-semibold">
+              {data.paymentMethod || data.paymentMode || 'Wallet'}
+            </span>
+          </p>
+          <p className="flex justify-between sm:justify-start sm:gap-4">
+            <span className="text-slate-500 w-28">Ref / UTR No:</span>
+            <span className="font-mono text-slate-900 font-semibold">
+              {data.paymentRef || docNumber}
+            </span>
+          </p>
+          <p className="flex justify-between sm:justify-start sm:gap-4 items-center">
+            <span className="text-slate-500 w-28">Payment Status:</span>
+            <span
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                isPaid ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-slate-100 border border-slate-200 text-slate-700'
+              }`}
+            >
+              <CheckCircle2 className="h-3 w-3" />
+              {isPaid ? 'PAID & DELIVERED' : statusStr}
+            </span>
+          </p>
         </div>
       </div>
 
@@ -518,556 +733,591 @@ export const UniversalDocumentTemplate: React.FC<{
       <div className="overflow-x-auto rounded-xl border border-slate-200 mb-6">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="bg-slate-100/80 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+            <tr className="bg-slate-50/80 border-y border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
               <th className="px-3 py-2.5 w-10 text-center">#</th>
-              <th className="px-3 py-2.5">Item Description</th>
+              <th className="px-3 py-2.5">Item Description / Voucher</th>
               <th className="px-3 py-2.5 w-24 text-center">HSN/SAC</th>
-              <th className="px-3 py-2.5 w-16 text-center">Qty</th>
+              <th className="px-3 py-2.5 w-14 text-center">Qty</th>
               <th className="px-3 py-2.5 w-24 text-right">Unit Rate (₹)</th>
               <th className="px-3 py-2.5 w-20 text-center">Tax (GST)</th>
               <th className="px-3 py-2.5 w-28 text-right">Total (₹)</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {data.items.map((item, idx) => (
-              <tr key={item.id ?? idx} className="hover:bg-slate-50/40">
-                <td className="px-3 py-3 text-center font-mono text-[11px] text-slate-400">
-                  {idx + 1}
-                </td>
-                <td className="px-3 py-3">
-                  <p className="font-bold text-slate-900">{item.name}</p>
-                </td>
-                <td className="px-3 py-3 text-center font-mono text-[11px] text-slate-500">
-                  {item.hsnSac || '—'}
-                </td>
-                <td className="px-3 py-3 text-center font-mono font-semibold text-slate-700">
-                  {item.quantity} {item.unit || ''}
-                </td>
-                <td className="px-3 py-3 text-right font-mono text-slate-700">
-                  {cellINR(Number(item.rate || 0))}
-                </td>
-                <td className="px-3 py-3 text-center text-[10px] font-semibold text-slate-500">
-                  {item.taxRate !== undefined ? `${item.taxRate}%` : '0%'}
-                </td>
-                <td className="px-3 py-3 text-right font-mono font-bold text-slate-900">
-                  {cellINR(Number(item.total || 0))}
-                </td>
-              </tr>
-            ))}
+            {data.items.map((item, idx) => {
+              const name = item.product_name || item.name || 'GyftKart Digital Gift Voucher';
+              const rate = item.denomination ?? item.unit_price ?? item.rate ?? 0;
+              const total = item.total ?? item.totalPrice ?? item.total_amount ?? (item.quantity * rate);
+              const itemTaxRate = item.taxRate !== undefined ? item.taxRate : (item.tax_rate ?? effectiveTaxRate);
+
+              return (
+                <tr key={item.id ?? idx} className="hover:bg-slate-50/40 border-b border-slate-100">
+                  <td className="px-3 py-3 text-center font-mono text-[11px] text-slate-400">
+                    {idx + 1}
+                  </td>
+                  <td className="px-3 py-3">
+                    <p className="font-bold text-slate-900">{name}</p>
+                    {item.recipientEmail && (
+                      <p className="text-[10px] text-slate-500">
+                        Delivered to: {item.recipientEmail}
+                      </p>
+                    )}
+                    {item.code && (
+                      <p className="mt-0.5 font-mono text-[10px] text-emerald-700">
+                        Code: {item.code}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-center font-mono text-[11px] text-slate-500">
+                    {item.hsn_sac || item.hsnSac || item.hsn_code || '998434'}
+                  </td>
+                  <td className="px-3 py-3 text-center font-mono font-semibold text-slate-700">
+                    {item.quantity}
+                  </td>
+                  <td className="px-3 py-3 text-right font-mono text-slate-700">
+                    {inrDecimal(rate)}
+                  </td>
+                  <td className="px-3 py-3 text-center text-[10px] font-semibold text-slate-500">
+                    {itemTaxRate > 0 ? `${itemTaxRate.toFixed(2)}%` : '0.00%'}
+                  </td>
+                  <td className="px-3 py-3 text-right font-mono font-bold text-slate-900">
+                    {inrDecimal(total)}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {/* 4. Financial Totals & In-Words */}
+      {/* 4. Financial Breakdown & Words */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2 pb-6 border-b border-slate-200">
         <div className="flex flex-col justify-between space-y-4">
-          <div className="rounded-xl bg-slate-50 p-3.5 border border-slate-200/70">
+          <div className="rounded-xl bg-slate-50/70 p-3.5 border border-slate-200/80">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
               Amount Chargeable (in words)
             </p>
             <p className="text-xs font-extrabold text-slate-900 italic">
-              {amountWords || 'Indian Rupees Only'}
+              {numberToWordsINR(totalAmount)}
             </p>
           </div>
-          {data.taxNote && (
-            <div className="text-[10px] text-slate-500 space-y-1">
-              <p className="font-semibold text-slate-700">Tax Note:</p>
+
+          {hasBankDetails && (
+            <div className="mt-3 pt-2.5 border-t border-dashed border-slate-200">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Landmark className="w-3 h-3 text-slate-400 shrink-0" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Bank &amp; Payment Details
+                </span>
+              </div>
+              <div className="flex flex-col space-y-0.5 text-[11px]">
+                {bankName && (
+                  <p className="leading-snug">
+                    <span className="text-slate-400 font-sans text-[10px]">Bank: </span>
+                    <span className="text-slate-800 font-semibold text-[11px]">{bankName}</span>
+                  </p>
+                )}
+                {effectiveAccountHolder && (
+                  <p className="leading-snug">
+                    <span className="text-slate-400 font-sans text-[10px]">A/C Name: </span>
+                    <span className="text-slate-800 font-semibold text-[11px]">{effectiveAccountHolder}</span>
+                  </p>
+                )}
+                {accountNo && (
+                  <p className="leading-snug">
+                    <span className="text-slate-400 font-sans text-[10px]">A/C No: </span>
+                    <span className="text-slate-800 font-semibold font-mono text-[11px]">{accountNo}</span>
+                  </p>
+                )}
+                {ifsc && (
+                  <p className="leading-snug">
+                    <span className="text-slate-400 font-sans text-[10px]">IFSC: </span>
+                    <span className="text-slate-800 font-semibold font-mono text-[11px]">{ifsc}</span>
+                  </p>
+                )}
+                {upiId && (
+                  <p className="leading-snug">
+                    <span className="text-slate-400 font-sans text-[10px]">UPI: </span>
+                    <span className="text-slate-800 font-semibold text-[11px]">{upiId}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          {data.taxNote ? (
+            <div className="text-[10px] text-slate-500 space-y-1 mt-2">
               <p>{data.taxNote}</p>
             </div>
-          )}
-          {data.notes && (
-            <div className="text-[10px] text-slate-500 space-y-1">
-              <p className="font-semibold text-slate-700">Notes:</p>
-              <p className="whitespace-pre-line">{data.notes}</p>
+          ) : !hasBankDetails ? (
+            <div className="text-[10px] text-slate-500 space-y-1 mt-2">
+              <p className="font-semibold text-slate-700">Tax Note on Prepaid Gift Vouchers:</p>
+              <p>
+                As per Indian GST regulations and CBIC circulars, digital gift cards and prepaid vouchers represent actionable claims (SAC 998434) and are exempt from standard service tax at the time of voucher issuance. GST applies at consumption/redemption by respective merchants.
+              </p>
             </div>
-          )}
+          ) : null}
         </div>
 
         <div className="space-y-2 font-mono text-xs">
           <div className="flex justify-between py-1 text-slate-600">
             <span className="font-sans">Subtotal (Taxable Value):</span>
-            <span>{cellINR(Number(data.subtotal || 0))}</span>
+            <span>₹{inrDecimal(subtotal)}</span>
           </div>
-          {data.cgstAmount !== undefined && Number(data.cgstAmount) > 0 && (
+          {isIntraState ? (
+            <>
+              <div className="flex justify-between py-1 text-slate-500">
+                <span className="font-sans">
+                  Central GST (CGST {halfTaxRate}%):
+                </span>
+                <span>₹{inrDecimal(cgstAmount)}</span>
+              </div>
+              <div className="flex justify-between py-1 text-slate-500">
+                <span className="font-sans">
+                  State GST (SGST {halfTaxRate}%):
+                </span>
+                <span>₹{inrDecimal(sgstAmount)}</span>
+              </div>
+            </>
+          ) : (
             <div className="flex justify-between py-1 text-slate-500">
-              <span className="font-sans">Central GST (CGST):</span>
-              <span>{cellINR(Number(data.cgstAmount))}</span>
+              <span className="font-sans">
+                Integrated GST (IGST {effectiveTaxRate}%):
+              </span>
+              <span>₹{inrDecimal(igstAmount)}</span>
             </div>
           )}
-          {data.sgstAmount !== undefined && Number(data.sgstAmount) > 0 && (
-            <div className="flex justify-between py-1 text-slate-500">
-              <span className="font-sans">State GST (SGST):</span>
-              <span>{cellINR(Number(data.sgstAmount))}</span>
-            </div>
-          )}
-          {data.igstAmount !== undefined && Number(data.igstAmount) > 0 && (
-            <div className="flex justify-between py-1 text-slate-500">
-              <span className="font-sans">Integrated GST (IGST):</span>
-              <span>{cellINR(Number(data.igstAmount))}</span>
-            </div>
-          )}
-          {data.discount !== undefined && Number(data.discount) > 0 ? (
+          {data.discount ? (
             <div className="flex justify-between py-1 text-emerald-600 font-semibold">
               <span className="font-sans">Discount:</span>
-              <span>- {cellINR(Number(data.discount))}</span>
+              <span>- ₹{inrDecimal(data.discount)}</span>
             </div>
           ) : null}
-          {data.roundOff !== undefined && Number(data.roundOff) !== 0 ? (
-            <div className="flex justify-between py-1 text-slate-500">
-              <span className="font-sans">Round Off:</span>
-              <span>
-                {Number(data.roundOff) > 0 ? '+ ' : '- '}
-                {cellINR(Math.abs(Number(data.roundOff)))}
-              </span>
-            </div>
-          ) : null}
-          <div className="flex justify-between items-center rounded-xl bg-violet-50/70 border border-violet-200 p-3 font-sans mt-3">
-            <span className="text-sm font-black text-violet-950">Grand Total (INR):</span>
-            <span className="text-base font-black font-mono text-violet-900">
-              ₹{cellINR(Number(data.grandTotal || 0))}
+          <div className="flex justify-between items-center rounded-xl bg-emerald-50/60 border border-emerald-200/60 p-3 font-sans mt-3 text-emerald-950">
+            <span className="text-sm font-black text-emerald-950">Grand Total (INR):</span>
+            <span className="text-base font-black font-mono text-emerald-900">
+              ₹{inrDecimal(totalAmount)}
             </span>
           </div>
         </div>
       </div>
 
-      {/* 5. Footer & Signatory */}
-      <div className="flex flex-col sm:flex-row justify-between items-end gap-6 pt-6">
-        <div className="text-[10px] text-slate-500 space-y-1 max-w-md">
-          <p className="font-bold text-slate-700">Terms &amp; Conditions:</p>
-          <ul className="list-disc pl-4 space-y-0.5">
-            {data.terms && data.terms.length > 0 ? (
-              data.terms.map((term, i) => <li key={i}>{term}</li>)
-            ) : isPurchase ? (
-              <>
-                <li>Goods received are subject to inspection and acceptance as per the purchase order.</li>
-                <li>Please quote this bill number in all future correspondence.</li>
-                <li>
-                  This is a computer-generated document and requires no physical signature.
-                </li>
-              </>
+      {/* 5. Footer Terms & Digitally Authorized Signatory */}
+      <div className="flex flex-col sm:flex-row justify-between items-start gap-6 pt-6">
+        <div className="text-[10px] text-slate-500 max-w-md mt-0">
+          <p className="text-[10px] font-bold text-slate-700 uppercase tracking-wider leading-4 mt-0 mb-1">
+            Terms &amp; Conditions:
+          </p>
+          <div className="text-[10px] text-slate-500 leading-normal space-y-0.5">
+            {termsText ? (
+              termsText.split('\n').filter(Boolean).map((line: string, i: number) => (
+                <p key={i}>• {line.replace(/^[•\-\*]\s*/, '')}</p>
+              ))
             ) : (
-              <>
-                <li>Goods once sold will not be taken back or exchanged.</li>
-                <li>Redemption / delivery is subject to agreed operational timelines.</li>
-                <li>
-                  This is a computer-generated document and requires no physical signature.
-                </li>
-              </>
+              <p>• Standard terms &amp; conditions apply.</p>
             )}
-          </ul>
-        </div>
-
-        <div className="text-center sm:text-right shrink-0">
-          <div className="inline-block rounded-xl border border-dashed border-slate-300 p-3 bg-slate-50/50 text-center min-w-[200px]">
-            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
-              {isPurchase ? `For ${buyerName}` : `For ${sellerName}`}
-            </p>
-            <div className="my-2 flex items-center justify-center gap-1 text-emerald-700">
-              <ShieldCheck className="h-4 w-4" />
-              <span className="text-[10px] font-black uppercase tracking-wider">
-                {isPurchase ? 'VERIFIED & RECEIVED' : 'DIGITALLY AUTHORIZED'}
-              </span>
-            </div>
-            <p className="border-t border-slate-200 pt-1 text-[10px] font-bold text-slate-800">
-              {isPurchase ? 'Received By / Verified By' : 'Authorized Signatory'}
-            </p>
           </div>
         </div>
+
+        <div className="text-right flex flex-col items-end shrink-0 mt-0">
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider leading-4 mt-0 mb-1">
+            For {company.legalName || company.name || companyName}
+          </p>
+          {signatureUrl ? (
+            <img 
+              src={signatureUrl} 
+              alt="Stamp & Signature" 
+              className="h-12 max-w-[130px] object-contain my-1" 
+            />
+          ) : (
+            <div className="h-12 flex items-center justify-center border border-dashed border-slate-300 rounded px-3 my-1">
+              <span className="text-[10px] text-slate-400">Authorized Signatory</span>
+            </div>
+          )}
+          <span className="text-[11px] font-bold text-slate-800 block">
+            {signatureName || 'Authorized Signatory'}
+          </span>
+          <span className="text-[9px] text-slate-400">Authorized Signatory</span>
+        </div>
       </div>
+
+      {/* 6. Document Footer Text */}
+      {footerText && (
+        <div className="w-full border-t border-slate-100 pt-2 pb-1 mt-6 text-center">
+          <p className="text-[9px] text-slate-400 font-sans tracking-wide">
+            {footerText}
+          </p>
+        </div>
+      )}
     </div>
   );
 };
 
-// ==========================================
-// Adapter Mappings: Convert DB records to UniversalDocumentData
-// ==========================================
+export const printElementInIframe = (
+  target: string | HTMLElement | null = 'invoice-printable-area',
+  docTitle: string = 'Document'
+): void => {
+  const invoiceEl = typeof target === 'string' ? document.getElementById(target) : target;
+  if (!invoiceEl) return;
 
-export function mapSalesInvoiceToUniversalData(
-  business: any,
-  invoice: any,
-  items: any[] = []
-): UniversalDocumentData {
-  const isInterState =
-    Number(invoice.igst_amount || 0) > 0 ||
-    (invoice.place_of_supply &&
-      business?.state &&
-      invoice.place_of_supply !== business.state);
+  const parentStyles = Array.from(
+    document.head.querySelectorAll('link[rel="stylesheet"], style')
+  )
+    .map((el) => el.outerHTML)
+    .join('\n');
 
-  const customer = invoice.customer || {};
+  const printFrame = document.createElement('iframe');
+  printFrame.style.position = 'fixed';
+  printFrame.style.right = '0';
+  printFrame.style.bottom = '0';
+  printFrame.style.width = '0px';
+  printFrame.style.height = '0px';
+  printFrame.style.border = 'none';
+  document.body.appendChild(printFrame);
 
-  return {
-    documentType: 'TAX_INVOICE',
-    documentNumber: invoice.invoice_number || 'INV-000',
-    date: formatDate(invoice.invoice_date || new Date().toISOString()),
-    dueDate: invoice.due_date ? formatDate(invoice.due_date) : undefined,
-    status: invoice.status,
-    placeOfSupply: invoice.place_of_supply || business?.state || 'Uttar Pradesh (09)',
-    supplyType: isInterState ? 'Inter-State (IGST)' : 'Intra-State (CGST + SGST)',
-    reverseCharge: 'No',
-    orderRef: invoice.reference_number || invoice.order_number,
-    paymentMode: invoice.payment_mode || 'Bank / UPI / Credit',
-    paymentStatus: invoice.payment_status || 'unpaid',
-    seller: {
-      name: business?.name || 'Company',
-      companyName: business?.legal_name || business?.name || 'Company',
-      address: cleanText(business?.address),
-      city: cleanText(business?.city),
-      state: cleanText(business?.state),
-      pincode: cleanText(business?.pincode),
-      gstin: cleanText(business?.gstin),
-      pan:
-        business?.pan ||
-        (String(business?.gstin || '').length >= 12
-          ? String(business.gstin).slice(2, 12)
-          : undefined),
-      cin: cleanText(business?.cin),
-      email: cleanText(business?.email),
-      phone: cleanText(business?.phone),
-      logoUrl: cleanMedia(business?.logo_url),
-    },
-    buyer: {
-      name: customer.name || 'Customer',
-      companyName: customer.company_name || customer.name || 'Customer',
-      address: customer.address,
-      city: customer.city,
-      state: customer.state,
-      pincode: customer.pincode,
-      gstin: customer.gstin,
-      pan:
-        customer.pan ||
-        (String(customer.gstin || '').length >= 12
-          ? String(customer.gstin).slice(2, 12)
-          : undefined),
-      email: customer.email,
-      phone: customer.phone,
-    },
-    items: items.map((it, idx) => ({
-      id: it.id || String(idx),
-      name: it.product_name || it.item_name || 'Line Item',
-      hsnSac: it.hsn_sac || it.hsnSac || '—',
-      quantity: Number(it.quantity || 1),
-      rate: Number(it.rate || it.unit_price || 0),
-      discount: Number(it.discount_amount || it.discount || 0),
-      taxRate: Number(it.tax_rate || 0),
-      taxAmount:
-        Number(it.cgst_amount || 0) +
-        Number(it.sgst_amount || 0) +
-        Number(it.igst_amount || 0),
-      total: Number(it.total_amount || it.total || 0),
-      unit: it.unit || 'PCS',
-    })),
-    subtotal: Number(invoice.taxable_amount ?? invoice.subtotal ?? 0),
-    cgstAmount: Number(invoice.cgst_amount || 0),
-    sgstAmount: Number(invoice.sgst_amount || 0),
-    igstAmount: Number(invoice.igst_amount || 0),
-    discount: Number(invoice.discount_amount || 0),
-    roundOff: Number(invoice.round_off || 0),
-    grandTotal: Number(invoice.grand_total || 0),
-    amountInWords: amountInWordsIndian(Number(invoice.grand_total || 0)),
-    bankDetails: {
-      bankName: business?.bank_name,
-      accountName:
-        business?.account_name ||
-        business?.bank_account_name ||
-        business?.legal_name ||
-        business?.name,
-      accountNumber: business?.bank_account_number,
-      ifsc: business?.bank_ifsc_code,
-    },
-    terms: resolveTermsLines('sales_invoice', business, invoice.terms),
-    notes: invoice.notes,
-  };
-}
+  const doc = printFrame.contentWindow?.document;
+  if (!doc) return;
 
-export function mapQuotationToUniversalData(
-  business: any,
-  quote: any,
-  items: any[] = []
-): UniversalDocumentData {
-  const isInterState = Number(quote.igst_amount || 0) > 0;
-  const customer = quote.customer || {};
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>${docTitle}</title>
+        ${parentStyles}
+        <style>
+          @page { size: A4 portrait; margin: 8mm; }
+          *, *::before, *::after { box-sizing: border-box !important; }
+          html, body {
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #0f172a !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          @media print {
+            body {
+              transform: scale(0.97);
+              transform-origin: top center;
+            }
+          }
+          .order-invoice-printable {
+            width: 98% !important;
+            max-width: 98% !important;
+            margin: 0 auto !important;
+            padding: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+            word-break: break-word !important;
+          }
+          .grid.grid-cols-1.sm\\:grid-cols-2,
+          .grid.grid-cols-1.md\\:grid-cols-2 {
+            display: flex !important;
+            flex-direction: row !important;
+            justify-content: space-between !important;
+            gap: 16px !important;
+            width: 100% !important;
+          }
+          .grid.grid-cols-1.sm\\:grid-cols-2 > div,
+          .grid.grid-cols-1.md\\:grid-cols-2 > div {
+            flex: 1 1 50% !important;
+            max-width: 50% !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+          }
+          .flex-col.sm\\:flex-row {
+            display: flex !important;
+            flex-direction: row !important;
+            justify-content: space-between !important;
+            align-items: flex-start !important;
+            width: 100% !important;
+          }
+          table { width: 100% !important; border-collapse: collapse !important; }
+          th, td { word-break: break-word !important; }
+        </style>
+      </head>
+      <body>
+        <div style="width: 100%; max-width: 100%; margin: 0 auto;">
+          ${invoiceEl.outerHTML}
+        </div>
+        <script>
+          const triggerPrint = () => {
+            setTimeout(() => {
+              window.focus();
+              window.print();
+              setTimeout(() => {
+                window.frameElement?.remove();
+              }, 1000);
+            }, 250);
+          };
+          if (document.readyState === 'complete') triggerPrint();
+          else window.onload = triggerPrint;
+        </script>
+      </body>
+    </html>
+  `);
+  doc.close();
+};
 
-  return {
-    documentType: 'QUOTATION',
-    documentNumber: quote.quotation_number || 'QT-000',
-    date: formatDate(quote.quote_date || new Date().toISOString()),
-    dueDate: quote.expiry_date ? formatDate(quote.expiry_date) : undefined,
-    status: quote.status,
-    placeOfSupply: business?.state || 'Uttar Pradesh (09)',
-    supplyType: isInterState ? 'Inter-State (IGST)' : 'Intra-State (CGST + SGST)',
-    reverseCharge: 'No',
-    seller: {
-      name: business?.name || 'Company',
-      companyName: business?.legal_name || business?.name || 'Company',
-      address: cleanText(business?.address),
-      city: cleanText(business?.city),
-      state: cleanText(business?.state),
-      pincode: cleanText(business?.pincode),
-      gstin: cleanText(business?.gstin),
-      pan:
-        business?.pan ||
-        (String(business?.gstin || '').length >= 12
-          ? String(business.gstin).slice(2, 12)
-          : undefined),
-      cin: cleanText(business?.cin),
-      email: cleanText(business?.email),
-      phone: cleanText(business?.phone),
-      logoUrl: cleanMedia(business?.logo_url),
-    },
-    buyer: {
-      name: customer.name || 'Customer',
-      companyName: customer.company_name || customer.name || 'Customer',
-      address: customer.address,
-      city: customer.city,
-      state: customer.state,
-      pincode: customer.pincode,
-      gstin: customer.gstin,
-      pan: customer.pan,
-      email: customer.email,
-      phone: customer.phone,
-    },
-    items: items.map((it, idx) => ({
-      id: it.id || String(idx),
-      name: it.product_name || it.item_name || 'Item',
-      hsnSac: it.hsn_sac || '—',
-      quantity: Number(it.quantity || 1),
-      rate: Number(it.rate || 0),
-      taxRate: Number(it.tax_rate || 0),
-      total: Number(it.total_amount || 0),
-      unit: it.unit || 'PCS',
-    })),
-    subtotal: Number(quote.taxable_amount ?? quote.subtotal ?? 0),
-    cgstAmount: Number(quote.cgst_amount || 0),
-    sgstAmount: Number(quote.sgst_amount || 0),
-    igstAmount: Number(quote.igst_amount || 0),
-    roundOff: Number(quote.round_off || 0),
-    grandTotal: Number(quote.grand_total || 0),
-    amountInWords: amountInWordsIndian(Number(quote.grand_total || 0)),
-    bankDetails: {
-      bankName: business?.bank_name,
-      accountName:
-        business?.account_name ||
-        business?.bank_account_name ||
-        business?.name,
-      accountNumber: business?.bank_account_number,
-      ifsc: business?.bank_ifsc_code,
-    },
-    terms: resolveTermsLines('quotation', business, quote.terms),
-    notes: quote.notes,
-  };
-}
-
-export function mapSalesOrderToUniversalData(
-  business: any,
-  order: any,
-  items: any[] = []
-): UniversalDocumentData {
-  const isInterState = Number(order.igst_amount || 0) > 0;
-  const customer = order.customer || {};
+export function mapSalesOrderToUniversalData(business: any, order: any, items: any[] = []): UniversalDocumentData {
+  const persistedNumber = order?.order_number || order?.number || 'SO-001';
+  const cust = (Array.isArray(order?.customer) ? order?.customer[0] : order?.customer) || order?.client || {};
+  const streetAddress = String(
+    cust.address || cust.billing_address || cust.billingAddress || cust.addressLine1 || order?.customer_address || order?.party_address || ''
+  ).trim();
+  const cityState = [
+    cust.city || cust.billingCity,
+    cust.state || cust.billingState,
+  ].filter(Boolean).join(', ');
+  const pin = cust.pincode || cust.pin_code || cust.pinCode || cust.billingPincode || '';
+  const cityStatePin = cityState + (pin ? (cityState ? ` - ${pin}` : String(pin)) : '');
+  const fullAddress = streetAddress
+    ? [streetAddress, cityStatePin].filter(Boolean).join('\n')
+    : '';
 
   return {
     documentType: 'SALES_ORDER',
-    documentNumber: order.order_number || 'SO-000',
-    date: formatDate(order.order_date || new Date().toISOString()),
-    dueDate: order.expected_delivery_date
-      ? formatDate(order.expected_delivery_date)
-      : undefined,
-    status: order.status,
-    placeOfSupply: business?.state || 'Uttar Pradesh (09)',
-    supplyType: isInterState ? 'Inter-State (IGST)' : 'Intra-State (CGST + SGST)',
-    reverseCharge: 'No',
-    orderRef: order.reference_number,
-    seller: {
-      name: business?.name || 'Company',
-      companyName: business?.legal_name || business?.name || 'Company',
-      address: cleanText(business?.address),
-      city: cleanText(business?.city),
-      state: cleanText(business?.state),
-      pincode: cleanText(business?.pincode),
-      gstin: cleanText(business?.gstin),
-      pan: cleanText(business?.pan),
-      cin: cleanText(business?.cin),
-      email: cleanText(business?.email),
-      phone: cleanText(business?.phone),
-      logoUrl: cleanMedia(business?.logo_url),
+    documentNumber: persistedNumber,
+    invoiceNumber: persistedNumber,
+    date: order?.order_date || order?.created_at || '19 Oct 2026, 12:34 pm',
+    status: order?.status || 'Confirmed',
+    orderNumber: order?.order_number,
+    expectedDeliveryDate: order?.expected_delivery_date || order?.expected_date || null,
+    dueDate: order?.due_date || null,
+    placeOfSupply: order?.place_of_supply || cust.state || business?.state,
+    company: business,
+    customer: {
+      name: String(
+        cust.name ||
+        cust.business_name ||
+        cust.company_name ||
+        order?.customer_name ||
+        order?.party_name ||
+        ''
+      ).trim(),
+      companyName: cust.company_name || cust.business_name || order?.customer_company,
+      address: fullAddress,
+      streetAddress,
+      city: cust.city || cust.billingCity,
+      state: cust.state || cust.billingState,
+      pincode: pin,
+      gstin: cust.gstin || order?.customer_gstin || order?.party_gstin,
+      phone: cust.phone || order?.customer_phone || order?.party_phone,
+      email: cust.email || order?.customer_email,
     },
-    buyer: {
-      name: customer.name || 'Customer',
-      companyName: customer.company_name || customer.name || 'Customer',
-      address: customer.address,
-      city: customer.city,
-      state: customer.state,
-      pincode: customer.pincode,
-      gstin: customer.gstin,
-      pan: customer.pan,
-      email: customer.email,
-      phone: customer.phone,
-    },
-    items: items.map((it, idx) => ({
-      id: it.id || String(idx),
-      name: it.product_name || 'Custom item',
-      hsnSac: it.hsn_sac || '—',
-      quantity: Number(it.quantity || 1),
-      rate: Number(it.rate || 0),
-      taxRate: Number(it.tax_rate || 0),
-      total: Number(it.total_amount || 0),
-      unit: it.unit || 'PCS',
+    items: items.map((i) => ({
+      name: i?.product_name || i?.name || 'Item',
+      product_name: i?.product_name || i?.name || 'Item',
+      hsn_sac: i?.hsn_sac || i?.hsn_code || '998434',
+      quantity: Number(i?.quantity || 1),
+      unit_price: Number(i?.rate || i?.unit_price || 0),
+      totalPrice: Number(i?.total_amount || i?.total || 0),
     })),
-    subtotal: Number(order.taxable_amount ?? order.subtotal ?? 0),
-    cgstAmount: Number(order.cgst_amount || 0),
-    sgstAmount: Number(order.sgst_amount || 0),
-    igstAmount: Number(order.igst_amount || 0),
-    roundOff: Number(order.round_off || 0),
-    grandTotal: Number(order.grand_total || 0),
-    amountInWords: amountInWordsIndian(Number(order.grand_total || 0)),
-    bankDetails: {
-      bankName: business?.bank_name,
-      accountName:
-        business?.account_name ||
-        business?.bank_account_name ||
-        business?.name,
-      accountNumber: business?.bank_account_number,
-      ifsc: business?.bank_ifsc_code,
-    },
-    notes: order.notes,
+    subtotal: Number(order?.subtotal || order?.taxable_amount || 0),
+    totalAmount: Number(order?.total_amount || 0),
   };
 }
 
-export function mapPurchaseBillToUniversalData(
-  business: any,
-  bill: any,
-  items: any[] = []
-): UniversalDocumentData {
-  const isInterState = Number(bill.igst_amount || 0) > 0;
-  const supplier = bill.supplier || {};
+export function mapSalesInvoiceToUniversalData(business: any, invoice: any, items: any[] = []): UniversalDocumentData {
+  const cust = (Array.isArray(invoice?.customer) ? invoice?.customer[0] : invoice?.customer) || invoice?.client || {};
+  const streetAddress = String(
+    cust.address || cust.billing_address || cust.billingAddress || cust.addressLine1 || invoice?.customer_address || invoice?.party_address || ''
+  ).trim();
+  const cityState = [
+    cust.city || cust.billingCity,
+    cust.state || cust.billingState,
+  ].filter(Boolean).join(', ');
+  const pin = cust.pincode || cust.pin_code || cust.pinCode || cust.billingPincode || '';
+  const cityStatePin = cityState + (pin ? (cityState ? ` - ${pin}` : String(pin)) : '');
+  const fullAddress = streetAddress
+    ? [streetAddress, cityStatePin].filter(Boolean).join('\n')
+    : '';
 
-  // For Purchase Bills: Seller = Supplier, Buyer = our business
   return {
-    documentType: 'PURCHASE_BILL',
-    documentNumber: bill.bill_number || 'PB-000',
-    date: formatDate(bill.bill_date || new Date().toISOString()),
-    dueDate: bill.due_date ? formatDate(bill.due_date) : undefined,
-    status: bill.status,
-    placeOfSupply: business?.state || 'Uttar Pradesh (09)',
-    supplyType: isInterState ? 'Inter-State (IGST)' : 'Intra-State (CGST + SGST)',
-    reverseCharge: 'No',
-    orderRef: bill.reference_number || bill.purchase_order_id,
-    paymentMode: bill.payment_mode || 'Bank Transfer',
-    paymentStatus: bill.payment_status || (Number(bill.balance_amount) <= 0 ? 'paid' : 'due'),
-    seller: {
-      name: supplier.name || 'Vendor',
-      companyName: supplier.company_name || supplier.name || 'Vendor',
-      address: supplier.address,
-      city: supplier.city,
-      state: supplier.state,
-      pincode: supplier.pincode,
-      gstin: supplier.gstin,
-      pan: supplier.pan,
-      email: supplier.email,
-      phone: supplier.phone,
+    documentType: 'TAX_INVOICE',
+    documentNumber: invoice?.invoice_number || invoice?.number || 'INV-001',
+    date: invoice?.invoice_date || invoice?.created_at || '19 Oct 2026, 12:34 pm',
+    status: invoice?.status || 'Confirmed',
+    dueDate: invoice?.due_date || null,
+    company: business,
+    customer: {
+      name: String(
+        cust.name ||
+        cust.business_name ||
+        cust.company_name ||
+        invoice?.customer_name ||
+        invoice?.party_name ||
+        ''
+      ).trim(),
+      companyName: cust.company_name || cust.business_name || invoice?.customer_company,
+      address: fullAddress,
+      streetAddress,
+      city: cust.city || cust.billingCity,
+      state: cust.state || cust.billingState,
+      pincode: pin,
+      gstin: cust.gstin || invoice?.customer_gstin || invoice?.party_gstin,
+      phone: cust.phone || invoice?.customer_phone || invoice?.party_phone,
+      email: cust.email || invoice?.customer_email,
     },
-    buyer: {
-      name: business?.name || 'Company',
-      companyName: business?.legal_name || business?.name || 'Company',
-      address: cleanText(business?.address),
-      city: cleanText(business?.city),
-      state: cleanText(business?.state),
-      pincode: cleanText(business?.pincode),
-      gstin: cleanText(business?.gstin),
-      pan:
-        business?.pan ||
-        (String(business?.gstin || '').length >= 12
-          ? String(business.gstin).slice(2, 12)
-          : undefined),
-      cin: cleanText(business?.cin),
-      email: cleanText(business?.email),
-      phone: cleanText(business?.phone),
-    },
-    items: items.map((it, idx) => ({
-      id: it.id || String(idx),
-      name: it.product_name || 'Item',
-      hsnSac: it.hsn_sac || '—',
-      quantity: Number(it.quantity || 1),
-      rate: Number(it.rate || 0),
-      taxRate: Number(it.tax_rate || 0),
-      total: Number(it.total_amount || 0),
-      unit: it.unit || 'PCS',
+    items: items.map((i) => ({
+      name: i?.product_name || i?.name || 'Item',
+      product_name: i?.product_name || i?.name || 'Item',
+      hsn_sac: i?.hsn_sac || i?.hsn_code || '998434',
+      quantity: Number(i?.quantity || 1),
+      unit_price: Number(i?.rate || i?.unit_price || 0),
+      totalPrice: Number(i?.total_amount || i?.total || 0),
     })),
-    subtotal: Number(bill.taxable_amount ?? bill.subtotal ?? 0),
-    cgstAmount: Number(bill.cgst_amount || 0),
-    sgstAmount: Number(bill.sgst_amount || 0),
-    igstAmount: Number(bill.igst_amount || 0),
-    roundOff: Number(bill.round_off || 0),
-    grandTotal: Number(bill.grand_total || 0),
-    amountInWords: amountInWordsIndian(Number(bill.grand_total || 0)),
-    // Bank details hidden on purchase bills per protocol
-    notes: bill.notes,
+    subtotal: Number(invoice?.subtotal || invoice?.taxable_amount || 0),
+    totalAmount: Number(invoice?.total_amount || 0),
   };
 }
 
-export function mapPurchaseOrderToUniversalData(
-  business: any,
-  order: any,
-  items: any[] = []
-): UniversalDocumentData {
-  const isInterState = Number(order.igst_amount || 0) > 0;
-  const supplier = order.supplier || {};
+export function mapQuotationToUniversalData(business: any, quote: any, items: any[] = []): UniversalDocumentData {
+  const cust = (Array.isArray(quote?.customer) ? quote?.customer[0] : quote?.customer) || quote?.client || {};
+  const streetAddress = String(
+    cust.address || cust.billing_address || cust.billingAddress || cust.addressLine1 || quote?.customer_address || quote?.party_address || ''
+  ).trim();
+  const cityState = [
+    cust.city || cust.billingCity,
+    cust.state || cust.billingState,
+  ].filter(Boolean).join(', ');
+  const pin = cust.pincode || cust.pin_code || cust.pinCode || cust.billingPincode || '';
+  const cityStatePin = cityState + (pin ? (cityState ? ` - ${pin}` : String(pin)) : '');
+  const fullAddress = streetAddress
+    ? [streetAddress, cityStatePin].filter(Boolean).join('\n')
+    : '';
 
-  // For Purchase Orders: Seller = Supplier, Buyer = our business
+  return {
+    documentType: 'QUOTATION',
+    documentNumber: quote?.quotation_number || quote?.number || 'QT-001',
+    orderNumber: quote?.quotation_number || quote?.number,
+    date: quote?.quotation_date || quote?.created_at || '19 Oct 2026, 12:34 pm',
+    status: quote?.status || 'Draft',
+    expiryDate: quote?.expiry_date || quote?.valid_until || null,
+    dueDate: quote?.due_date || null,
+    company: business,
+    customer: {
+      name: String(
+        cust.name ||
+        cust.business_name ||
+        cust.company_name ||
+        quote?.customer_name ||
+        quote?.party_name ||
+        ''
+      ).trim(),
+      companyName: cust.company_name || cust.business_name || quote?.customer_company,
+      address: fullAddress,
+      streetAddress,
+      city: cust.city || cust.billingCity,
+      state: cust.state || cust.billingState,
+      pincode: pin,
+      gstin: cust.gstin || quote?.customer_gstin || quote?.party_gstin,
+      phone: cust.phone || quote?.customer_phone || quote?.party_phone,
+      email: cust.email || quote?.customer_email,
+    },
+    items: items.map((i) => ({
+      name: i?.product_name || i?.name || 'Item',
+      product_name: i?.product_name || i?.name || 'Item',
+      hsn_sac: i?.hsn_sac || i?.hsn_code || '998434',
+      quantity: Number(i?.quantity || 1),
+      unit_price: Number(i?.rate || i?.unit_price || 0),
+      totalPrice: Number(i?.total_amount || i?.total || 0),
+    })),
+    subtotal: Number(quote?.subtotal || 0),
+    totalAmount: Number(quote?.total_amount || 0),
+  };
+}
+
+export function mapPurchaseOrderToUniversalData(business: any, order: any, items: any[] = []): UniversalDocumentData {
+  const supplier = (Array.isArray(order?.supplier) ? order?.supplier[0] : order?.supplier) || order?.vendor || {};
+  const streetAddress = String(
+    supplier.address || supplier.billing_address || supplier.billingAddress || supplier.addressLine1 || order?.supplier_address || ''
+  ).trim();
+  const cityState = [
+    supplier.city || supplier.billingCity,
+    supplier.state || supplier.billingState,
+  ].filter(Boolean).join(', ');
+  const pin = supplier.pincode || supplier.pin_code || supplier.pinCode || supplier.billingPincode || '';
+  const cityStatePin = cityState + (pin ? (cityState ? ` - ${pin}` : String(pin)) : '');
+  const fullAddress = streetAddress
+    ? [streetAddress, cityStatePin].filter(Boolean).join('\n')
+    : '';
+
   return {
     documentType: 'PURCHASE_ORDER',
-    documentNumber: order.order_number || 'PO-000',
-    date: formatDate(order.order_date || new Date().toISOString()),
-    dueDate: order.expected_delivery_date
-      ? formatDate(order.expected_delivery_date)
-      : undefined,
-    status: order.status,
-    placeOfSupply: business?.state || 'Uttar Pradesh (09)',
-    supplyType: isInterState ? 'Inter-State (IGST)' : 'Intra-State (CGST + SGST)',
-    reverseCharge: 'No',
-    orderRef: order.reference_number,
-    seller: {
-      name: supplier.name || 'Vendor',
-      companyName: supplier.company_name || supplier.name || 'Vendor',
-      address: supplier.address,
-      city: supplier.city,
-      state: supplier.state,
-      pincode: supplier.pincode,
-      gstin: supplier.gstin,
-      pan: supplier.pan,
-      email: supplier.email,
-      phone: supplier.phone,
+    documentNumber: order?.order_number || order?.po_number || order?.number || 'PO-001',
+    date: order?.order_date || order?.created_at || '19 Oct 2026, 12:34 pm',
+    status: order?.status || 'Confirmed',
+    dueDate: order?.due_date || order?.expected_date || null,
+    company: business,
+    customer: {
+      name: supplier.name || order?.supplier_name || 'Supplier',
+      companyName: supplier.company_name || supplier.name || order?.supplier_name,
+      address: fullAddress,
+      streetAddress,
+      city: supplier.city || supplier.billingCity,
+      state: supplier.state || supplier.billingState,
+      pincode: pin,
+      gstin: supplier.gstin || order?.supplier_gstin,
+      phone: supplier.phone || order?.supplier_phone,
+      email: supplier.email || order?.supplier_email,
     },
-    buyer: {
-      name: business?.name || 'Company',
-      companyName: business?.legal_name || business?.name || 'Company',
-      address: cleanText(business?.address),
-      city: cleanText(business?.city),
-      state: cleanText(business?.state),
-      pincode: cleanText(business?.pincode),
-      gstin: cleanText(business?.gstin),
-      pan: cleanText(business?.pan),
-      cin: cleanText(business?.cin),
-      email: cleanText(business?.email),
-      phone: cleanText(business?.phone),
-    },
-    items: items.map((it, idx) => ({
-      id: it.id || String(idx),
-      name: it.product_name || 'Custom item',
-      hsnSac: it.hsn_sac || '—',
-      quantity: Number(it.quantity || 1),
-      rate: Number(it.rate || 0),
-      taxRate: Number(it.tax_rate || 0),
-      total: Number(it.total_amount || 0),
-      unit: it.unit || 'PCS',
+    items: items.map((i) => ({
+      name: i?.product_name || i?.name || 'Item',
+      quantity: Number(i?.quantity || 1),
+      unit_price: Number(i?.rate || i?.unit_price || 0),
+      totalPrice: Number(i?.total_amount || i?.total || 0),
     })),
-    subtotal: Number(order.taxable_amount ?? order.subtotal ?? 0),
-    cgstAmount: Number(order.cgst_amount || 0),
-    sgstAmount: Number(order.sgst_amount || 0),
-    igstAmount: Number(order.igst_amount || 0),
-    roundOff: Number(order.round_off || 0),
-    grandTotal: Number(order.grand_total || 0),
-    amountInWords: amountInWordsIndian(Number(order.grand_total || 0)),
-    notes: order.notes,
+    subtotal: Number(order?.subtotal || 0),
+    totalAmount: Number(order?.total_amount || 0),
   };
 }
+
+export function mapPurchaseBillToUniversalData(business: any, bill: any, items: any[] = []): UniversalDocumentData {
+  const supplier = (Array.isArray(bill?.supplier) ? bill?.supplier[0] : bill?.supplier) || bill?.vendor || {};
+  const streetAddress = String(
+    supplier.address || supplier.billing_address || supplier.billingAddress || supplier.addressLine1 || bill?.supplier_address || ''
+  ).trim();
+  const cityState = [
+    supplier.city || supplier.billingCity,
+    supplier.state || supplier.billingState,
+  ].filter(Boolean).join(', ');
+  const pin = supplier.pincode || supplier.pin_code || supplier.pinCode || supplier.billingPincode || '';
+  const cityStatePin = cityState + (pin ? (cityState ? ` - ${pin}` : String(pin)) : '');
+  const fullAddress = streetAddress
+    ? [streetAddress, cityStatePin].filter(Boolean).join('\n')
+    : '';
+
+  return {
+    documentType: 'PURCHASE_BILL',
+    documentNumber: bill?.bill_number || bill?.number || 'BILL-001',
+    date: bill?.bill_date || bill?.created_at || '19 Oct 2026, 12:34 pm',
+    status: bill?.status || 'Confirmed',
+    dueDate: bill?.due_date || null,
+    company: {
+      name: bill?.supplier_name || supplier.name || 'Supplier',
+      address: fullAddress,
+      city: supplier.city || supplier.billingCity,
+      state: supplier.state || supplier.billingState,
+      pincode: pin,
+      gstin: supplier.gstin || bill?.supplier_gstin,
+      phone: supplier.phone || bill?.supplier_phone,
+      email: supplier.email || bill?.supplier_email,
+    },
+    customer: business,
+    items: items.map((i) => ({
+      name: i?.product_name || i?.name || 'Item',
+      quantity: Number(i?.quantity || 1),
+      unit_price: Number(i?.rate || i?.unit_price || 0),
+      totalPrice: Number(i?.total_amount || i?.total || 0),
+    })),
+    subtotal: Number(bill?.subtotal || 0),
+    totalAmount: Number(bill?.total_amount || 0),
+  };
+}
+
+export default UniversalDocumentTemplate;

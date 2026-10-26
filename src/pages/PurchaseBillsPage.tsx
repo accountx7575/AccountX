@@ -10,14 +10,14 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { ShoppingCart, Plus, Ban, CheckCircle2, Trash2, Printer, Pencil, FileDown, Share2, Mail, Eye } from 'lucide-react';
+import { ShoppingCart, Plus, Ban, CheckCircle2, Trash2, Pencil, Share2, Mail, Eye, Printer, Download, Loader2 } from 'lucide-react';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { usePagedList } from '@/hooks/usePagedList';
-import { formatCurrency, formatDate, formatTimeOfDay } from '@/lib/utils';
-import { renderDocSheetToPdf, renderDocSheetToPdfBlob, type PrintableDocData } from '@/lib/docPrint';
+import { formatCurrency, formatDate } from '@/lib/utils';
 import { openWhatsAppShare } from '@/lib/whatsapp';
+import { printDocument, downloadDocumentPdf } from '@/lib/documentActions';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
-import type { PurchaseBill, PurchaseBillItem, Supplier } from '@/types/db';
+import type { PurchaseBill } from '@/types/db';
 
 type BillRow = PurchaseBill & { supplier: { name: string; phone: string | null; email: string | null } | null };
 
@@ -30,88 +30,22 @@ export function PurchaseBillsPage() {
   const [cancelTarget, setCancelTarget] = useState<PurchaseBill | null>(null);
   const [discardTarget, setDiscardTarget] = useState<PurchaseBill | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseBill | null>(null);
-  const [printingId, setPrintingId] = useState<string | null>(null);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
-  // Shared payload for both print preview and PDF download. Full supplier
-  // row for the swapped print parties: Billed By = vendor (PBS-41).
-  const fetchBillPayload = async (b: BillRow): Promise<{ blobPayload: Omit<PrintableDocData, 'businessName' | 'gstin'>; fileName: string }> => {
-    const { data: items, error } = await supabase
-      .from('purchase_bill_items')
-      .select('*')
-      .eq('bill_id', b.id)
-      .order('created_at');
-    if (error) throw error;
-    const { data: supplier, error: supplierError } = await supabase
-      .from('suppliers')
-      .select('*')
-      .eq('id', b.supplier_id)
-      .maybeSingle();
-    if (supplierError) throw supplierError;
-    const s = (supplier ?? null) as Supplier | null;
-    const supplierAddress = [s?.address, s?.city, s?.state, s?.pincode].filter(Boolean).join(', ');
-    return {
-      blobPayload: {
-        docTitle: 'PURCHASE BILL',
-        docNumber: b.bill_number,
-        dateLabel: 'Bill Date',
-        dateValue: formatDate(b.bill_date),
-        time: formatTimeOfDay(b.created_at),
-        expiryLabel: 'Due Date',
-        expiryValue: b.due_date,
-        partyLabel: 'Supplier',
-        partyName: s?.company_name || s?.name || b.supplier?.name || '—',
-        partyAddress: supplierAddress || undefined,
-        partyGstin: s?.gstin || undefined,
-        partyPhone: s?.phone || undefined,
-        isPurchaseBill: true,
-        status: b.status,
-        items: (items || []) as PurchaseBillItem[],
-        subtotal: Number(b.subtotal),
-        taxableAmount: Number(b.taxable_amount),
-        cgst: Number(b.cgst_amount),
-        sgst: Number(b.sgst_amount),
-        igst: Number(b.igst_amount),
-        roundOff: Number(b.round_off) || 0,
-        grandTotal: Number(b.grand_total),
-        notes: b.notes,
-      },
-      fileName: `${b.bill_number}.pdf`,
-    };
+  const handlePrint = (id: string) => {
+    printDocument('purchase_bill', id, activeBusiness, navigate);
   };
 
-  // Native print preview via hidden iframe (SalesOrdersPage pattern).
-  const handleDirectPrint = async (b: BillRow) => {
-    if (!activeBusiness) return;
-    setPrintingId(b.id);
+  const handleDownload = async (id: string) => {
+    if (!activeBusiness || actionLoadingId) return;
+    setActionLoadingId(`${id}-download`);
     try {
-      const { blobPayload } = await fetchBillPayload(b);
-      await renderDocSheetToPdf(activeBusiness, blobPayload as any);
+      await downloadDocumentPdf('purchase_bill', id, activeBusiness);
+      toast('PDF downloaded', 'success');
     } catch (err: any) {
-      toast(err?.message || 'Print preview failed', 'error');
+      toast(err.message || 'Failed to download PDF', 'error');
     } finally {
-      setPrintingId(null);
-    }
-  };
-
-  const handleDownloadPdf = async (b: BillRow) => {
-    if (!activeBusiness) return;
-    setDownloadingId(b.id);
-    try {
-      const { blobPayload, fileName } = await fetchBillPayload(b);
-      const blob = await renderDocSheetToPdfBlob(activeBusiness, blobPayload as any);
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-    } catch (err: any) {
-      toast(err?.message || 'Failed to download PDF', 'error');
-    } finally {
-      setDownloadingId(null);
+      setActionLoadingId(null);
     }
   };
 
@@ -366,8 +300,14 @@ export function PurchaseBillsPage() {
                   <div className="flex items-center gap-1">
                     <button onClick={() => navigate(`/app/purchase-bills/${b.id}`)} title="View bill" aria-label="View bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"><Eye className="h-4 w-4" /></button>
                     <button onClick={() => navigate(`/app/purchase-bills/${b.id}/edit`)} title="Edit bill" aria-label="Edit bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"><Pencil className="h-4 w-4" /></button>
-                    <button onClick={() => handleDirectPrint(b)} title="Print bill" aria-label="Print bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-secondary-700 hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"><Printer className="h-4 w-4" /></button>
-                    <button onClick={() => handleDownloadPdf(b)} disabled={downloadingId === b.id} title="Download PDF" aria-label="Download PDF" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors disabled:opacity-40"><FileDown className="h-4 w-4" /></button>
+                    <button onClick={() => handlePrint(b.id)} disabled={!!actionLoadingId} title="Print bill" aria-label="Print bill" className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group">
+                      {actionLoadingId === `${b.id}-print` ? <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" /> : <Printer className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />}
+                      <span>Print</span>
+                    </button>
+                    <button onClick={() => handleDownload(b.id)} disabled={!!actionLoadingId} title="Download PDF" aria-label="Download PDF" className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group">
+                      {actionLoadingId === `${b.id}-download` ? <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" /> : <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />}
+                      <span>PDF</span>
+                    </button>
                     {b.status === 'draft' && <button onClick={() => issueDraftMutation.mutate(b.id)} title="Confirm bill" aria-label="Confirm bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors"><CheckCircle2 className="h-4 w-4" /></button>}
                     {['confirmed', 'partially_paid', 'paid'].includes(b.status) && <button onClick={() => setCancelTarget(b)} title="Cancel bill" aria-label="Cancel bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"><Ban className="h-4 w-4" /></button>}
                     <button onClick={() => setDeleteTarget(b)} title="Delete bill" aria-label="Delete bill" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"><Trash2 className="h-4 w-4" /></button>
@@ -427,20 +367,32 @@ export function PurchaseBillsPage() {
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => handleDirectPrint(b)}
-                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-secondary-700 hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"
+                          onClick={() => handlePrint(b.id)}
+                          disabled={!!actionLoadingId}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group"
                           title="Print bill"
                           aria-label="Print bill"
                         >
-                          <Printer className={`h-4 w-4 ${printingId === b.id ? 'animate-pulse' : ''}`} />
+                          {actionLoadingId === `${b.id}-print` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                          ) : (
+                            <Printer className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />
+                          )}
+                          <span>Print</span>
                         </button>
                         <button
-                          onClick={() => handleDownloadPdf(b)}
-                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                          onClick={() => handleDownload(b.id)}
+                          disabled={!!actionLoadingId}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group"
                           title="Download PDF"
                           aria-label="Download PDF"
                         >
-                          <FileDown className={`h-4 w-4 ${downloadingId === b.id ? 'animate-pulse' : ''}`} />
+                          {actionLoadingId === `${b.id}-download` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />
+                          )}
+                          <span>PDF</span>
                         </button>
                         <button
                           onClick={() => shareBillWhatsApp(b)}

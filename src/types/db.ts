@@ -13,6 +13,8 @@ export type Business = {
   country: string;
   gstin: string | null;
   pan: string | null;
+  cin?: string | null;
+  website?: string | null;
   financial_year: string;
   currency: string;
   currency_symbol: string;
