@@ -75,6 +75,16 @@ export interface PaymentReceiptBusiness {
   [key: string]: any;
 }
 
+export interface ReceiptOptions {
+  docType?: 'receipt' | 'voucher';
+  docTitle?: string;
+  docSubtitle?: string;
+  partyLabel?: string;
+  statusLabel?: string;
+  numberLabel?: string;
+  dateTimeLabel?: string;
+}
+
 export type PaymentReceiptData = Omit<Partial<Payment>, 'payment_method' | 'customer' | 'invoice'> & {
   id: string;
   payment_number: string;
@@ -88,7 +98,9 @@ export type PaymentReceiptData = Omit<Partial<Payment>, 'payment_method' | 'cust
   reference?: string | null;
   notes?: string | null;
   customer?: PaymentReceiptParty | null;
+  supplier?: PaymentReceiptParty | null;
   invoice?: { invoice_number: string } | null;
+  bill?: { bill_number: string } | null;
   [key: string]: any;
 };
 
@@ -815,8 +827,17 @@ export const RECEIPT_STYLES = `
 
 export function generateReceiptHtml(
   payment: PaymentReceiptData,
-  business: PaymentReceiptBusiness | null | undefined
+  business: PaymentReceiptBusiness | null | undefined,
+  options?: ReceiptOptions
 ): string {
+  const isVoucher = options?.docType === 'voucher' || (payment as any).type === 'made' || Boolean((payment as any).supplier && !payment.customer);
+  const docTitle = options?.docTitle || (isVoucher ? 'PAYMENT VOUCHER' : 'PAYMENT RECEIPT');
+  const docSubtitle = options?.docSubtitle || (isVoucher ? 'Original Payment Advice' : 'Original for Recipient');
+  const numberLabel = options?.numberLabel || (isVoucher ? 'Voucher No:' : 'Receipt No:');
+  const dateTimeLabel = options?.dateTimeLabel || (isVoucher ? 'Voucher Date & Time:' : 'Receipt Date & Time:');
+  const partyLabel = options?.partyLabel || (isVoucher ? 'PAID TO' : 'RECEIVED FROM');
+  const statusBadgeText = options?.statusLabel || (isVoucher ? '✓ PAID' : '✓ RECEIVED');
+
   const sym = business?.currency_symbol || '₹';
   const bizName = business?.legal_name || business?.legalName || business?.name || 'Avadh Boring Company';
   const tradeName = String(business?.trade_name || business?.tradeName || '').trim();
@@ -852,16 +873,17 @@ export function generateReceiptHtml(
 
   const hasBankDetails = Boolean(bankName || accountNo || ifsc || upiId || accountHolder);
 
-  const custName = payment.customer?.name || payment.customer?.company_name || (payment as any).customer_name || 'Customer';
-  const custPhone = String(payment.customer?.phone || '').trim();
-  const custEmail = String(payment.customer?.email || '').trim();
-  const custAddress = String(payment.customer?.address || (payment.customer as any)?.street || '').trim();
-  const custCity = String(payment.customer?.city || '').trim();
-  const custState = String(payment.customer?.state || '').trim();
-  const custPincode = String(payment.customer?.pincode || (payment.customer as any)?.pin_code || '').trim();
-  const custGstin = String(payment.customer?.gstin || '').trim();
-  const custPan = String(payment.customer?.pan || (custGstin.length >= 12 ? custGstin.slice(2, 12) : '')).trim();
-  const custAadhaar = String(payment.customer?.aadhaar || '').trim();
+  const party = payment.supplier || payment.customer || (payment as any).party;
+  const custName = party?.name || party?.company_name || (payment as any).supplier_name || (payment as any).customer_name || (isVoucher ? 'Supplier' : 'Customer');
+  const custPhone = String(party?.phone || '').trim();
+  const custEmail = String(party?.email || '').trim();
+  const custAddress = String(party?.address || (party as any)?.street || '').trim();
+  const custCity = String(party?.city || '').trim();
+  const custState = String(party?.state || '').trim();
+  const custPincode = String(party?.pincode || (party as any)?.pin_code || '').trim();
+  const custGstin = String(party?.gstin || '').trim();
+  const custPan = String(party?.pan || (custGstin.length >= 12 ? custGstin.slice(2, 12) : '')).trim();
+  const custAadhaar = String(party?.aadhaar || '').trim();
 
   // Line 4: City, State - Pincode (e.g. "Barabanki, Uttar Pradesh - 225001")
   let cityStatePin = '';
@@ -904,8 +926,8 @@ export function generateReceiptHtml(
           </div>
 
           <div class="doc-badge">
-            <span class="badge-title">PAYMENT RECEIPT</span>
-            <p class="badge-subtitle">Original for Recipient</p>
+            <span class="badge-title">${escapeHtml(docTitle)}</span>
+            <p class="badge-subtitle">${escapeHtml(docSubtitle)}</p>
           </div>
         </div>
 
@@ -917,7 +939,7 @@ export function generateReceiptHtml(
               <span>${escapeHtml(bizStreet || 'AN-25, Lautabagh, Azadnagar, Nawabganj')}</span>
             </div>
             <div class="header-col-right">
-              <span class="label">Receipt No:</span>
+              <span class="label">${escapeHtml(numberLabel)}</span>
               <strong>${escapeHtml(payment.payment_number)}</strong>
             </div>
           </div>
@@ -928,7 +950,7 @@ export function generateReceiptHtml(
               <span>${escapeHtml(bizCityStatePin || 'Barabanki, Uttar Pradesh - 225001')}</span>
             </div>
             <div class="header-col-right">
-              <span class="label">Receipt Date &amp; Time:</span>
+              <span class="label">${escapeHtml(dateTimeLabel)}</span>
               <span class="val">${escapeHtml(receiptDateTimeStr)}</span>
             </div>
           </div>
@@ -972,7 +994,7 @@ export function generateReceiptHtml(
         <div class="card-col customer-card-col">
           <div class="card-label">
             <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>
-            RECEIVED FROM
+            ${escapeHtml(partyLabel)}
           </div>
           <div class="card-rows">
             <!-- Row 1: Customer Name (Bold) -->
@@ -1040,10 +1062,10 @@ export function generateReceiptHtml(
               <span class="val-mono">${escapeHtml(methodLabel)}</span>
             </div>
 
-            <!-- Row 4: Payment Status: [RECEIVED badge] -->
+            <!-- Row 4: Payment Status: [RECEIVED / PAID badge] -->
             <div class="card-row card-row-between">
               <span class="label">Payment Status:</span>
-              <span class="status-pill">✓ RECEIVED</span>
+              <span class="status-pill">${escapeHtml(statusBadgeText)}</span>
             </div>
 
             <!-- Row 5: Matching spacer row to maintain 1:1 row symmetry with Left Card if 5th row present -->
@@ -1063,7 +1085,7 @@ export function generateReceiptHtml(
           <thead>
             <tr>
               <th class="text-center" style="width: 5%">#</th>
-              <th style="width: 45%">DESCRIPTION / INVOICE REF</th>
+              <th style="width: 45%">${isVoucher ? 'DESCRIPTION / BILL REF' : 'DESCRIPTION / INVOICE REF'}</th>
               <th class="text-right" style="width: 16%">ORIGINAL AMOUNT</th>
               <th class="text-right" style="width: 16%">ALLOCATED AMOUNT</th>
               <th class="text-right" style="width: 18%">UNALLOCATED / BALANCE</th>
@@ -1074,14 +1096,18 @@ export function generateReceiptHtml(
               <td class="text-center num-mono" style="color: #94a3b8; font-size: 11px;">1</td>
               <td>
                 <div class="td-desc-title">
-                  ${payment.invoice?.invoice_number
-                    ? `Invoice ${escapeHtml(payment.invoice.invoice_number)}`
-                    : 'Payment received — On Account / Advance'}
+                  ${payment.bill?.bill_number
+                    ? `Purchase Bill ${escapeHtml(payment.bill.bill_number)}`
+                    : (payment.invoice?.invoice_number
+                      ? `Invoice ${escapeHtml(payment.invoice.invoice_number)}`
+                      : (isVoucher ? 'Payment made — On Account / Advance' : 'Payment received — On Account / Advance'))}
                 </div>
                 <div class="td-desc-sub">
-                  ${payment.invoice?.invoice_number
-                    ? 'Payment allocated against open sales invoice'
-                    : 'Unallocated receipt credited to customer ledger'}
+                  ${payment.bill?.bill_number
+                    ? 'Payment allocated against open purchase bill'
+                    : (payment.invoice?.invoice_number
+                      ? 'Payment allocated against open sales invoice'
+                      : (isVoucher ? 'Unallocated payment debited to supplier ledger' : 'Unallocated receipt credited to customer ledger'))}
                 </div>
                 ${payment.notes ? `<div class="td-desc-note">Note: ${escapeHtml(payment.notes)}</div>` : ''}
               </td>
@@ -1130,7 +1156,7 @@ export function generateReceiptHtml(
             <span class="val">${formatCurrency(amount, sym)}</span>
           </div>
           <div class="total-line">
-            <span>Applied to Invoices:</span>
+            <span>${isVoucher ? 'Applied to Bills:' : 'Applied to Invoices:'}</span>
             <span class="val">${allocated > 0 ? formatCurrency(allocated, sym) : '—'}</span>
           </div>
           <div class="total-line">
@@ -1138,7 +1164,7 @@ export function generateReceiptHtml(
             <span class="val">${unapplied > 0 ? formatCurrency(unapplied, sym) : '—'}</span>
           </div>
           <div class="grand-total-bar">
-            <span class="grand-total-label">Total Received (INR):</span>
+            <span class="grand-total-label">${isVoucher ? 'Total Paid (INR):' : 'Total Received (INR):'}</span>
             <span class="grand-total-val">${formatCurrency(amount, sym)}</span>
           </div>
         </div>
@@ -1172,7 +1198,7 @@ export function generateReceiptHtml(
 
       <!-- Center Bottom Disclaimer -->
       <div class="bottom-disclaimer">
-        <p>This is a computer generated receipt.</p>
+        <p>${isVoucher ? 'This is a computer generated payment voucher.' : 'This is a computer generated receipt.'}</p>
       </div>
     </div>
   `;
@@ -1182,12 +1208,14 @@ let isPrintingGlobal = false;
 
 export function printPaymentReceipt(
   payment: PaymentReceiptData,
-  business: PaymentReceiptBusiness | null | undefined
+  business: PaymentReceiptBusiness | null | undefined,
+  options?: ReceiptOptions
 ): void {
   if (isPrintingGlobal) return;
   isPrintingGlobal = true;
 
-  const htmlContent = generateReceiptHtml(payment, business);
+  const htmlContent = generateReceiptHtml(payment, business, options);
+  const docTitle = options?.docTitle || (options?.docType === 'voucher' || (payment as any).type === 'made' ? 'Payment Voucher' : 'Payment Receipt');
 
   const printFrame = document.createElement('iframe');
   printFrame.style.position = 'fixed';
@@ -1209,7 +1237,7 @@ export function printPaymentReceipt(
     <!DOCTYPE html>
     <html>
       <head>
-        <title>Payment Receipt ${escapeHtml(payment.payment_number)}</title>
+        <title>${escapeHtml(docTitle)} ${escapeHtml(payment.payment_number)}</title>
         <style>
           ${RECEIPT_STYLES}
         </style>
@@ -1240,4 +1268,12 @@ export function printPaymentReceipt(
       isPrintingGlobal = false;
     }, 1500);
   }, 350);
+}
+
+export function printPaymentVoucher(
+  payment: PaymentReceiptData,
+  business: PaymentReceiptBusiness | null | undefined,
+  options?: ReceiptOptions
+): void {
+  printPaymentReceipt(payment, business, { docType: 'voucher', ...options });
 }

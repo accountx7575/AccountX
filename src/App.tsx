@@ -49,6 +49,7 @@ const QuotationsPage = lazy(() => import('@/pages/QuotationsPage').then((m) => (
 const SalesOrdersPage = lazy(() => import('@/pages/SalesOrdersPage').then((m) => ({ default: m.SalesOrdersPage })));
 const PurchaseOrdersPage = lazy(() => import('@/pages/PurchaseOrdersPage').then((m) => ({ default: m.PurchaseOrdersPage })));
 const PaymentsMadePage = lazy(() => import('@/pages/PaymentsMadePage').then((m) => ({ default: m.PaymentsMadePage })));
+const PaymentMadeViewPage = lazy(() => import('@/pages/PaymentMadeViewPage').then((m) => ({ default: m.PaymentMadeViewPage })));
 const ExpensesPage = lazy(() => import('@/pages/ExpensesPage').then((m) => ({ default: m.ExpensesPage })));
 const StockPage = lazy(() => import('@/pages/StockPage').then((m) => ({ default: m.StockPage })));
 const StockAdjustmentPage = lazy(() => import('@/pages/StockAdjustmentPage').then((m) => ({ default: m.StockAdjustmentPage })));
@@ -165,6 +166,8 @@ function AppRoutes() {
         <Route path="journal-entries/new" element={<JournalEntryCreatePage />} />
         <Route path="payments-made" element={<PaymentsMadePage />} />
         <Route path="payments-made/new" element={<PaymentMakeCreatePage />} />
+        <Route path="payments-made/:id" element={<PaymentMadeViewPage />} />
+        <Route path="payments-made/:id/edit" element={<PaymentMakeCreatePage />} />
         <Route path="expenses" element={<ExpensesPage />} />
         <Route path="expenses/new" element={<ExpenseCreatePage />} />
         <Route path="stock" element={<StockPage />} />

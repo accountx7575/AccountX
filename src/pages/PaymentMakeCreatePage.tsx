@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -10,12 +10,14 @@ import { DatePicker } from '@/components/common/DatePicker';
 import { Input, FormField } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { ArrowLeft, CreditCard } from 'lucide-react';
-import { formatCurrency, todayDateString, roundTo2 } from '@/lib/utils';
+import { formatCurrency, todayDateString, roundTo2, isUuid } from '@/lib/utils';
 import { buildAllocationRequest } from '@/lib/payloads';
 import { allocateDocumentNumber } from '@/lib/numbering';
-import type { Supplier, PurchaseBill } from '@/types/db';
+import type { Supplier, PurchaseBill, Payment } from '@/types/db';
 
 export function PaymentMakeCreatePage() {
+  const { id } = useParams<{ id: string }>();
+  const isEdit = Boolean(id);
   const { activeBusiness } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -25,6 +27,45 @@ export function PaymentMakeCreatePage() {
     payment_method: 'cash', reference: '', notes: '', advanceUnallocated: false,
   });
   const [bills, setBills] = useState<PurchaseBill[]>([]);
+
+  const { data: existingPayment } = useQuery({
+    queryKey: ['payment-made', id],
+    queryFn: async () => {
+      if (!id) return null;
+      let { data, error } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!data) {
+        const alt = await supabase
+          .from('payments_made')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (alt.data) data = alt.data;
+      }
+      if (error && !data) throw error;
+      return data as Payment;
+    },
+    enabled: !!id,
+  });
+
+  useEffect(() => {
+    if (existingPayment) {
+      setForm({
+        supplierId: existingPayment.party_id || (existingPayment as any).supplier_id || '',
+        billId: existingPayment.bill_id || '',
+        amount: String(existingPayment.amount ?? ''),
+        date: existingPayment.payment_date || existingPayment.date || todayDateString(),
+        payment_method: existingPayment.payment_method || 'cash',
+        reference: existingPayment.reference || '',
+        notes: existingPayment.notes || '',
+        advanceUnallocated: !existingPayment.bill_id,
+      });
+    }
+  }, [existingPayment]);
 
   const { data: suppliers } = useQuery({
     queryKey: ['suppliers', activeBusiness?.id],
@@ -38,16 +79,73 @@ export function PaymentMakeCreatePage() {
 
   useEffect(() => {
     if (form.supplierId && activeBusiness) {
-      Promise.resolve(supabase.from('purchase_bills').select('*')
-        .eq('business_id', activeBusiness.id).eq('supplier_id', form.supplierId)
-        .in('status', ['confirmed', 'partially_paid']).gt('balance_amount', 0).order('bill_date', { ascending: false })
-        .then(({ data, error }) => {
-          if (error) throw error;
-          setBills((data || []) as PurchaseBill[]);
-        }))
-        .catch((err: any) => toast(err?.message || 'Failed to load open bills', 'error'));
-    } else { setBills([]); }
-  }, [form.supplierId, activeBusiness]);
+      Promise.resolve(
+        supabase
+          .from('purchase_bills')
+          .select('*')
+          .eq('business_id', activeBusiness.id)
+          .eq('supplier_id', form.supplierId)
+          .order('bill_date', { ascending: false })
+          .then(({ data, error }) => {
+            if (error) throw error;
+            const openOrCurrentBills = (data || []).filter(
+              (b: any) =>
+                ['confirmed', 'partially_paid'].includes(b.status) &&
+                (Number(b.balance_amount) > 0 || (isEdit && b.id === existingPayment?.bill_id))
+            );
+            setBills(openOrCurrentBills as PurchaseBill[]);
+          })
+      ).catch((err: any) => toast(err?.message || 'Failed to load open bills', 'error'));
+    } else {
+      setBills([]);
+    }
+  }, [form.supplierId, activeBusiness, isEdit, existingPayment?.bill_id]);
+
+  const syncSupplierBalance = async (targetSupplierId: string) => {
+    if (!targetSupplierId || !activeBusiness?.id || !isUuid(targetSupplierId)) return;
+    try {
+      const [suppRes, billsRes, payRes] = await Promise.all([
+        supabase
+          .from('suppliers')
+          .select('opening_balance')
+          .eq('id', targetSupplierId)
+          .eq('business_id', activeBusiness.id)
+          .maybeSingle(),
+        supabase
+          .from('purchase_bills')
+          .select('grand_total')
+          .eq('supplier_id', targetSupplierId)
+          .eq('business_id', activeBusiness.id)
+          .in('status', ['confirmed', 'partially_paid', 'paid']),
+        supabase
+          .from('payments')
+          .select('amount')
+          .eq('party_id', targetSupplierId)
+          .eq('party_type', 'supplier')
+          .eq('business_id', activeBusiness.id)
+          .eq('type', 'made'),
+      ]);
+
+      const openingBal = Number(suppRes.data?.opening_balance) || 0;
+      const totalPurchases = (billsRes.data || []).reduce((acc: number, r: any) => acc + (Number(r.grand_total) || 0), 0);
+      const totalPaid = (payRes.data || []).reduce((acc: number, r: any) => acc + (Number(r.amount) || 0), 0);
+      const totalPayable = roundTo2(openingBal + totalPurchases);
+      const newBal = totalPayable <= 0 ? 0 : Math.max(0, roundTo2(totalPayable - totalPaid));
+
+      await supabase
+        .from('suppliers')
+        .update({
+          current_balance: newBal,
+          total_purchases: roundTo2(totalPurchases),
+          total_paid: roundTo2(totalPaid),
+          last_transaction_date: new Date().toISOString(),
+        })
+        .eq('id', targetSupplierId)
+        .eq('business_id', activeBusiness.id);
+    } catch (suppErr) {
+      console.warn('supplier balance update warning:', suppErr);
+    }
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -76,6 +174,138 @@ export function PaymentMakeCreatePage() {
 
       const paymentMethod = form.payment_method === 'bank_transfer' ? 'bank' : form.payment_method;
 
+      // Handle Edit Mode
+      if (isEdit && id) {
+        const previousSupplierId = existingPayment?.party_id || (existingPayment as any)?.supplier_id;
+        const previousBillId = existingPayment?.bill_id;
+        const previousAllocated = Number(existingPayment?.allocated_amount) || Number(existingPayment?.amount) || 0;
+
+        // If previously allocated to a different bill, revert the old bill
+        if (previousBillId && previousBillId !== form.billId && isUuid(previousBillId)) {
+          try {
+            const { data: prevBill } = await supabase
+              .from('purchase_bills')
+              .select('paid_amount, grand_total, status')
+              .eq('id', previousBillId)
+              .maybeSingle();
+
+            if (prevBill) {
+              const curPaid = Number(prevBill.paid_amount) || 0;
+              const gTotal = Number(prevBill.grand_total) || 0;
+              const revertedPaid = roundTo2(Math.max(0, curPaid - previousAllocated));
+              const revertedBal = roundTo2(Math.min(gTotal, gTotal - revertedPaid));
+              const revertedPayStatus = revertedBal <= 0 ? 'paid' : (revertedPaid > 0 ? 'partial' : 'unpaid');
+              const revertedStatus = revertedPayStatus === 'paid' ? 'paid' : (revertedPaid > 0 ? 'partially_paid' : 'confirmed');
+              await supabase.from('purchase_bills').update({
+                paid_amount: revertedPaid,
+                balance_amount: revertedBal,
+                payment_status: revertedPayStatus,
+                status: revertedStatus,
+              }).eq('id', previousBillId);
+            }
+          } catch (prevBillErr) {
+            console.warn('revert previous bill allocation warning:', prevBillErr);
+          }
+        }
+
+        // Update payment row in payments
+        const { error: updateError } = await supabase
+          .from('payments')
+          .update({
+            party_id: form.supplierId,
+            date: form.date,
+            payment_date: form.date,
+            amount: paymentAmount,
+            allocated_amount: allocatedAmount,
+            bill_id: form.billId || null,
+            payment_method: paymentMethod,
+            reference: form.reference?.trim() || null,
+            notes: form.notes?.trim() || null,
+          })
+          .eq('id', id);
+
+        if (updateError) throw updateError;
+
+        // If allocated to a bill, update purchase_bills row
+        if (form.billId && targetBill) {
+          const prevAllocatedToThis = (previousBillId === form.billId) ? previousAllocated : 0;
+          const basePaid = Math.max(0, (Number(targetBill.paid_amount) || 0) - prevAllocatedToThis);
+          const billTotal = Number(targetBill.grand_total) || 0;
+          const newPaid = roundTo2(basePaid + allocatedAmount);
+          const newBalance = roundTo2(Math.max(0, billTotal - newPaid));
+          const newPaymentStatus = newBalance <= 0 ? 'paid' : (newPaid > 0 ? 'partial' : 'unpaid');
+          const newStatus = newPaymentStatus === 'paid' ? 'paid' : (targetBill.status === 'confirmed' ? 'partially_paid' : targetBill.status);
+
+          await supabase
+            .from('purchase_bills')
+            .update({
+              paid_amount: newPaid,
+              balance_amount: newBalance,
+              payment_status: newPaymentStatus,
+              status: newStatus,
+            })
+            .eq('id', form.billId);
+        }
+
+        // Sync supplier balance for previous supplier (if changed) and new supplier
+        if (previousSupplierId && previousSupplierId !== form.supplierId) {
+          await syncSupplierBalance(previousSupplierId);
+        }
+        await syncSupplierBalance(form.supplierId);
+
+        // Update journal entries
+        try {
+          const { data: jeList } = await supabase
+            .from('journal_entries')
+            .select('id')
+            .eq('business_id', activeBusiness.id)
+            .eq('reference_type', 'payment_made')
+            .eq('reference_id', id);
+
+          if (jeList && jeList.length > 0) {
+            for (const je of jeList) {
+              await supabase
+                .from('journal_entries')
+                .update({
+                  entry_date: form.date,
+                  narration: `Payment made ${existingPayment?.payment_number || ''}`.trim(),
+                })
+                .eq('id', je.id);
+
+              const { data: lines } = await supabase
+                .from('journal_entry_lines')
+                .select('id, debit_amount, credit_amount')
+                .eq('entry_id', je.id);
+
+              if (lines) {
+                for (const line of lines) {
+                  if (Number(line.debit_amount) > 0) {
+                    await supabase.from('journal_entry_lines').update({ debit_amount: paymentAmount }).eq('id', line.id);
+                  }
+                  if (Number(line.credit_amount) > 0) {
+                    await supabase.from('journal_entry_lines').update({ credit_amount: paymentAmount }).eq('id', line.id);
+                  }
+                }
+              }
+            }
+          } else {
+            await supabase.rpc('post_payment_made_journal', { p_payment_id: id });
+          }
+        } catch (jeErr) {
+          console.warn('journal update warning:', jeErr);
+        }
+
+        const isAdvance = form.advanceUnallocated || (!form.billId && allocatedAmount === 0);
+        return {
+          allocatedTotal: allocatedAmount,
+          allocatedTo,
+          isAdvance,
+          amount: paymentAmount,
+          isEdit: true,
+        };
+      }
+
+      // Create Mode
       let paymentNumber = '';
       try {
         paymentNumber = await allocateDocumentNumber({
@@ -101,6 +331,7 @@ export function PaymentMakeCreatePage() {
           party_id: form.supplierId,
           payment_number: paymentNumber,
           date: form.date,
+          payment_date: form.date,
           amount: paymentAmount,
           allocated_amount: allocatedAmount,
           bill_id: form.billId || null,
@@ -138,30 +369,7 @@ export function PaymentMakeCreatePage() {
       }
 
       // Update supplier balance & total_paid
-      try {
-        const { data: supplierRow } = await supabase
-          .from('suppliers')
-          .select('current_balance, total_paid')
-          .eq('id', form.supplierId)
-          .maybeSingle();
-
-        if (supplierRow) {
-          const currentBal = Number(supplierRow.current_balance) || 0;
-          const currentPaid = Number(supplierRow.total_paid) || 0;
-          const newBal = roundTo2(Math.max(0, currentBal - paymentAmount));
-          const newPaid = roundTo2(currentPaid + paymentAmount);
-          await supabase
-            .from('suppliers')
-            .update({
-              current_balance: newBal,
-              total_paid: newPaid,
-              last_transaction_date: new Date().toISOString(),
-            })
-            .eq('id', form.supplierId);
-        }
-      } catch (suppErr) {
-        console.warn('supplier balance update warning:', suppErr);
-      }
+      await syncSupplierBalance(form.supplierId);
 
       // Optionally post accounting journal if RPC is available
       if (paymentRow?.id) {
@@ -178,21 +386,26 @@ export function PaymentMakeCreatePage() {
         allocatedTo,
         isAdvance,
         amount: paymentAmount,
+        isEdit: false,
       };
     },
-    onSuccess: ({ allocatedTotal, allocatedTo, isAdvance, amount }) => {
-      queryClient.invalidateQueries({ queryKey: ['payments-made', activeBusiness?.id] });
-      queryClient.invalidateQueries({ queryKey: ['suppliers', activeBusiness?.id] });
-      queryClient.invalidateQueries({ queryKey: ['purchase-bills', activeBusiness?.id] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-stats', activeBusiness?.id] });
-      queryClient.invalidateQueries({ queryKey: ['cashflow-series', activeBusiness?.id] });
-      queryClient.invalidateQueries({ queryKey: ['liquid-cash', activeBusiness?.id] });
-      queryClient.invalidateQueries({ queryKey: ['payables', activeBusiness?.id] });
-      queryClient.invalidateQueries({ queryKey: ['accounts', activeBusiness?.id] });
-      queryClient.invalidateQueries({ queryKey: ['journal-entries', activeBusiness?.id] });
-      queryClient.invalidateQueries({ queryKey: ['trial-balance', activeBusiness?.id] });
+    onSuccess: ({ allocatedTotal, allocatedTo, isAdvance, amount, isEdit }) => {
+      queryClient.invalidateQueries({ queryKey: ['payments-made'] });
+      queryClient.invalidateQueries({ queryKey: ['payment-made', id] });
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-bills'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['cashflow-series'] });
+      queryClient.invalidateQueries({ queryKey: ['liquid-cash'] });
+      queryClient.invalidateQueries({ queryKey: ['payables'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['trial-balance'] });
 
-      if (allocatedTo) {
+      if (isEdit) {
+        toast('Payment updated successfully', 'success');
+      } else if (allocatedTo) {
         toast(`Payment recorded — ${formatCurrency(allocatedTotal, activeBusiness?.currency_symbol)} allocated to ${allocatedTo}`, 'success');
       } else if (isAdvance) {
         toast(`Payment of ${formatCurrency(amount, activeBusiness?.currency_symbol)} recorded on account`, 'success');
@@ -201,13 +414,13 @@ export function PaymentMakeCreatePage() {
       }
       navigate('/app/payments-made');
     },
-    onError: (err: any) => toast(err?.message || 'Failed to record payment', 'error'),
+    onError: (err: any) => toast(err?.message || (isEdit ? 'Failed to update payment' : 'Failed to record payment'), 'error'),
   });
 
   return (
     <div>
       <PageHeader
-        title="Make Payment"
+        title={isEdit ? (existingPayment?.payment_number ? `Edit Payment (${existingPayment.payment_number})` : 'Edit Payment') : 'Make Payment'}
         actions={<Button variant="secondary" onClick={() => navigate('/app/payments-made')}><ArrowLeft className="h-4 w-4" /> Back</Button>}
       />
 
@@ -269,7 +482,7 @@ export function PaymentMakeCreatePage() {
         <div className="flex items-center justify-between gap-3">
           <Button variant="secondary" onClick={() => navigate('/app/payments-made')}>Cancel</Button>
           <Button onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}>
-            <CreditCard className="h-4 w-4" /> Make Payment
+            <CreditCard className="h-4 w-4" /> {isEdit ? 'Update Payment' : 'Make Payment'}
           </Button>
         </div>
       </div>
