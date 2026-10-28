@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-10-19T15:33:52.765Z",
+  "savedAt": "2026-10-28T17:18:55.243Z",
   "agents": [
     {
       "id": "god",
@@ -16,10 +16,11 @@
       "progress": 0,
       "currentStation": "desk",
       "ptyId": "pty-god",
-      "command": "agy --model claude-opus-5-5 --dangerously-skip-permissions",
-      "provider": "antigravity",
+      "command": "opencode --model claude-opus-5-5",
+      "provider": "opencode",
       "model": "claude-opus-5-5",
-      "isGod": true
+      "isGod": true,
+      "lastPrompt": "/model"
     },
     {
       "id": "oscar-mv5jajvw",
@@ -34,9 +35,9 @@
       "action": "awaiting",
       "progress": 0,
       "ptyId": "pty-oscar-mv5jajvw",
-      "command": "agy --dangerously-skip-permissions",
-      "provider": "antigravity",
-      "lastPrompt": "continue",
+      "command": "opencode",
+      "provider": "opencode",
+      "lastPrompt": "freecontinue",
       "archived": false,
       "currentStation": "desk"
     },
@@ -49,15 +50,34 @@
       "project": "project-bolt-sb1-AccountXbolt",
       "tmuxTarget": "",
       "cwd": "/Users/mohdsaad/Documents/Website/AccountX/project-bolt-sb1-AccountXbolt",
-      "status": "working",
-      "action": "edited 1 file (memory.md) (ctrl+o to expand)",
+      "status": "idle",
+      "action": "awaiting",
       "progress": 0,
       "ptyId": "pty-stanley-mv5jax01",
-      "command": "agy --dangerously-skip-permissions",
-      "provider": "antigravity",
+      "command": "opencode",
+      "provider": "opencode",
       "lastPrompt": "/model",
       "archived": false,
       "currentStation": "desk"
+    },
+    {
+      "id": "meredith-mvhtn7u1",
+      "name": "Meredith",
+      "character": "meredith",
+      "accent": "sky",
+      "description": "a fresh harness",
+      "project": "project-bolt-sb1-AccountXbolt",
+      "tmuxTarget": "",
+      "cwd": "/Users/mohdsaad/Documents/Website/AccountX/project-bolt-sb1-AccountXbolt",
+      "status": "idle",
+      "action": "awaiting",
+      "progress": 0,
+      "currentStation": "desk",
+      "ptyId": "pty-meredith-mvhtn7u1",
+      "command": "agy --dangerously-skip-permissions",
+      "provider": "antigravity",
+      "archived": false,
+      "lastPrompt": "continue"
     }
   ],
   "archived": [
@@ -75,6 +95,23 @@
       "progress": 0,
       "command": "opencode",
       "provider": "opencode",
+      "archived": true
+    },
+    {
+      "id": "creed-mvi02o9h",
+      "name": "Creed",
+      "character": "creed",
+      "accent": "sky",
+      "description": "a fresh harness",
+      "project": "project-bolt-sb1-AccountXbolt",
+      "tmuxTarget": "",
+      "cwd": "/Users/mohdsaad/Documents/Website/AccountX/project-bolt-sb1-AccountXbolt",
+      "status": "idle",
+      "action": "archived",
+      "progress": 0,
+      "command": "agy --dangerously-skip-permissions",
+      "provider": "antigravity",
+      "lastPrompt": "continue",
       "archived": true
     }
   ],
@@ -134,6 +171,15 @@
       "lastPrompt": "continue"
     }
   ],
-  "queues": {},
-  "selectedId": "oscar-mv5jajvw"
+  "queues": {
+    "god": [
+      {
+        "id": "q-1793187284114-105",
+        "text": "You have new hive inbox message(s): 1, printed below.\n\n[1 of 1]\nid: 2026-10-28T11-34-43-848Z-16b052\nfrom: scheduler\ntype: request (reply expected)\nwork: conv-f601d5\nsubject: Hourly ops standup\nbody:\n> Hourly ops standup. Review every agent: who is doing what, and confirm each is still running (not stalled or idle-stale). Check the task board — are in-flight tasks on track, and is anything blocked or unowned? Flag stale agents and at-risk tasks, and keep the board accurate. (As part of this standup each working agent is asked to summarise its current task and the next step, then compact and resume from the same point — so terminal contexts stay bounded without losing work. The compaction is queued and runs when an agent is idle, so it never interrupts work mid-step.)\n\nThese messages are filed for you when your turn ends: 2026-10-28T11-34-43-848Z-16b052. Do not open or move the inbox files for them. Open a file only where a path is given. Do not send a reply that only acknowledges. Act autonomously; only message god if you genuinely need a decision.",
+        "ts": 1793187284114,
+        "precondition": "inbox-nonempty"
+      }
+    ]
+  },
+  "selectedId": "god"
 }
