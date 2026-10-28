@@ -276,6 +276,8 @@ export type Payment = {
   bill_id: string | null;
   payment_number: string;
   date: string;
+  payment_date?: string;
+  time?: string;
   amount: number;
   allocated_amount: number;
   payment_method: 'cash' | 'upi' | 'bank' | 'card' | 'credit' | 'cheque';

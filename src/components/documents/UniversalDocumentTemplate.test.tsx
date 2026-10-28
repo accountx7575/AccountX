@@ -8,6 +8,7 @@ import {
   formatPlaceOfSupply,
   mapQuotationToUniversalData,
   mapSalesOrderToUniversalData,
+  mapPurchaseBillToUniversalData,
   type DocumentType,
   type UniversalDocumentData,
 } from './UniversalDocumentTemplate';
@@ -580,5 +581,104 @@ describe('UniversalDocumentTemplate - approved GyftKart layout (directive-13)', 
     expect(htmlWithoutLogo).not.toContain('class="h-12 w-auto object-contain max-w-[180px]"');
     expect(htmlWithoutLogo).toContain('rounded-full bg-emerald-600 text-white');
     expect(htmlWithoutLogo).toContain('A');
+  });
+
+  it('renders header supplier/company contact in single row (Phone | Email) with stacked address', () => {
+    const html = render(
+      baseData({
+        documentType: 'PURCHASE_BILL',
+        company: {
+          name: 'Supreme Pipes Ltd',
+          addressLine1: 'Plot 44, Industrial Area Phase 2',
+          city: 'Kanpur',
+          state: 'Uttar Pradesh',
+          pincode: '208001',
+          gstin: '09AABCS1234F1Z5',
+          pan: 'AABCS1234F',
+          phone: '+91 9450942418',
+          email: 'sales@supremepipes.com',
+        },
+      })
+    );
+    expect(html).toContain('Plot 44, Industrial Area Phase 2');
+    expect(html).toContain('Kanpur, Uttar Pradesh - 208001');
+    expect(html).toContain('GSTIN:');
+    expect(html).toContain('09AABCS1234F1Z5');
+    expect(html).toContain('PAN:');
+    expect(html).toContain('AABCS1234F');
+    expect(html).toContain('Phone:');
+    expect(html).toContain('+91 9450942418');
+    expect(html).toContain('Email:');
+    expect(html).toContain('sales@supremepipes.com');
+  });
+
+  it('renders Billed To party card with stacked address hierarchy and inline contact row', () => {
+    const html = render(
+      baseData({
+        customer: {
+          name: 'Avadh Boring Company',
+          companyName: 'Avadh Boring Company',
+          address: 'AN-25, Lautabagh, Azadnagar, Nawabganj\nBarabanki, Uttar Pradesh - 225001',
+          gstin: '09AABPQ3096M1Z5',
+          pan: 'AABPQ3096M',
+          phone: '+91 9450942418',
+          email: 'abc.solar7575@gmail.com',
+        },
+      })
+    );
+    expect(html).toContain('Avadh Boring Company');
+    expect(html).toContain('AN-25, Lautabagh, Azadnagar, Nawabganj');
+    expect(html).toContain('Barabanki, Uttar Pradesh - 225001');
+    expect(html).toContain('GSTIN: 09AABPQ3096M1Z5');
+    expect(html).toContain('PAN: AABPQ3096M');
+    expect(html).toContain('Phone:');
+    expect(html).toContain('+91 9450942418');
+    expect(html).toContain('Email:');
+    expect(html).toContain('abc.solar7575@gmail.com');
+  });
+
+  it('mapPurchaseBillToUniversalData constructs clean stacked buyer and supplier addresses with inline contact info', () => {
+    const business = {
+      name: 'Avadh Boring Company',
+      address: 'AN-25, Lautabagh, Azadnagar, Nawabganj',
+      city: 'Barabanki',
+      state: 'Uttar Pradesh',
+      pincode: '225001',
+      gstin: '09AABPQ3096M1Z5',
+      pan: 'AABPQ3096M',
+      phone: '+91 9450942418',
+      email: 'abc.solar7575@gmail.com',
+    };
+    const bill = {
+      bill_number: 'PB/2026/001',
+      supplier: {
+        name: 'Supreme Pipes Ltd',
+        address: 'Plot 44, Industrial Area Phase 2',
+        city: 'Kanpur',
+        state: 'Uttar Pradesh',
+        pincode: '208001',
+        gstin: '09AABCS1234F1Z5',
+        phone: '+91 9876543210',
+        email: 'billing@supremepipes.com',
+      },
+    };
+    const mapped = mapPurchaseBillToUniversalData(business, bill);
+    expect(mapped.company?.name).toBe('Supreme Pipes Ltd');
+    expect(mapped.company?.phone).toBe('+91 9876543210');
+    expect(mapped.company?.email).toBe('billing@supremepipes.com');
+    expect(mapped.customer?.name).toBe('Avadh Boring Company');
+    expect(mapped.customer?.phone).toBe('+91 9450942418');
+    expect(mapped.customer?.email).toBe('abc.solar7575@gmail.com');
+
+    const html = render(mapped);
+    expect(html).toContain('Supreme Pipes Ltd');
+    expect(html).toContain('Plot 44, Industrial Area Phase 2');
+    expect(html).toContain('Kanpur, Uttar Pradesh - 208001');
+    expect(html).toContain('billing@supremepipes.com');
+    expect(html).toContain('+91 9876543210');
+    expect(html).toContain('AN-25, Lautabagh, Azadnagar, Nawabganj');
+    expect(html).toContain('Barabanki, Uttar Pradesh - 225001');
+    expect(html).toContain('abc.solar7575@gmail.com');
+    expect(html).toContain('+91 9450942418');
   });
 });

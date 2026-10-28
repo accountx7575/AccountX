@@ -104,7 +104,10 @@ export function PaymentReceivedViewPage() {
         payment_number: row.payment_number || (row as any).receipt_number || 'RECEIPT',
         amount: Number(row.amount) || 0,
         allocated_amount: Number(row.allocated_amount) || 0,
-        date: row.date || (row as any).payment_date || row.created_at,
+        date: row.payment_date || row.date || (row as any).payment_date || row.created_at,
+        payment_date: row.payment_date || row.date || null,
+        time: row.time || (row as any).payment_time || null,
+        created_at: row.created_at,
         customer: customerData || (row as any).customer || null,
         invoice: invRes.data || null,
       } as PaymentReceiptData;
@@ -134,7 +137,7 @@ export function PaymentReceivedViewPage() {
     openWhatsAppShare({
       partyName: payment.customer?.company_name || payment.customer?.name || '',
       docNumber: payment.payment_number,
-      dateDDMMYYYY: formatDate(payment.date),
+      dateDDMMYYYY: formatDate(payment.payment_date || payment.date),
       amountInr: formatCurrency(payment.amount, sym),
       bank: {
         name: activeBusiness?.bank_name,
@@ -189,7 +192,7 @@ export function PaymentReceivedViewPage() {
       {/* 1. Header Toolbar matching Sales Order view */}
       <PageHeader
         title={`Payment Receipt ${payment.payment_number}`}
-        subtitle={`Recorded on ${formatDate(payment.date)}`}
+        subtitle={`Recorded on ${formatDate(payment.payment_date || payment.date)}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" onClick={() => navigate('/app/payments-received')}>
@@ -236,7 +239,7 @@ export function PaymentReceivedViewPage() {
               <Calendar className="h-3 w-3" /> Date &amp; Time
             </span>
             <span className="text-sm font-semibold text-secondary-800 dark:text-secondary-100">
-              {formatReceiptDateTime(payment.date, payment.created_at)}
+              {formatReceiptDateTime(payment.payment_date || payment.date, payment.created_at, payment.time)}
             </span>
           </div>
 

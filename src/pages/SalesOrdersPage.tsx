@@ -14,7 +14,7 @@ import { Input, FormField } from '@/components/ui/Input';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
-import { ShoppingCart, Plus, Lock, CheckCircle2, Eye, Pencil, Printer, Download, Loader2 } from 'lucide-react';
+import { ShoppingCart, Plus, Lock, CheckCircle2, Eye, Pencil, Printer, Download, Loader2, Trash2 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { printDocument, downloadDocumentPdf } from '@/lib/documentActions';
 import type { SalesOrder } from '@/types/db';
@@ -53,6 +53,7 @@ export function SalesOrdersPage() {
   const list = usePagedList();
   const [statusFilter, setStatusFilter] = useState('all');
   const [confirmCancel, setConfirmCancel] = useState<SalesOrder | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<SalesOrder | null>(null);
   const [convertTarget, setConvertTarget] = useState<(SalesOrder & { customer: { name: string } | null }) | null>(null);
   const [convertDate, setConvertDate] = useState('');
   const [convertDue, setConvertDue] = useState('');
@@ -110,10 +111,43 @@ export function SalesOrdersPage() {
   const totalOrders = data?.total ?? 0;
 
   const invalidateAll = () => {
-    ['sales-orders', 'dashboard-stats'].forEach((k) =>
-      queryClient.invalidateQueries({ queryKey: [k, activeBusiness?.id] })
-    );
+    ['sales-orders', 'dashboard-stats'].forEach((k) => {
+      queryClient.invalidateQueries({ queryKey: [k] });
+      queryClient.invalidateQueries({ queryKey: [k, activeBusiness?.id] });
+    });
   };
+
+  const deleteMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      if (!activeBusiness) throw new Error('No active business');
+
+      // 1. Delete associated line items first
+      const { error: itemsErr } = await supabase
+        .from('sales_order_items')
+        .delete()
+        .eq('sales_order_id', orderId);
+      if (itemsErr) throw itemsErr;
+
+      // 2. Delete the sales order record
+      const { error: orderErr } = await supabase
+        .from('sales_orders')
+        .delete()
+        .eq('id', orderId)
+        .eq('business_id', activeBusiness.id);
+      if (orderErr) throw orderErr;
+
+      return orderId;
+    },
+    onSuccess: () => {
+      invalidateAll();
+      toast('Sales Order deleted successfully', 'success');
+      setConfirmDelete(null);
+    },
+    onError: (err: any) => {
+      setConfirmDelete(null);
+      toast(err?.message || 'Failed to delete sales order', 'error');
+    },
+  });
 
   const statusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -312,6 +346,14 @@ export function SalesOrdersPage() {
                         >
                           Convert
                         </Button>
+                        <button
+                          onClick={() => setConfirmDelete(o)}
+                          className="p-1.5 rounded-md text-error-600 hover:text-error-700 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                          title="Delete"
+                          aria-label="Delete"
+                        >
+                          <Trash2 className="h-4 w-4 text-error-600" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -330,6 +372,17 @@ export function SalesOrdersPage() {
           isLoading={isLoading}
         />
       </div>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && deleteMutation.mutate(confirmDelete.id)}
+        title="Delete sales order?"
+        message={`Are you sure you want to delete Sales Order ${confirmDelete?.order_number || ''}? This action cannot be undone.`}
+        confirmText="Delete"
+        danger
+        loading={deleteMutation.isPending}
+      />
 
       <ConfirmDialog
         open={!!confirmCancel}

@@ -111,6 +111,23 @@ describe('receiptPrint', () => {
     expect(html).toContain('<span class="val">CASH</span>');
   });
 
+  it('uses payment_date and time over created_at for Receipt Date & Time when payment is edited', () => {
+    const editedPayment = {
+      ...payment,
+      payment_number: 'PR/ABC/SE/26-27/1',
+      date: '2026-10-20',
+      payment_date: '2026-10-20',
+      time: '06:08 PM',
+      created_at: '2026-10-28T12:38:12.736Z',
+      payment_method: 'cash',
+    };
+
+    const html = generateReceiptHtml(editedPayment, business);
+    expect(html).toContain('<span class="label">Receipt Date &amp; Time:</span>');
+    expect(html).toContain('20/10/2026, 06:08 PM');
+    expect(html).not.toContain('28/10/2026, 06:08 PM');
+  });
+
   it('formats customer address card into 5 lines with street, city, state, pincode, and tax pills including Aadhaar', () => {
     const paymentWithFullCust = {
       ...payment,

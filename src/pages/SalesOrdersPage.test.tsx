@@ -21,18 +21,18 @@
  *    makes that reload guarantee observable for in-place switches.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const eqCalls: Array<[string, string]> = [];
 const orderCalls: string[] = [];
 const rangeCalls: Array<[number, number]> = [];
+const deleteCalls: Array<{ table: string; col: string; val: string }> = [];
 let tableRows: any[] = [];
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
-    from: (...args: any[]) => {
-      void args;
+    from: (table: string) => {
       return {
         select: () => ({
           eq: (col: string, val: string) => {
@@ -49,6 +49,18 @@ vi.mock('@/lib/supabase', () => ({
           or: ctorOr(),
           order: chainOrder(),
         }),
+        delete: () => {
+          const deleteBuilder = {
+            eq: (col: string, val: string) => {
+              deleteCalls.push({ table, col, val: String(val) });
+              return deleteBuilder;
+            },
+            then: (resolve: any, reject?: any) => {
+              return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+            },
+          };
+          return deleteBuilder;
+        },
       };
     },
   },
@@ -81,7 +93,8 @@ let activeBusinessOverride: any = {
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ activeBusiness: activeBusinessOverride }),
 }));
-vi.mock('@/context/ToastContext', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+const toastMock = vi.fn();
+vi.mock('@/context/ToastContext', () => ({ useToast: () => ({ toast: toastMock }) }));
 vi.mock('@/hooks/usePagedList', () => ({
   usePagedList: () => ({
     search: '',
@@ -121,6 +134,8 @@ beforeEach(() => {
   eqCalls.length = 0;
   orderCalls.length = 0;
   rangeCalls.length = 0;
+  deleteCalls.length = 0;
+  toastMock.mockReset();
   tableRows = [row('so-1', 'SO/26-27/1'), row('so-2', 'SO/26-27/2')];
   activeBusinessOverride = { id: 'biz-1', name: 'Krishnav Agro Pvt Ltd' };
 });
@@ -160,5 +175,58 @@ describe('SalesOrdersPage — the read is business_id-scoped and never principal
       ['business_id', 'biz-1'],
       ['business_id', 'biz-2'],
     ]);
+  });
+
+  it('renders Delete action button in table rows and opens confirmation modal on click', async () => {
+    wrap(<SalesOrdersPage />);
+    await waitFor(() => expect(screen.getByText('SO/26-27/1')).toBeTruthy());
+
+    const deleteButtons = screen.getAllByTitle('Delete');
+    expect(deleteButtons.length).toBe(2);
+
+    // Click delete on the first order
+    fireEvent.click(deleteButtons[0]);
+
+    // Confirmation dialog should be displayed with required message
+    await waitFor(() => {
+      expect(screen.getByText('Delete sales order?')).toBeTruthy();
+      expect(screen.getByText('Are you sure you want to delete Sales Order SO/26-27/1? This action cannot be undone.')).toBeTruthy();
+    });
+
+    // Cancel closes dialog without deleting
+    const cancelButtons = screen.getAllByRole('button', { name: 'Cancel' });
+    fireEvent.click(cancelButtons[cancelButtons.length - 1]);
+    await waitFor(() => {
+      expect(screen.queryByText('Delete sales order?')).toBeNull();
+    });
+    expect(deleteCalls.length).toBe(0);
+  });
+
+  it('confirms deletion, calls Supabase delete on sales_order_items and sales_orders, and shows success toast', async () => {
+    wrap(<SalesOrdersPage />);
+    await waitFor(() => expect(screen.getByText('SO/26-27/1')).toBeTruthy());
+
+    const deleteButtons = screen.getAllByTitle('Delete');
+    fireEvent.click(deleteButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('Delete sales order?')).toBeTruthy();
+    });
+
+    // Click the confirmation Delete button
+    const confirmButtons = screen.getAllByRole('button', { name: 'Delete' });
+    // The dialog button has text "Delete"
+    const dialogConfirmBtn = confirmButtons[confirmButtons.length - 1];
+    fireEvent.click(dialogConfirmBtn);
+
+    await waitFor(() => {
+      expect(deleteCalls).toEqual([
+        { table: 'sales_order_items', col: 'sales_order_id', val: 'so-1' },
+        { table: 'sales_orders', col: 'id', val: 'so-1' },
+        { table: 'sales_orders', col: 'business_id', val: 'biz-1' },
+      ]);
+    });
+
+    expect(toastMock).toHaveBeenCalledWith('Sales Order deleted successfully', 'success');
   });
 });

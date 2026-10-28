@@ -61,8 +61,10 @@ export function PaymentReceiveCreatePage() {
         customerId: existingPayment.party_id || (existingPayment as any).customer_id || '',
         invoiceId: existingPayment.invoice_id || '',
         amount: String(existingPayment.amount ?? ''),
-        date: existingPayment.date || todayDateString(),
-        time: existingPayment.created_at
+        date: existingPayment.payment_date || existingPayment.date || todayDateString(),
+        time: existingPayment.time
+          ? existingPayment.time
+          : existingPayment.created_at
           ? new Date(existingPayment.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
           : getLocalNowTime(),
         payment_method: existingPayment.payment_method || 'cash',
@@ -188,14 +190,64 @@ export function PaymentReceiveCreatePage() {
       // Map payment method to valid DB enum/constraint ('cash' | 'upi' | 'bank' | 'card' | 'credit' | 'cheque')
       const paymentMethod = form.payment_method === 'bank_transfer' ? 'bank' : form.payment_method;
 
+      // Recalculate customer balance & total_paid from first principles
+      const syncCustomerBalance = async (targetCustomerId: string) => {
+        if (!targetCustomerId || !activeBusiness?.id) return;
+        try {
+          const [custRes, invRes, payRes] = await Promise.all([
+            supabase
+              .from('customers')
+              .select('opening_balance')
+              .eq('id', targetCustomerId)
+              .maybeSingle(),
+            supabase
+              .from('sales_invoices')
+              .select('grand_total')
+              .eq('customer_id', targetCustomerId)
+              .in('status', ['issued', 'partially_paid', 'paid']),
+            supabase
+              .from('payments')
+              .select('amount')
+              .eq('party_id', targetCustomerId)
+              .eq('party_type', 'customer')
+              .eq('type', 'received'),
+          ]);
+
+          const openingBal = Number(custRes.data?.opening_balance) || 0;
+          const totalSales = (invRes.data || []).reduce((acc: number, r: any) => acc + (Number(r.grand_total) || 0), 0);
+          let totalPaid = (payRes.data || []).reduce((acc: number, r: any) => acc + (Number(r.amount) || 0), 0);
+          if (totalPaid === 0 && paymentAmount > 0 && targetCustomerId === form.customerId) {
+            totalPaid = paymentAmount;
+          }
+          const totalDebit = roundTo2(openingBal + totalSales);
+          const newBal = totalDebit <= 0 ? 0 : Math.max(0, roundTo2(totalDebit - totalPaid));
+
+          await supabase
+            .from('customers')
+            .update({
+              current_balance: newBal,
+              total_sales: roundTo2(totalSales),
+              total_paid: roundTo2(totalPaid),
+              last_transaction_date: new Date().toISOString(),
+            })
+            .eq('id', targetCustomerId);
+        } catch (custErr) {
+          console.warn('Customer balance update warning:', custErr);
+        }
+      };
+
       // If editing an existing payment
       if (id) {
+        const previousPartyId = existingPayment?.party_id || (existingPayment as any)?.customer_id;
+
         const { error: updateError } = await supabase
           .from('payments')
           .update({
             payment_number: trimmedNumber,
             party_id: form.customerId,
             date: form.date,
+            payment_date: form.date,
+            time: form.time,
             amount: paymentAmount,
             allocated_amount: allocatedAmount,
             invoice_id: form.invoiceId || null,
@@ -215,7 +267,9 @@ export function PaymentReceiveCreatePage() {
               payment_number: trimmedNumber,
               customer_id: form.customerId,
               amount: paymentAmount,
+              date: form.date,
               payment_date: form.date,
+              time: form.time,
               payment_method: paymentMethod,
               reference: form.reference?.trim() || null,
               notes: form.notes?.trim() || null,
@@ -225,17 +279,15 @@ export function PaymentReceiveCreatePage() {
           // ignore
         }
 
-        // Update corresponding reference in ledger/journal entries if synced
+        // Sync journal entry via RPC (handles both create and update)
         try {
-          await supabase
-            .from('journal_entries')
-            .update({
-              narration: `Payment received ${trimmedNumber}`,
-            })
-            .eq('reference_id', id)
-            .eq('reference_type', 'payment_received');
-        } catch {
-          // ignore
+          await supabase.rpc('sync_payment_received_journal', { p_payment_id: id });
+        } catch (journalErr) {
+          try {
+            await supabase.rpc('post_payment_received_journal', { p_payment_id: id });
+          } catch (postErr) {
+            console.warn('Journal sync warning:', postErr);
+          }
         }
 
         if (form.invoiceId && targetInvoice) {
@@ -257,6 +309,12 @@ export function PaymentReceiveCreatePage() {
             .eq('id', form.invoiceId);
         }
 
+        // Sync customer balances for current customer and previously linked customer if changed
+        if (previousPartyId && previousPartyId !== form.customerId) {
+          await syncCustomerBalance(previousPartyId);
+        }
+        await syncCustomerBalance(form.customerId);
+
         return {
           allocatedTotal: allocatedAmount,
           allocatedTo,
@@ -277,6 +335,8 @@ export function PaymentReceiveCreatePage() {
           party_id: form.customerId,
           payment_number: trimmedNumber,
           date: form.date,
+          payment_date: form.date,
+          time: form.time,
           amount: paymentAmount,
           allocated_amount: allocatedAmount,
           invoice_id: form.invoiceId || null,
@@ -295,7 +355,9 @@ export function PaymentReceiveCreatePage() {
             business_id: activeBusiness.id,
             customer_id: form.customerId,
             payment_number: trimmedNumber,
+            date: form.date,
             payment_date: form.date,
+            time: form.time,
             amount: paymentAmount,
             payment_method: paymentMethod,
             reference: form.reference?.trim() || null,
@@ -336,54 +398,18 @@ export function PaymentReceiveCreatePage() {
       }
 
       // Update customer balance & total_paid
-      try {
-        const [custRes, invRes, payRes] = await Promise.all([
-          supabase
-            .from('customers')
-            .select('opening_balance')
-            .eq('id', form.customerId)
-            .maybeSingle(),
-          supabase
-            .from('sales_invoices')
-            .select('grand_total')
-            .eq('customer_id', form.customerId)
-            .in('status', ['issued', 'partially_paid', 'paid']),
-          supabase
-            .from('payments')
-            .select('amount')
-            .eq('party_id', form.customerId)
-            .eq('party_type', 'customer')
-            .eq('type', 'received'),
-        ]);
-
-        const openingBal = Number(custRes.data?.opening_balance) || 0;
-        const totalSales = (invRes.data || []).reduce((acc, r) => acc + (Number(r.grand_total) || 0), 0);
-        let totalPaid = (payRes.data || []).reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
-        if (totalPaid === 0 && paymentAmount > 0) {
-          totalPaid = paymentAmount;
-        }
-        const totalDebit = roundTo2(openingBal + totalSales);
-        const newBal = totalDebit <= 0 ? 0 : Math.max(0, roundTo2(totalDebit - totalPaid));
-
-        await supabase
-          .from('customers')
-          .update({
-            current_balance: newBal,
-            total_sales: roundTo2(totalSales),
-            total_paid: roundTo2(totalPaid),
-            last_transaction_date: new Date().toISOString(),
-          })
-          .eq('id', form.customerId);
-      } catch (custErr) {
-        console.warn('customer balance update warning:', custErr);
-      }
+      await syncCustomerBalance(form.customerId);
 
       // Optionally post accounting journal if RPC is available
       if (paymentRow?.id) {
         try {
-          await supabase.rpc('post_payment_received_journal', { p_payment_id: paymentRow.id });
+          await supabase.rpc('sync_payment_received_journal', { p_payment_id: paymentRow.id });
         } catch (journalErr) {
-          console.warn('post_payment_received_journal skipped:', journalErr);
+          try {
+            await supabase.rpc('post_payment_received_journal', { p_payment_id: paymentRow.id });
+          } catch (postErr) {
+            console.warn('Journal posting skipped:', postErr);
+          }
         }
       }
 
@@ -402,6 +428,13 @@ export function PaymentReceiveCreatePage() {
       queryClient.invalidateQueries({ queryKey: ['sales-invoices', activeBusiness?.id] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats', activeBusiness?.id] });
       queryClient.invalidateQueries({ queryKey: ['cashflow-series', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['liquid-cash', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['receivables', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['accounts', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['journal-entries', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['trial-balance', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['journal-lines-ledger'] });
       queryClient.invalidateQueries({ queryKey: ['liquid-cash', activeBusiness?.id] });
       queryClient.invalidateQueries({ queryKey: ['receivables', activeBusiness?.id] });
       queryClient.invalidateQueries({ queryKey: ['accounts', activeBusiness?.id] });

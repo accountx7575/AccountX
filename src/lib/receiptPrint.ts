@@ -79,6 +79,8 @@ export type PaymentReceiptData = Omit<Partial<Payment>, 'payment_method' | 'cust
   id: string;
   payment_number: string;
   date: string;
+  payment_date?: string;
+  time?: string;
   created_at?: string;
   amount: number;
   allocated_amount?: number;
@@ -100,26 +102,104 @@ function escapeHtml(str: string | null | undefined): string {
     .replace(/'/g, '&#39;');
 }
 
-export function formatReceiptDateTime(dateVal?: string | null, createdAtVal?: string | null): string {
-  let raw = createdAtVal;
-  if (!raw || (typeof raw === 'string' && !raw.includes('T') && !raw.includes(' '))) {
-    raw = dateVal && (dateVal.includes('T') || dateVal.includes(' ')) ? dateVal : createdAtVal || dateVal;
+export function formatReceiptDateTime(
+  dateVal?: any,
+  createdAtVal?: string | null,
+  timeVal?: string | null
+): string {
+  let effectiveDate: any = dateVal;
+  let effectiveTime: string | null = timeVal || null;
+  let effectiveCreated: string | null = createdAtVal || null;
+
+  if (typeof dateVal === 'object' && dateVal !== null) {
+    const p = dateVal;
+    effectiveDate = p.payment_date || p.date || null;
+    effectiveTime = p.time || p.payment_time || null;
+    effectiveCreated = p.created_at || null;
   }
-  if (!raw) return '—';
 
-  const d = new Date(raw);
-  if (isNaN(d.getTime())) return String(raw);
+  // Fallback to created_at only if payment_date and date are completely empty
+  if (!effectiveDate && effectiveCreated) {
+    const d = new Date(effectiveCreated);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      let h = d.getHours();
+      const m = String(d.getMinutes()).padStart(2, '0');
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return `${day}/${month}/${year}, ${String(h).padStart(2, '0')}:${m} ${ampm}`;
+    }
+  }
 
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const year = d.getFullYear();
-  let hours = d.getHours();
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  hours = hours % 12 || 12;
-  const formattedHours = String(hours).padStart(2, '0');
+  if (!effectiveDate) return '—';
 
-  return `${day}/${month}/${year}, ${formattedHours}:${minutes} ${ampm}`;
+  // 1. Format Date component (DD/MM/YYYY)
+  let datePart = '';
+  if (typeof effectiveDate === 'string') {
+    const ymdMatch = effectiveDate.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    const dmyMatch = effectiveDate.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (ymdMatch) {
+      const [, y, m, d] = ymdMatch;
+      datePart = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    } else if (dmyMatch) {
+      const [, d, m, y] = dmyMatch;
+      datePart = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    } else {
+      const d = new Date(effectiveDate);
+      if (!isNaN(d.getTime())) {
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        datePart = `${day}/${month}/${year}`;
+      } else {
+        datePart = String(effectiveDate);
+      }
+    }
+  } else if (effectiveDate instanceof Date && !isNaN(effectiveDate.getTime())) {
+    const day = String(effectiveDate.getDate()).padStart(2, '0');
+    const month = String(effectiveDate.getMonth() + 1).padStart(2, '0');
+    const year = effectiveDate.getFullYear();
+    datePart = `${day}/${month}/${year}`;
+  } else {
+    datePart = String(effectiveDate);
+  }
+
+  // 2. Format Time component (hh:mm A)
+  let timePart = '';
+  if (effectiveTime && typeof effectiveTime === 'string') {
+    const ampmMatch = effectiveTime.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM|am|pm)$/i);
+    const h24Match = effectiveTime.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (ampmMatch) {
+      let h = parseInt(ampmMatch[1], 10);
+      const m = ampmMatch[2];
+      const ampm = ampmMatch[3].toUpperCase();
+      h = h % 12 || 12;
+      timePart = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+    } else if (h24Match) {
+      let h = parseInt(h24Match[1], 10);
+      const m = h24Match[2];
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      timePart = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+    } else {
+      timePart = effectiveTime.trim();
+    }
+  } else if (effectiveCreated) {
+    const d = new Date(effectiveCreated);
+    if (!isNaN(d.getTime())) {
+      let h = d.getHours();
+      const m = String(d.getMinutes()).padStart(2, '0');
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      timePart = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+    }
+  }
+
+  if (!timePart) timePart = '12:00 AM';
+
+  return `${datePart}, ${timePart}`;
 }
 
 export const RECEIPT_STYLES = `
@@ -799,7 +879,7 @@ export function generateReceiptHtml(
   const unapplied = Math.max(0, amount - allocated);
   const methodLabel = (payment.payment_method || 'cash').toUpperCase().replace('_', ' ');
   const amountInWords = amountInWordsIndian(amount);
-  const receiptDateTimeStr = formatReceiptDateTime(payment.date, payment.created_at);
+  const receiptDateTimeStr = formatReceiptDateTime(payment.payment_date || payment.date, payment.created_at, payment.time);
 
   const configuredTerms = resolveTermsLines('payment_receipt', business, (payment as any).terms);
   const termsList = configuredTerms.length > 0
@@ -945,7 +1025,7 @@ export function generateReceiptHtml(
             <!-- Row 1: Payment Date: DD/MM/YYYY -->
             <div class="card-row card-row-between">
               <span class="label">Payment Date:</span>
-              <span class="val-mono">${escapeHtml(formatDate(payment.date))}</span>
+              <span class="val-mono">${escapeHtml(formatDate(payment.payment_date || payment.date))}</span>
             </div>
 
             <!-- Row 2: Ref / Instrument No: [ref] -->

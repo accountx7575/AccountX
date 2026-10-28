@@ -143,6 +143,27 @@ describe('documentMappers', () => {
       expect(data.company?.name).toBe('Acme Supplies');
       expect(data.company?.address).toBe('789 Industrial Area\nKanpur, Uttar Pradesh - 208001');
     });
+
+    it('maps buyer address and contact information to customer object', () => {
+      const business = {
+        name: 'Avadh Boring Company',
+        address: 'AN-25, Lautabagh, Azadnagar, Nawabganj',
+        city: 'Barabanki',
+        state: 'Uttar Pradesh',
+        pincode: '225001',
+        phone: '+91 9450942418',
+        email: 'abc.solar7575@gmail.com',
+      };
+      const bill = {
+        bill_number: 'PB/001',
+        supplier: { name: 'Acme' },
+      };
+      const data = mapPurchaseBillToUniversalData(business, bill);
+      expect(data.customer?.name).toBe('Avadh Boring Company');
+      expect(data.customer?.address).toBe('AN-25, Lautabagh, Azadnagar, Nawabganj\nBarabanki, Uttar Pradesh - 225001');
+      expect(data.customer?.phone).toBe('+91 9450942418');
+      expect(data.customer?.email).toBe('abc.solar7575@gmail.com');
+    });
   });
 
   describe('tax, GST and Grand Total calculations', () => {

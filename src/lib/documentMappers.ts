@@ -1042,6 +1042,10 @@ export function mapPurchaseBillToUniversalData(
 
   const totals = calculateDocumentTotals(bill, rawItems, businessState, partyState);
 
+  const buyerAddr = formatCustomerAddress(business);
+  const buyerStreet = buyerAddr.streetAddress || business?.address || business?.registered_address || '';
+  const buyerFullAddr = buyerAddr.fullAddress || buyerStreet;
+
   return {
     documentType: 'PURCHASE_BILL',
     documentNumber: persistedNumber,
@@ -1071,8 +1075,34 @@ export function mapPurchaseBillToUniversalData(
       phone: supplier.phone || bill?.supplier_phone,
       email: supplier.email || bill?.supplier_email,
     },
-    customer: business,
-    buyer: business,
+    customer: {
+      ...business,
+      name: business?.name || business?.legal_name || 'Buyer',
+      companyName: business?.legal_name || business?.name,
+      address: buyerFullAddr || business?.address,
+      streetAddress: buyerStreet || business?.streetAddress || business?.address,
+      city: business?.city || business?.billing_city || business?.billingCity,
+      state: business?.state || business?.billing_state || business?.billingState,
+      pincode: business?.pincode || business?.pin_code || business?.billing_pincode || business?.billingPincode,
+      gstin: business?.gstin,
+      pan: business?.pan || (business?.gstin && business.gstin.length >= 12 ? business.gstin.slice(2, 12) : undefined),
+      phone: business?.phone || business?.mobile || business?.phone_number,
+      email: business?.email || business?.email_address,
+    },
+    buyer: {
+      ...business,
+      name: business?.name || business?.legal_name || 'Buyer',
+      companyName: business?.legal_name || business?.name,
+      address: buyerFullAddr || business?.address,
+      streetAddress: buyerStreet || business?.streetAddress || business?.address,
+      city: business?.city || business?.billing_city || business?.billingCity,
+      state: business?.state || business?.billing_state || business?.billingState,
+      pincode: business?.pincode || business?.pin_code || business?.billing_pincode || business?.billingPincode,
+      gstin: business?.gstin,
+      pan: business?.pan || (business?.gstin && business.gstin.length >= 12 ? business.gstin.slice(2, 12) : undefined),
+      phone: business?.phone || business?.mobile || business?.phone_number,
+      email: business?.email || business?.email_address,
+    },
     items: totals.items,
     subtotal: totals.subtotal,
     taxableAmount: totals.taxableAmount,

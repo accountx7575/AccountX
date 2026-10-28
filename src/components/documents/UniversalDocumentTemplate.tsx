@@ -499,10 +499,77 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
     company.invoiceFooterText ||
     company.invoice_footer_text ||
     null;
-  const custAddress = customer.address || customer.billingAddress || customer.addressLine1 || '';
+  const compRawAddr = String(
+    company.streetAddress ||
+    company.addressLine1 ||
+    company.registeredAddress ||
+    company.registered_address ||
+    company.address ||
+    ''
+  ).trim();
+
+  let companyStreet = '';
+  let companyCityStatePin = '';
+
+  if (compRawAddr.includes('\n')) {
+    const parts = compRawAddr.split('\n').map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      companyStreet = parts.slice(0, -1).join(', ');
+      companyCityStatePin = parts[parts.length - 1] || '';
+    } else {
+      companyStreet = parts[0] || '';
+    }
+  } else {
+    companyStreet = compRawAddr;
+  }
+
+  if (!companyCityStatePin) {
+    const cityState = [company.city, company.state].filter(Boolean).join(', ');
+    const pin = company.pincode || company.pinCode || company.pin_code || '';
+    companyCityStatePin = (cityState || 'Barabanki, Uttar Pradesh') + (pin ? ` - ${pin}` : (cityState ? '' : ' - 225001'));
+  }
+  if (!companyStreet) {
+    companyStreet = 'AN-25, LAUTA BAGH, AZADNAGAR, NAWABGANJ';
+  }
+
+  const compPhone = String(company.phone || company.mobile || (company as any).phoneNumber || (company as any).phone_number || '').trim();
+  const compEmail = String(company.email || (company as any).emailAddress || (company as any).email_address || (!data.isPurchaseBill ? 'support@gyftkart.in' : '')).trim();
+  const hasCompWeb = Boolean(company?.website && String(company.website).trim());
+
   const custCity = customer.city || customer.billingCity || '';
   const custState = customer.state || customer.billingState || '';
-  const custPin = customer.pincode || customer.pin_code || customer.billingPincode || '';
+  const custPin = customer.pincode || customer.pin_code || customer.billingPincode || customer.pinCode || '';
+
+  const rawCustAddr = String(
+    customer.streetAddress ||
+    customer.address ||
+    customer.billingAddress ||
+    customer.addressLine1 ||
+    ''
+  ).trim();
+
+  let customerStreet = '';
+  let customerCityStatePin = '';
+
+  if (rawCustAddr.includes('\n')) {
+    const parts = rawCustAddr.split('\n').map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      customerStreet = parts.slice(0, -1).join(', ');
+      customerCityStatePin = parts[parts.length - 1] || '';
+    } else {
+      customerStreet = parts[0] || '';
+    }
+  } else {
+    customerStreet = rawCustAddr;
+  }
+
+  if (!customerCityStatePin) {
+    const cityState = [custCity, custState].filter(Boolean).join(', ');
+    customerCityStatePin = cityState + (custPin ? (cityState ? ` - ${custPin}` : String(custPin)) : '');
+  }
+
+  const custPhone = String(customer.phone || customer.mobile || (customer as any).phone_number || (customer as any).phoneNumber || '').trim();
+  const custEmail = String(customer.email || (customer as any).email_address || (customer as any).emailAddress || '').trim();
 
   const docNumber = data.invoiceNumber || data.documentNumber || data.orderNumber || 'INV-MANUAL-CR-WIPMIW';
   const posLabel = formatPlaceOfSupply(
@@ -589,15 +656,17 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
           )}
         </div>
 
-        <div className="order-2 space-y-1 leading-5 sm:col-start-1 sm:row-start-2">
-          <p className="text-[11px] text-slate-600 max-w-md truncate">
-            {company.addressLine1 || company.address || company.registeredAddress || company.registered_address || 'AN-25, LAUTA BAGH, AZADNAGAR, NAWABGANJ'}
+        <div className="order-2 space-y-1 leading-snug sm:col-start-1 sm:row-start-2">
+          {/* Row 1: Street Address */}
+          <p className="text-xs text-slate-600 max-w-md">
+            {companyStreet}
           </p>
-          <p className="text-[11px] text-slate-600 max-w-md">
-            {[company.city || 'Barabanki', company.state || 'Uttar Pradesh'].filter(Boolean).join(', ')}
-            {company.pincode ? ` - ${company.pincode}` : (company.pinCode ? ` - ${company.pinCode}` : (company.pin_code ? ` - ${company.pin_code}` : ' - 225001'))}
+          {/* Row 2: City, State - Pincode */}
+          <p className="text-xs text-slate-600 max-w-md">
+            {companyCityStatePin}
           </p>
-          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-600 font-medium">
+          {/* Row 3: GSTIN: [GSTIN] | PAN: [PAN] | CIN: [CIN] */}
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-600 font-medium">
             <span>
               <strong className="text-slate-700">GSTIN:</strong> {company.gstin || '09AAHCT1158J1Z2'}
             </span>
@@ -610,15 +679,30 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
               </span>
             )}
           </div>
-          <p className="text-[11px] text-slate-600">
-            Support: <span className="font-medium text-slate-700">{company.email || 'support@gyftkart.in'}</span>
-            {Boolean(company?.website && String(company.website).trim()) && (
-              <>
-                <span className="text-slate-400"> | </span>
-                Web: <span className="font-medium text-slate-700">{String(company.website).trim()}</span>
-              </>
-            )}
-          </p>
+          {/* Row 4: Phone: [Phone Number] | Email: [Email Address] */}
+          {(compPhone || compEmail || hasCompWeb) && (
+            <p className="text-xs text-slate-600 leading-snug">
+              {compPhone && (
+                <span>
+                  <strong className="text-slate-700">Phone:</strong> {compPhone}
+                </span>
+              )}
+              {compPhone && compEmail && <span className="text-slate-400 mx-1.5 font-normal">|</span>}
+              {compEmail && (
+                <span>
+                  <strong className="text-slate-700">Email:</strong> {compEmail}
+                </span>
+              )}
+              {hasCompWeb && (
+                <>
+                  {(compPhone || compEmail) && <span className="text-slate-400 mx-1.5 font-normal">|</span>}
+                  <span>
+                    <strong className="text-slate-700">Web:</strong> {String(company.website).trim()}
+                  </span>
+                </>
+              )}
+            </p>
+          )}
         </div>
 
         {/* Invoice Meta Heading */}
@@ -655,7 +739,7 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
 
       {/* 2. Details Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 my-6 p-4 rounded-xl bg-slate-50/70 border border-slate-200/80">
-        <div>
+        <div className="space-y-1 text-xs">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
             <Building2 className="h-3 w-3 text-slate-400" /> Billed To (
             {isB2B ? 'Corporate Client' : 'Customer Details'})
@@ -666,71 +750,71 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
                 M/s {customer.companyName}
               </p>
               {(customer.brandTradeName || customer.tradeName || customer.trade_name) && (
-                <p className="text-[11px] font-medium text-slate-600">
+                <p className="text-xs font-medium text-slate-600">
                   T/A {customer.brandTradeName || customer.tradeName || customer.trade_name}
                 </p>
               )}
-              <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                {customer.gstin && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-emerald-800">
-                    GSTIN: {customer.gstin}
-                  </span>
-                )}
-                {customer.pan && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
-                    PAN: {customer.pan}
-                  </span>
-                )}
-                {customer.aadhaar && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
-                    Aadhaar: {formatAadhaar(customer.aadhaar)}
-                  </span>
-                )}
-              </div>
-              <p className="text-slate-600 text-[11px] mt-1.5">
-                <span className="text-slate-400">Attn:</span> {customer.name}
-              </p>
             </>
           ) : (
-            <>
-              <p className="text-sm font-extrabold text-slate-900">
-                {customer.name || 'Valued Customer'}
-              </p>
-              {(customer.gstin || customer.pan || customer.aadhaar) && (
-                <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  {customer.gstin && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-emerald-800">
-                      GSTIN: {customer.gstin}
-                    </span>
-                  )}
-                  {customer.pan && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
-                      PAN: {customer.pan}
-                    </span>
-                  )}
-                  {customer.aadhaar && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
-                      Aadhaar: {formatAadhaar(customer.aadhaar)}
-                    </span>
-                  )}
-                </div>
+            <p className="text-sm font-extrabold text-slate-900">
+              {customer.name || 'Valued Customer'}
+            </p>
+          )}
+
+          {/* Row 2: Street Address */}
+          {customerStreet && (
+            <p className="text-xs text-slate-600 leading-snug">{customerStreet}</p>
+          )}
+
+          {/* Row 3: City, State - Pincode */}
+          {customerCityStatePin && (
+            <p className="text-xs text-slate-600 leading-snug">{customerCityStatePin}</p>
+          )}
+
+          {/* Row 4: GSTIN: [GSTIN] | PAN: [PAN] | Aadhaar: [Aadhaar] */}
+          {(customer.gstin || customer.pan || customer.aadhaar) && (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              {customer.gstin && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-emerald-800">
+                  GSTIN: {customer.gstin}
+                </span>
               )}
-            </>
-          )}
-          <p className="text-slate-600 text-[11px] mt-0.5">{customer.email || '—'}</p>
-          {customer.phone && (
-            <p className="text-slate-600 text-[11px]">{customer.phone}</p>
-          )}
-          {custAddress ? (
-            <div className="text-slate-600 whitespace-pre-line leading-relaxed text-[11px] mt-1">
-              {custAddress}
+              {customer.pan && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
+                  PAN: {customer.pan}
+                </span>
+              )}
+              {customer.aadhaar && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
+                  Aadhaar: {formatAadhaar(customer.aadhaar)}
+                </span>
+              )}
             </div>
-          ) : (custCity || custState || custPin) ? (
-            <div className="text-slate-600 leading-relaxed text-[11px] mt-1">
-              {[custCity, custState].filter(Boolean).join(', ')}
-              {custPin ? ` - ${custPin}` : ''}
-            </div>
-          ) : null}
+          )}
+
+          {/* Attn line for B2B */}
+          {isB2B && customer.companyName && customer.name && (
+            <p className="text-slate-600 text-xs">
+              <span className="text-slate-400">Attn:</span> {customer.name}
+            </p>
+          )}
+
+          {/* Row 5: Phone: [Phone] | Email: [Email] */}
+          {(custPhone || custEmail) && (
+            <p className="text-xs text-slate-600 leading-snug pt-0.5">
+              {custPhone && (
+                <span>
+                  <strong className="text-slate-700">Phone:</strong> {custPhone}
+                </span>
+              )}
+              {custPhone && custEmail && <span className="text-slate-400 mx-1.5 font-normal">|</span>}
+              {custEmail && (
+                <span>
+                  <strong className="text-slate-700">Email:</strong> {custEmail}
+                </span>
+              )}
+            </p>
+          )}
           {customer.userId && (
             <p className="text-[10px] font-mono text-slate-400 mt-1">
               Customer UUID: {customer.userId}
@@ -1337,15 +1421,30 @@ export function mapPurchaseBillToUniversalData(business: any, bill: any, items: 
     ? [streetAddress, cityStatePin].filter(Boolean).join('\n')
     : '';
 
+  const buyerStreet = String(
+    business?.address || business?.billing_address || business?.billingAddress || business?.addressLine1 || business?.registered_address || ''
+  ).trim();
+  const buyerCityState = [
+    business?.city || business?.billing_city || business?.billingCity,
+    business?.state || business?.billing_state || business?.billingState,
+  ].filter(Boolean).join(', ');
+  const buyerPin = business?.pincode || business?.pin_code || business?.pinCode || business?.billingPincode || '';
+  const buyerCityStatePin = buyerCityState + (buyerPin ? (buyerCityState ? ` - ${buyerPin}` : String(buyerPin)) : '');
+  const buyerFullAddress = buyerStreet
+    ? [buyerStreet, buyerCityStatePin].filter(Boolean).join('\n')
+    : '';
+
   return {
     documentType: 'PURCHASE_BILL',
     documentNumber: bill?.bill_number || bill?.number || 'BILL-001',
     date: bill?.bill_date || bill?.created_at || '19 Oct 2026, 12:34 pm',
     status: bill?.status || 'Confirmed',
     dueDate: bill?.due_date || null,
+    isPurchaseBill: true,
     company: {
       name: bill?.supplier_name || supplier.name || 'Supplier',
       address: fullAddress,
+      streetAddress,
       city: supplier.city || supplier.billingCity,
       state: supplier.state || supplier.billingState,
       pincode: pin,
@@ -1353,7 +1452,20 @@ export function mapPurchaseBillToUniversalData(business: any, bill: any, items: 
       phone: supplier.phone || bill?.supplier_phone,
       email: supplier.email || bill?.supplier_email,
     },
-    customer: business,
+    customer: {
+      ...business,
+      name: business?.name || business?.legal_name || 'Buyer',
+      companyName: business?.legal_name || business?.name,
+      address: buyerFullAddress || business?.address,
+      streetAddress: buyerStreet || business?.streetAddress || business?.address,
+      city: business?.city || business?.billing_city,
+      state: business?.state || business?.billing_state,
+      pincode: buyerPin,
+      gstin: business?.gstin,
+      pan: business?.pan,
+      phone: business?.phone || business?.mobile,
+      email: business?.email,
+    },
     items: items.map((i) => ({
       name: i?.product_name || i?.name || 'Item',
       quantity: Number(i?.quantity || 1),

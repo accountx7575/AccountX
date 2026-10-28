@@ -33,6 +33,7 @@ vi.mock('@/context/ToastContext', () => ({
 
 const insertMock = vi.fn();
 const updateMock = vi.fn();
+const rpcMock = vi.fn().mockResolvedValue({ data: null, error: null });
 let mockExistingPayment: any = null;
 let mockExistingPaymentsList: any[] = [];
 
@@ -86,7 +87,7 @@ vi.mock('@/lib/supabase', () => ({
       };
       return builder;
     },
-    rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
+    rpc: (...args: any[]) => rpcMock(...args),
   },
 }));
 
@@ -101,6 +102,7 @@ describe('PaymentReceiveCreatePage', () => {
     toastMock.mockReset();
     insertMock.mockReset();
     updateMock.mockReset();
+    rpcMock.mockClear();
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: 0 } },
     });
@@ -246,6 +248,17 @@ describe('PaymentReceiveCreatePage', () => {
         amount: 20000,
       }));
     });
+
+    // Verify journal sync was called
+    await waitFor(() => {
+      expect(rpcMock).toHaveBeenCalledWith('sync_payment_received_journal', { p_payment_id: 'pay-existing-1' });
+    });
+
+    // Verify customer balance was recalculated
+    expect(updateMock).toHaveBeenCalledWith('customers', expect.objectContaining({
+      current_balance: expect.any(Number),
+      total_paid: expect.any(Number),
+    }));
 
     // Verify toast and navigation
     expect(toastMock).toHaveBeenCalledWith('Payment updated successfully', 'success');
