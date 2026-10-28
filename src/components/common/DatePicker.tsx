@@ -1,21 +1,34 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Select } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
 
-type DatePickerProps = {
+export type DatePickerProps = {
   /** ISO date string (yyyy-mm-dd) or '' — internal payload format stays ISO. */
   value?: string;
   onChange: (iso: string) => void;
   className?: string;
   placeholder?: string;
   disabled?: boolean;
+  readOnly?: boolean;
   min?: string;
   max?: string;
   clearable?: boolean;
+  id?: string;
 };
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DOW = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const MIN_YEAR = 2000;
+const MAX_YEAR = 2099;
+
+const currentYear = new Date().getFullYear();
+const MIN_YEAR_DISPLAY = Math.max(MIN_YEAR, currentYear - 25);
+const MAX_YEAR_DISPLAY = Math.min(MAX_YEAR, currentYear + 15);
+const YEARS = Array.from(
+  { length: MAX_YEAR_DISPLAY - MIN_YEAR_DISPLAY + 1 },
+  (_, i) => MIN_YEAR_DISPLAY + i
+);
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
@@ -27,33 +40,87 @@ export function isoToDisplay(iso: string): string {
   return `${d}/${m}/${y}`;
 }
 
-function displayToIso(display: string): string | null {
+export function displayToIso(display: string, minIso?: string, maxIso?: string): string | null {
   const m = display.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!m) return null;
-  const iso = `${m[3]}-${m[2]}-${m[1]}`;
+  const day = Number(m[1]);
+  const month = Number(m[2]);
+  const year = Number(m[3]);
+  if (year < MIN_YEAR || year > MAX_YEAR) return null;
+  if (month < 1 || month > 12) return null;
+  if (day < 1 || day > 31) return null;
+  const iso = `${year}-${pad(month)}-${pad(day)}`;
   const d = new Date(`${iso}T00:00:00`);
-  if (isNaN(d.getTime()) || d.getDate() !== Number(m[1]) || d.getMonth() !== Number(m[2]) - 1) return null;
+  if (isNaN(d.getTime()) || d.getDate() !== day || d.getMonth() !== month - 1) return null;
+  if (minIso && iso < minIso) return null;
+  if (maxIso && iso > maxIso) return null;
   return iso;
 }
 
-function maskInput(raw: string): string {
+export function maskInput(raw: string): string {
   const digits = raw.replace(/\D/g, '').slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+  if (digits.length === 0) return '';
+  if (digits.length <= 2) {
+    let d = parseInt(digits, 10);
+    if (digits.length === 2 && d > 31) d = 31;
+    if (digits.length === 2 && d === 0) d = 1;
+    return digits.length === 2 ? pad(d) : digits;
+  }
+  if (digits.length <= 4) {
+    let d = parseInt(digits.slice(0, 2), 10);
+    if (d > 31) d = 31;
+    if (d === 0) d = 1;
+    const mStr = digits.slice(2);
+    if (mStr.length === 2) {
+      let m = parseInt(mStr, 10);
+      if (m > 12) m = 12;
+      if (m === 0) m = 1;
+      return `${pad(d)}/${pad(m)}`;
+    }
+    return `${pad(d)}/${mStr}`;
+  }
+  let d = parseInt(digits.slice(0, 2), 10);
+  if (d > 31) d = 31;
+  if (d === 0) d = 1;
+  let m = parseInt(digits.slice(2, 4), 10);
+  if (m > 12) m = 12;
+  if (m === 0) m = 1;
+  const yStr = digits.slice(4);
+  if (yStr.length === 4) {
+    let y = parseInt(yStr, 10);
+    if (y > MAX_YEAR) y = MAX_YEAR;
+    if (y < MIN_YEAR) y = MIN_YEAR;
+    return `${pad(d)}/${pad(m)}/${y}`;
+  }
+  return `${pad(d)}/${pad(m)}/${yStr}`;
 }
 
 /**
  * Custom date picker rendering strictly DD/MM/YYYY while keeping the
- * internal/payload format ISO (yyyy-mm-dd). Replaces native <input type=date>
- * whose visible format is browser-locale dependent.
+ * internal/payload format ISO (yyyy-mm-dd).
+ * Enforces strict date format & bounds (2000-2099) to prevent invalid years.
  */
-export function DatePicker({ value = '', onChange, className, placeholder = 'DD/MM/YYYY', disabled, min, max, clearable = true }: DatePickerProps) {
+export function DatePicker({
+  value = '',
+  onChange,
+  className,
+  placeholder = 'DD/MM/YYYY',
+  disabled,
+  readOnly,
+  min,
+  max,
+  clearable = true,
+  id,
+}: DatePickerProps) {
   const [display, setDisplay] = useState(() => isoToDisplay(value));
   const [open, setOpen] = useState(false);
   const [view, setView] = useState(() => {
     const base = value ? new Date(`${value}T00:00:00`) : new Date();
-    return { y: base.getFullYear(), m: base.getMonth() };
+    const y = !isNaN(base.getTime()) && base.getFullYear() >= MIN_YEAR && base.getFullYear() <= MAX_YEAR
+      ? base.getFullYear()
+      : Math.max(MIN_YEAR, Math.min(MAX_YEAR, new Date().getFullYear()));
+    const m = !isNaN(base.getTime()) ? base.getMonth() : new Date().getMonth();
+    return { y, m };
   });
   const wrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -84,14 +151,16 @@ export function DatePicker({ value = '', onChange, className, placeholder = 'DD/
   };
 
   const handleType = (raw: string) => {
+    if (readOnly) return;
     const masked = maskInput(raw);
     setDisplay(masked);
     if (masked.length === 10) {
-      const iso = displayToIso(masked);
-      if (iso && (!min || iso >= min) && (!max || iso <= max)) {
+      const iso = displayToIso(masked, min, max);
+      if (iso) {
         onChange(iso);
         const d = new Date(`${iso}T00:00:00`);
-        setView({ y: d.getFullYear(), m: d.getMonth() });
+        const yClamped = Math.max(MIN_YEAR, Math.min(MAX_YEAR, d.getFullYear()));
+        setView({ y: yClamped, m: d.getMonth() });
       }
     }
   };
@@ -112,30 +181,75 @@ export function DatePicker({ value = '', onChange, className, placeholder = 'DD/
 
   const inRange = (iso: string) => (!min || iso >= min) && (!max || iso <= max);
 
+  const handlePrevMonth = () => {
+    setView((v) => {
+      if (v.m === 0) {
+        if (v.y <= MIN_YEAR) return v;
+        return { y: v.y - 1, m: 11 };
+      }
+      return { ...v, m: v.m - 1 };
+    });
+  };
+
+  const handleNextMonth = () => {
+    setView((v) => {
+      if (v.m === 11) {
+        if (v.y >= MAX_YEAR) return v;
+        return { y: v.y + 1, m: 0 };
+      }
+      return { ...v, m: v.m + 1 };
+    });
+  };
+
   return (
     <div ref={wrapRef} className="relative">
       <div className="relative">
         <input
           ref={inputRef}
+          id={id}
           type="text"
-          inputMode="numeric"
+          inputMode={readOnly ? 'none' : 'numeric'}
           autoComplete="off"
           disabled={disabled}
+          readOnly={readOnly}
           value={display}
           placeholder={placeholder}
           onChange={(e) => handleType(e.target.value)}
+          onClick={() => {
+            if (!disabled) setOpen(true);
+          }}
           onFocus={() => {
-            if (value) {
-              const d = new Date(`${value}T00:00:00`);
-              if (!isNaN(d.getTime())) setView({ y: d.getFullYear(), m: d.getMonth() });
+            if (!disabled) {
+              if (value) {
+                const d = new Date(`${value}T00:00:00`);
+                if (!isNaN(d.getTime())) {
+                  const yClamped = Math.max(MIN_YEAR, Math.min(MAX_YEAR, d.getFullYear()));
+                  setView({ y: yClamped, m: d.getMonth() });
+                }
+              }
+              setOpen(true);
             }
-            setOpen(true);
           }}
           onBlur={() => {
-            // Revert incomplete/invalid masks to the last committed ISO value.
-            if (display.length > 0 && displayToIso(display) === null) setDisplay(isoToDisplay(value));
+            if (display.length === 0) {
+              if (clearable) {
+                onChange('');
+                setDisplay('');
+              } else {
+                setDisplay(isoToDisplay(value));
+              }
+              return;
+            }
+            const iso = displayToIso(display, min, max);
+            if (!iso) {
+              setDisplay(isoToDisplay(value));
+            }
           }}
-          className={cn(className || 'input', 'pr-16')}
+          className={cn(
+            'input font-normal text-slate-800 dark:text-slate-100 pr-16',
+            readOnly && 'cursor-pointer select-none',
+            className
+          )}
           aria-label={placeholder}
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
@@ -165,12 +279,57 @@ export function DatePicker({ value = '', onChange, className, placeholder = 'DD/
 
       {open && (
         <div className="absolute z-50 mt-1 left-0 w-64 card-solid p-2 shadow-lg">
-          <div className="flex items-center justify-between mb-1.5 px-1">
-            <button type="button" onClick={() => setView((v) => (v.m === 0 ? { y: v.y - 1, m: 11 } : { ...v, m: v.m - 1 }))} className="p-1 rounded-md hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors" aria-label="Previous month">
+          <div className="flex items-center justify-between mb-1.5 px-1 gap-2">
+            <button
+              type="button"
+              disabled={view.y <= MIN_YEAR && view.m === 0}
+              onClick={handlePrevMonth}
+              className={cn(
+                'p-1 rounded-md hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors',
+                view.y <= MIN_YEAR && view.m === 0 && 'opacity-30 cursor-not-allowed hover:bg-transparent'
+              )}
+              aria-label="Previous month"
+            >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <p className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">{MONTHS[view.m]} {view.y}</p>
-            <button type="button" onClick={() => setView((v) => (v.m === 11 ? { y: v.y + 1, m: 0 } : { ...v, m: v.m + 1 }))} className="p-1 rounded-md hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors" aria-label="Next month">
+            <div className="flex items-center gap-1 shrink-0">
+              <Select
+                value={MONTHS[view.m]}
+                onChange={(e) =>
+                  setView((v) => ({ ...v, m: MONTHS.indexOf(e.target.value) }))
+                }
+                className="text-xs font-semibold text-slate-700 bg-transparent border-none focus:ring-1 focus:ring-emerald-500 rounded px-1 py-0.5 cursor-pointer hover:bg-slate-100 w-auto shrink-0"
+              >
+                {MONTHS.map((month, i) => (
+                  <option key={i} value={month}>
+                    {month}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                value={String(view.y)}
+                onChange={(e) =>
+                  setView((v) => ({ ...v, y: Number(e.target.value) }))
+                }
+                className="text-xs font-semibold text-slate-700 bg-transparent border-none focus:ring-1 focus:ring-emerald-500 rounded px-1 py-0.5 cursor-pointer hover:bg-slate-100 w-auto shrink-0"
+              >
+                {YEARS.map((y) => (
+                  <option key={y} value={String(y)}>
+                    {y}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <button
+              type="button"
+              disabled={view.y >= MAX_YEAR && view.m === 11}
+              onClick={handleNextMonth}
+              className={cn(
+                'p-1 rounded-md hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors',
+                view.y >= MAX_YEAR && view.m === 11 && 'opacity-30 cursor-not-allowed hover:bg-transparent'
+              )}
+              aria-label="Next month"
+            >
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>

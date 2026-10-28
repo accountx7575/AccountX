@@ -11,7 +11,7 @@ import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { usePagedList } from '@/hooks/usePagedList';
 import { CreditCard, Plus, Search, Send } from 'lucide-react';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, todayDateString } from '@/lib/utils';
 import { SendDialog } from '@/components/comms/SendDialog';
 import { Tooltip } from '@/components/ui/Tooltip';
 import type { Payment } from '@/types/db';
@@ -26,20 +26,104 @@ export function PaymentsMadePage() {
   const { data: payments, isLoading, isError, refetch } = useQuery({
     queryKey: ['payments-made', activeBusiness?.id],
     queryFn: async () => {
-      if (!activeBusiness) return [];
-      const { data } = await supabase.from('payments').select('*, supplier:suppliers(name,email,phone)')
-        .eq('business_id', activeBusiness.id).eq('type', 'made').order('created_at', { ascending: false });
-      return data as (Payment & { supplier: { name: string; email: string | null; phone: string | null } | null })[];
+      if (!activeBusiness?.id) return [];
+
+      let rawRows: any[] = [];
+
+      // Primary source table: 'payments'
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('business_id', activeBusiness.id)
+        .eq('type', 'made')
+        .order('created_at', { ascending: false });
+
+      if (paymentsError) {
+        // Defensive fallback: check if 'payments_made' table or view exists
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('payments_made')
+          .select('*')
+          .eq('business_id', activeBusiness.id)
+          .order('created_at', { ascending: false });
+
+        if (fallbackError) {
+          console.error('[PaymentsMadePage] failed to fetch payments:', paymentsError);
+          throw paymentsError;
+        }
+        rawRows = fallbackData || [];
+      } else {
+        rawRows = paymentsData || [];
+      }
+
+      // Collect supplier IDs and bill IDs
+      const supplierIds = Array.from(
+        new Set(
+          rawRows
+            .map((p) => p.party_id || p.supplier_id)
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+
+      const billIds = Array.from(
+        new Set(
+          rawRows
+            .map((p) => p.bill_id)
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+
+      // Fetch suppliers and bills in parallel without join failure risks
+      const [suppliersRes, billsRes] = await Promise.all([
+        supplierIds.length > 0
+          ? supabase
+              .from('suppliers')
+              .select('id, name, email, phone')
+              .in('id', supplierIds)
+          : Promise.resolve({ data: [] }),
+        billIds.length > 0
+          ? supabase
+              .from('purchase_bills')
+              .select('id, bill_number')
+              .in('id', billIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const supplierMap = new Map((suppliersRes.data || []).map((s: any) => [s.id, s]));
+      const billMap = new Map((billsRes.data || []).map((b: any) => [b.id, b]));
+
+      return rawRows.map((p) => {
+        const suppId = p.party_id || p.supplier_id;
+        const supplier = suppId ? supplierMap.get(suppId) || null : null;
+        const bill = p.bill_id ? billMap.get(p.bill_id) || null : null;
+
+        return {
+          ...p,
+          date: p.date || p.payment_date || p.created_at?.split('T')[0] || todayDateString(),
+          amount: Number(p.amount) || 0,
+          allocated_amount: Number(p.allocated_amount) || 0,
+          payment_number: p.payment_number || p.number || '',
+          payment_method: p.payment_method || p.method || 'cash',
+          supplier,
+          bill,
+        };
+      }) as (Payment & {
+        supplier: { name: string; email: string | null; phone: string | null } | null;
+        bill?: { bill_number: string } | null;
+      })[];
     },
-    enabled: !!activeBusiness,
+    enabled: !!activeBusiness?.id,
   });
 
   const filtered = useMemo(() => {
     if (!payments) return [];
     return payments.filter((p) => {
-      if (statusFilter === 'unapplied' && Math.round((p.amount - p.allocated_amount) * 100) <= 0) return false;
-      return p.payment_number.toLowerCase().includes(list.search.toLowerCase()) ||
-        (p.supplier?.name || '').toLowerCase().includes(list.search.toLowerCase());
+      if (statusFilter === 'unapplied' && Math.round(((p.amount || 0) - (p.allocated_amount || 0)) * 100) <= 0) return false;
+      const searchLower = (list.search || '').toLowerCase();
+      return (
+        (p.payment_number || '').toLowerCase().includes(searchLower) ||
+        (p.supplier?.name || '').toLowerCase().includes(searchLower) ||
+        (p.reference || '').toLowerCase().includes(searchLower)
+      );
     });
   }, [payments, list.search, statusFilter]);
 

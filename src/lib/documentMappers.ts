@@ -108,6 +108,8 @@ export interface ResolvedBusinessProfile {
   name?: string;
   legal_name?: string;
   legalName?: string;
+  logo_url: string | null;
+  logoUrl: string | null;
   signature_url: string | null;
   signatureUrl: string | null;
   stamp_url: string | null;
@@ -123,6 +125,8 @@ export interface ResolvedBusinessProfile {
   termsInvoices: string | null;
   terms_purchase: string | null;
   termsPurchase: string | null;
+  terms_payment_receipt: string | null;
+  termsPaymentReceipt: string | null;
   invoice_footer_text: string | null;
   invoiceFooterText: string | null;
   [key: string]: any;
@@ -136,6 +140,8 @@ export interface ResolvedBusinessProfile {
 export function resolveBusinessProfile(business: any): ResolvedBusinessProfile {
   if (!business) {
     return {
+      logo_url: null,
+      logoUrl: null,
       signature_url: null,
       signatureUrl: null,
       stamp_url: null,
@@ -151,6 +157,8 @@ export function resolveBusinessProfile(business: any): ResolvedBusinessProfile {
       termsInvoices: null,
       terms_purchase: null,
       termsPurchase: null,
+      terms_payment_receipt: null,
+      termsPaymentReceipt: null,
       invoice_footer_text: null,
       invoiceFooterText: null,
     };
@@ -159,6 +167,17 @@ export function resolveBusinessProfile(business: any): ResolvedBusinessProfile {
   const id = business?.id;
   const stash = typeof window !== 'undefined' && id ? readBusinessColumnStash(id) : {};
   const extras = typeof window !== 'undefined' && id ? readBusinessExtras(id) : {};
+
+  const logoUrl =
+    business.logo_url ||
+    business.logoUrl ||
+    business.logo ||
+    stash?.logo_url ||
+    stash?.logoUrl ||
+    stash?.logo ||
+    (extras as any)?.logo_url ||
+    (extras as any)?.logoUrl ||
+    null;
 
   const signatureUrl =
     business.signature_url ||
@@ -222,6 +241,15 @@ export function resolveBusinessProfile(business: any): ResolvedBusinessProfile {
     business.termsAndConditions ||
     null;
 
+  const termsPaymentReceipt =
+    business.terms_payment_receipt ||
+    business.termsPaymentReceipt ||
+    business.tnc_payment_receipt ||
+    (typeof window !== 'undefined' && id ? readTncCache(id, 'payment_receipt') : '') ||
+    stash?.terms_payment_receipt ||
+    stash?.tnc_payment_receipt ||
+    null;
+
   const invoiceFooterText =
     business.invoice_footer_text ||
     business.invoiceFooterText ||
@@ -231,6 +259,8 @@ export function resolveBusinessProfile(business: any): ResolvedBusinessProfile {
   return {
     ...extras,
     ...business,
+    logo_url: logoUrl,
+    logoUrl,
     signature_url: signatureUrl,
     signatureUrl,
     stamp_url: signatureUrl,
@@ -246,6 +276,8 @@ export function resolveBusinessProfile(business: any): ResolvedBusinessProfile {
     termsInvoices,
     terms_purchase: termsPurchase,
     termsPurchase,
+    terms_payment_receipt: termsPaymentReceipt,
+    termsPaymentReceipt,
     invoice_footer_text: invoiceFooterText,
     invoiceFooterText,
   };
@@ -497,6 +529,8 @@ export function mapSalesOrderToUniversalData(
     signature_name: signatureName,
     stampUrl: signatureUrl,
     stamp_url: signatureUrl,
+    logoUrl: resolvedBiz.logoUrl,
+    logo_url: resolvedBiz.logo_url,
   };
   const dynamicTerms =
     order?.terms ||
@@ -536,6 +570,8 @@ export function mapSalesOrderToUniversalData(
       state: cust.state,
       pincode: cust.pincode || cust.pin_code,
       gstin: cust.gstin || order?.customer_gstin || order?.party_gstin,
+      pan: cust.pan || (cust.gstin && cust.gstin.length >= 12 ? cust.gstin.slice(2, 12) : undefined),
+      aadhaar: cust.aadhaar || undefined,
       phone: cust.phone || order?.customer_phone || order?.party_phone,
       email: cust.email || order?.customer_email,
     },
@@ -546,6 +582,8 @@ export function mapSalesOrderToUniversalData(
       state: cust.state,
       pincode: cust.pincode || cust.pin_code,
       gstin: cust.gstin || order?.customer_gstin,
+      pan: cust.pan || (cust.gstin && cust.gstin.length >= 12 ? cust.gstin.slice(2, 12) : undefined),
+      aadhaar: cust.aadhaar || undefined,
     },
     items: totals.items,
     subtotal: totals.subtotal,
@@ -632,6 +670,8 @@ export function mapSalesInvoiceToUniversalData(
     signature_name: signatureName,
     stampUrl: signatureUrl,
     stamp_url: signatureUrl,
+    logoUrl: resolvedBiz.logoUrl,
+    logo_url: resolvedBiz.logo_url,
   };
   const dynamicTerms =
     invoice?.terms ||
@@ -669,6 +709,8 @@ export function mapSalesInvoiceToUniversalData(
       state: cust.state,
       pincode: cust.pincode || cust.pin_code,
       gstin: cust.gstin || invoice?.customer_gstin || invoice?.party_gstin,
+      pan: cust.pan || (cust.gstin && cust.gstin.length >= 12 ? cust.gstin.slice(2, 12) : undefined),
+      aadhaar: cust.aadhaar || undefined,
       phone: cust.phone || invoice?.customer_phone || invoice?.party_phone,
       email: cust.email || invoice?.customer_email,
     },
@@ -679,6 +721,8 @@ export function mapSalesInvoiceToUniversalData(
       state: cust.state,
       pincode: cust.pincode || cust.pin_code,
       gstin: cust.gstin || invoice?.customer_gstin,
+      pan: cust.pan || (cust.gstin && cust.gstin.length >= 12 ? cust.gstin.slice(2, 12) : undefined),
+      aadhaar: cust.aadhaar || undefined,
     },
     items: totals.items,
     subtotal: totals.subtotal,
@@ -767,6 +811,8 @@ export function mapQuotationToUniversalData(
     signature_name: signatureName,
     stampUrl: signatureUrl,
     stamp_url: signatureUrl,
+    logoUrl: resolvedBiz.logoUrl,
+    logo_url: resolvedBiz.logo_url,
   };
   const dynamicTerms =
     quote?.terms ||
@@ -805,6 +851,8 @@ export function mapQuotationToUniversalData(
       state: cust.state,
       pincode: cust.pincode || cust.pin_code,
       gstin: cust.gstin || quote?.customer_gstin || quote?.party_gstin,
+      pan: cust.pan || (cust.gstin && cust.gstin.length >= 12 ? cust.gstin.slice(2, 12) : undefined),
+      aadhaar: cust.aadhaar || undefined,
       phone: cust.phone || quote?.customer_phone || quote?.party_phone,
       email: cust.email || quote?.customer_email,
     },
@@ -815,6 +863,8 @@ export function mapQuotationToUniversalData(
       state: cust.state,
       pincode: cust.pincode || cust.pin_code,
       gstin: cust.gstin || quote?.customer_gstin,
+      pan: cust.pan || (cust.gstin && cust.gstin.length >= 12 ? cust.gstin.slice(2, 12) : undefined),
+      aadhaar: cust.aadhaar || undefined,
     },
     items: totals.items,
     subtotal: totals.subtotal,
@@ -901,6 +951,8 @@ export function mapPurchaseOrderToUniversalData(
     signature_name: signatureName,
     stampUrl: signatureUrl,
     stamp_url: signatureUrl,
+    logoUrl: resolvedBiz.logoUrl,
+    logo_url: resolvedBiz.logo_url,
   };
   const dynamicTerms =
     order?.terms ||

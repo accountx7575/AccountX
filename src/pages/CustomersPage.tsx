@@ -14,7 +14,7 @@ import { usePagedList, likePattern } from '@/hooks/usePagedList';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { Users, Plus, Pencil, Trash2, Mail } from 'lucide-react';
-import { formatCurrency, formatDate, getInitials } from '@/lib/utils';
+import { formatCurrency, formatDate, getInitials, roundTo2 } from '@/lib/utils';
 import { SendDialog } from '@/components/comms/SendDialog';
 import type { Customer } from '@/types/db';
 
@@ -37,13 +37,102 @@ export function CustomersPage() {
         .eq('business_id', activeBusiness.id);
       if (list.debouncedSearch) {
         const p = likePattern(list.debouncedSearch);
-        q = q.or(`name.ilike."${p}",phone.ilike."${p}",email.ilike."${p}",gstin.ilike."${p}"`);
+        q = q.or(`name.ilike."${p}",phone.ilike."${p}",email.ilike."${p}",gstin.ilike."${p}",pan.ilike."${p}",aadhaar.ilike."${p}"`);
       }
       const { data, error, count } = await q
         .order('created_at', { ascending: false })
         .range(list.from, list.to);
       if (error) throw error;
-      return { rows: (data || []) as Customer[], total: count ?? 0 };
+
+      const rawRows = (data || []) as Customer[];
+      const customerIds = rawRows.map((c) => c.id);
+
+      if (customerIds.length === 0) {
+        return { rows: [] as Customer[], total: count ?? 0 };
+      }
+
+      // Reconcile outstanding balance and sales from active posted documents (invoices minus payments)
+      const [invRes, payRes] = await Promise.all([
+        supabase
+          .from('sales_invoices')
+          .select('customer_id, grand_total')
+          .eq('business_id', activeBusiness.id)
+          .in('customer_id', customerIds)
+          .in('status', ['issued', 'partially_paid', 'paid']),
+        supabase
+          .from('payments')
+          .select('party_id, amount')
+          .eq('business_id', activeBusiness.id)
+          .eq('party_type', 'customer')
+          .eq('type', 'received')
+          .in('party_id', customerIds),
+      ]);
+
+      const invoicesByCustomer = new Map<string, number>();
+      const paymentsByCustomer = new Map<string, number>();
+
+      for (const inv of invRes.data || []) {
+        if (inv.customer_id) {
+          const prev = invoicesByCustomer.get(inv.customer_id) || 0;
+          invoicesByCustomer.set(inv.customer_id, roundTo2(prev + (Number(inv.grand_total) || 0)));
+        }
+      }
+
+      for (const pay of payRes.data || []) {
+        if (pay.party_id) {
+          const prev = paymentsByCustomer.get(pay.party_id) || 0;
+          paymentsByCustomer.set(pay.party_id, roundTo2(prev + (Number(pay.amount) || 0)));
+        }
+      }
+
+      const reconciledRows: Customer[] = rawRows.map((c) => {
+        const openingBal = Number(c.opening_balance) || 0;
+        const totalSales = invoicesByCustomer.has(c.id)
+          ? invoicesByCustomer.get(c.id)!
+          : (Number(c.total_sales) || 0);
+        const totalPaid = paymentsByCustomer.has(c.id)
+          ? paymentsByCustomer.get(c.id)!
+          : (Number(c.total_paid) || 0);
+        const totalDebit = roundTo2(openingBal + totalSales);
+
+        // Customer outstanding = (Total Posted Invoices - Total Payments Received), or 0.00 if no debit invoices exist.
+        // Ensure advance/unallocated payments do not produce an arbitrary positive debit balance.
+        const outstanding = totalDebit <= 0 ? 0 : Math.max(0, roundTo2(totalDebit - totalPaid));
+
+        return {
+          ...c,
+          current_balance: outstanding,
+          total_sales: totalSales,
+          total_paid: totalPaid,
+        };
+      });
+
+      // Self-heal drifted database rows in the background
+      const drifted = reconciledRows.filter((r, idx) => {
+        const orig = rawRows[idx];
+        return orig && (
+          Number(orig.current_balance) !== r.current_balance ||
+          Number(orig.total_sales) !== r.total_sales ||
+          Number(orig.total_paid) !== r.total_paid
+        );
+      });
+      if (drifted.length > 0) {
+        Promise.all(
+          drifted.map((d) =>
+            supabase
+              .from('customers')
+              .update({
+                current_balance: d.current_balance,
+                total_sales: d.total_sales,
+                total_paid: d.total_paid,
+              })
+              .eq('id', d.id)
+              .eq('business_id', activeBusiness.id)
+          )
+        ).catch((e) => console.warn('Self-heal customer balance warning:', e));
+      }
+
+      return { rows: reconciledRows, total: count ?? 0 };
     },
     enabled: !!activeBusiness,
     placeholderData: (prev) => prev,
@@ -122,6 +211,8 @@ export function CustomersPage() {
               { key: 'phone', label: 'Phone', getText: (c) => c.phone || '—' },
               { key: 'email', label: 'Email', getText: (c) => c.email || '—' },
               { key: 'gstin', label: 'GSTIN', getText: (c) => c.gstin || '—' },
+              { key: 'pan', label: 'PAN', getText: (c) => c.pan || '—' },
+              { key: 'aadhaar', label: 'Aadhaar', getText: (c) => c.aadhaar || '—' },
               { key: 'outstanding', label: 'Outstanding', getText: (c) => formatCurrency(c.current_balance, activeBusiness?.currency_symbol) },
               { key: 'sales', label: 'Total Sales', getText: (c) => formatCurrency(c.total_sales, activeBusiness?.currency_symbol) },
               { key: 'status', label: 'Status', getText: (c) => c.status },

@@ -198,13 +198,6 @@ describe('docPrint engine — PrintableDocData → UniversalDocumentData', () =>
     expect(map(business, { ...baseDoc, partyName: '' }).buyer.name).toBe('Customer');
   });
 
-  it('demo sandbox demoHeader passes through untouched', () => {
-    expect(map(business, { ...baseDoc, demoHeader: undefined }).demoHeader).toBeUndefined();
-    expect(map(business, { ...baseDoc, demoHeader: 'estimate' }).demoHeader).toBe('estimate');
-    expect(map(business, { ...baseDoc, demoHeader: 'demo' }).demoHeader).toBe('demo');
-    expect(map(business, { ...baseDoc, demoHeader: 'clean' }).demoHeader).toBe('clean');
-  });
-
   it('terms chain: record terms win, business tnc_* second, legacy engine defaults last', () => {
     expect(map(business, { ...baseDoc, terms: 'Custom record terms line.' }).terms).toEqual(['Custom record terms line.']);
     const withTnc = map(
@@ -251,21 +244,5 @@ describe('docPrint engine — engine output is the approved GyftKart UDT (direct
       expect(html).toContain('Place of Supply');
       expect(html).not.toContain('Supply Type');
     }
-  });
-
-  it('demoHeader no longer alters the canonical title (approved UDT is mode-invariant)', () => {
-    const live = renderOf({ ...baseDoc });
-    expect(live).toContain('TAX INVOICE / RECEIPT');
-    expect(live).not.toContain('ESTIMATE / PROFORMA');
-    const estimate = renderOf({ ...baseDoc, demoHeader: 'estimate' });
-    const demo = renderOf({ ...baseDoc, demoHeader: 'demo' });
-    expect(estimate).toBe(live);
-    expect(demo).toBe(live);
-  });
-
-  it('clean-mode demo documents render byte-identical titles with real docs', () => {
-    const real = renderOf({ ...baseDoc, docTitle: 'SALES ORDER' });
-    const clean = renderOf({ ...baseDoc, docTitle: 'SALES ORDER', demoHeader: 'clean' });
-    expect(clean).toBe(real);
   });
 });

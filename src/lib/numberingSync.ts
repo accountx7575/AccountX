@@ -20,7 +20,9 @@ export type SyncableDocumentType =
   | 'quotation'
   | 'sales_invoice'
   | 'purchase_order'
-  | 'purchase_bill';
+  | 'purchase_bill'
+  | 'payment_received'
+  | 'payment_made';
 
 export interface SyncDocumentConfig {
   table: string;
@@ -35,6 +37,8 @@ export const SYNC_DOCUMENT_CONFIG: Record<SyncableDocumentType, SyncDocumentConf
   sales_invoice: { table: 'sales_invoices', numberColumn: 'invoice_number', label: 'Invoice' },
   purchase_order: { table: 'purchase_orders', numberColumn: 'po_number', label: 'Purchase Order' },
   purchase_bill: { table: 'purchase_bills', numberColumn: 'bill_number', label: 'Purchase Bill' },
+  payment_received: { table: 'payments', numberColumn: 'payment_number', label: 'Payment Received' },
+  payment_made: { table: 'payments', numberColumn: 'payment_number', label: 'Payment Made' },
 };
 
 export interface SyncDocumentNumberInput {
@@ -300,4 +304,202 @@ export async function syncDraftDocumentNumbersInDb(params: {
   }
 
   return result;
+}
+
+/**
+ * Resolves the payment received prefix dynamically:
+ * Checks activeBusiness, fresh businesses row, business_settings (if present),
+ * localStorage stash, or falls back to 'RCP'.
+ */
+export async function getDynamicPaymentReceivedPrefix(
+  business: Record<string, unknown> | null | undefined
+): Promise<string> {
+  const businessId = business && typeof business.id === 'string' ? business.id : '';
+
+  // 1. Direct business object property
+  if (business?.payment_received_prefix && typeof business.payment_received_prefix === 'string') {
+    const val = normalizePrefix(business.payment_received_prefix).replace(/\/+$/, '');
+    if (val) return val;
+  }
+
+  // 2. Fetch fresh from businesses table
+  if (businessId) {
+    try {
+      const { data, error } = await supabase
+        .from('businesses')
+        .select('*')
+        .eq('id', businessId)
+        .maybeSingle();
+      if (!error && data && (data as any).payment_received_prefix) {
+        const val = normalizePrefix((data as any).payment_received_prefix).replace(/\/+$/, '');
+        if (val) return val;
+      }
+    } catch {
+      // ignore
+    }
+
+    // 3. Fallback check for business_settings table if present in DB
+    try {
+      const { data, error } = await supabase
+        .from('business_settings')
+        .select('*')
+        .eq('business_id', businessId)
+        .maybeSingle();
+      if (!error && data && (data as any).payment_received_prefix) {
+        const val = normalizePrefix((data as any).payment_received_prefix).replace(/\/+$/, '');
+        if (val) return val;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 4. LocalStorage stashes
+  if (businessId) {
+    try {
+      const raw = localStorage.getItem(`ax-doc-prefixes:${businessId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.payment_received_prefix) {
+          const val = normalizePrefix(parsed.payment_received_prefix).replace(/\/+$/, '');
+          if (val) return val;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const rawBs = localStorage.getItem('business_settings');
+      if (rawBs) {
+        const parsedBs = JSON.parse(rawBs);
+        if (parsedBs?.payment_received_prefix) {
+          const val = normalizePrefix(parsedBs.payment_received_prefix).replace(/\/+$/, '');
+          if (val) return val;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return 'RCP';
+}
+
+/**
+ * Scans existing payments to determine the next sequential integer for the given prefix and fiscal year.
+ * If no records match, starts at 1.
+ */
+export async function getNextPaymentSequence(
+  businessId: string,
+  prefix: string,
+  fiscalYear: string
+): Promise<number> {
+  let paymentNumbers: string[] = [];
+
+  try {
+    const { data, error } = await supabase
+      .from('payments')
+      .select('payment_number')
+      .eq('business_id', businessId);
+    if (!error && data) {
+      paymentNumbers = data.map((d: any) => String(d.payment_number || ''));
+    }
+  } catch {
+    // ignore
+  }
+
+  if (paymentNumbers.length === 0) {
+    try {
+      const { data, error } = await supabase
+        .from('payments')
+        .select('payment_number')
+        .eq('business_id', businessId);
+      if (!error && data) {
+        paymentNumbers = data.map((d: any) => String(d.payment_number || ''));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedFy = fiscalYear.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const exactRegex = new RegExp(`^${escapedPrefix}/${escapedFy}/(\\d+)$`, 'i');
+
+  let maxSeq = 0;
+  let hasMatch = false;
+
+  for (const num of paymentNumbers) {
+    const trimmed = num.trim();
+    const match = exactRegex.exec(trimmed);
+    if (match) {
+      const seq = parseInt(match[1], 10);
+      if (!isNaN(seq) && seq > maxSeq) {
+        maxSeq = seq;
+        hasMatch = true;
+      }
+    }
+  }
+
+  if (hasMatch) {
+    return maxSeq + 1;
+  }
+
+  const prefixAnyRegex = new RegExp(`^${escapedPrefix}[/\\-].*?(\\d+)$`, 'i');
+  for (const num of paymentNumbers) {
+    const trimmed = num.trim();
+    const match = prefixAnyRegex.exec(trimmed);
+    if (match) {
+      const seq = parseInt(match[1], 10);
+      if (!isNaN(seq) && seq > maxSeq) {
+        maxSeq = seq;
+        hasMatch = true;
+      }
+    }
+  }
+
+  if (hasMatch) {
+    return maxSeq + 1;
+  }
+
+  return 1;
+}
+
+/**
+ * Auto-generates the next default payment received number using the business's
+ * dynamic prefix, fiscal year, and next sequence:
+ * `${prefix}/${fiscalYear}/${nextSequence}` (e.g. `PR/ABC/SE/26-27/1`).
+ */
+export async function fetchNextPaymentReceivedNumber(
+  business: Record<string, unknown> | null | undefined,
+  dateString?: string
+): Promise<string> {
+  const businessId = business && typeof business.id === 'string' ? business.id : '';
+  if (!businessId) return '';
+
+  const prefix = await getDynamicPaymentReceivedPrefix(business);
+  const fiscalYear = financialYearShort(
+    business?.financial_year,
+    '',
+    dateString ? new Date(dateString) : new Date()
+  );
+  const seq = await getNextPaymentSequence(businessId, prefix, fiscalYear);
+
+  let candidate = `${prefix}/${fiscalYear}/${seq}`;
+  let probe = 0;
+  while (probe < 25) {
+    const taken = await documentNumberTaken({
+      table: 'payments',
+      column: 'payment_number',
+      businessId,
+      value: candidate,
+    }).catch(() => false);
+
+    if (!taken) break;
+    probe += 1;
+    candidate = `${prefix}/${fiscalYear}/${seq + probe}`;
+  }
+
+  return candidate;
 }

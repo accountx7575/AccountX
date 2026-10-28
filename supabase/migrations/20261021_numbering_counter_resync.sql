@@ -106,8 +106,8 @@ BEGIN
   v_prefix := CASE p_doc_type
     WHEN 'sales_invoice' THEN 'INV'
     WHEN 'purchase_bill' THEN 'BILL'
-    WHEN 'payment_received' THEN 'RCV'
-    WHEN 'payment_made' THEN 'PAY'
+    WHEN 'payment_received' THEN COALESCE((SELECT b.payment_received_prefix FROM public.businesses b WHERE b.id = p_business_id), 'RCV')
+    WHEN 'payment_made' THEN COALESCE((SELECT b.payment_made_prefix FROM public.businesses b WHERE b.id = p_business_id), 'PM')
     WHEN 'credit_note' THEN 'CN'
     WHEN 'debit_note' THEN 'DN'
     WHEN 'expense' THEN 'EXP'

@@ -30,7 +30,7 @@ export function BusinessSetupPage() {
     email: '',
     address: '',
     city: '',
-    state: 'Maharashtra',
+    state: 'Uttar Pradesh',
     gstin: '',
     pan: '',
     financial_year: '2026-27',
@@ -124,7 +124,7 @@ export function BusinessSetupPage() {
                 <Input
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="ABC Traders"
+                  placeholder=""
                   required
                 />
               </FormField>
@@ -133,7 +133,7 @@ export function BusinessSetupPage() {
                 <Input
                   value={form.legal_name}
                   onChange={(e) => setForm({ ...form, legal_name: e.target.value })}
-                  placeholder="ABC Traders Pvt Ltd"
+                  placeholder=""
                 />
               </FormField>
 
@@ -153,9 +153,12 @@ export function BusinessSetupPage() {
               <FormField label="Phone">
                 <Input
                   type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  pattern="[0-9]{10}"
                   value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="+91 98765 43210"
+                  onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                  placeholder=""
                 />
               </FormField>
 
@@ -164,7 +167,7 @@ export function BusinessSetupPage() {
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  placeholder="business@example.com"
+                  placeholder=""
                 />
               </FormField>
 
@@ -183,7 +186,7 @@ export function BusinessSetupPage() {
                 <Input
                   value={form.city}
                   onChange={(e) => setForm({ ...form, city: e.target.value })}
-                  placeholder="Mumbai"
+                  placeholder=""
                 />
               </FormField>
 
@@ -199,7 +202,7 @@ export function BusinessSetupPage() {
                 <Input
                   value={form.gstin}
                   onChange={(e) => setForm({ ...form, gstin: e.target.value })}
-                  placeholder="27ABCDE1234F1Z5"
+                  placeholder=""
                   maxLength={15}
                 />
               </FormField>
@@ -208,7 +211,7 @@ export function BusinessSetupPage() {
                 <Input
                   value={form.pan}
                   onChange={(e) => setForm({ ...form, pan: e.target.value })}
-                  placeholder="ABCDE1234F"
+                  placeholder=""
                   maxLength={10}
                 />
               </FormField>
@@ -218,9 +221,9 @@ export function BusinessSetupPage() {
               <Textarea
                 value={form.address}
                 onChange={(e) => setForm({ ...form, address: e.target.value })}
-                placeholder="123 Business Street, Industrial Area"
-                rows={2}
-              />
+                  placeholder=""
+                  rows={2}
+                />
             </FormField>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

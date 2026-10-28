@@ -36,7 +36,7 @@ vi.mock('@/context/ToastContext', () => ({
 
 import { BusinessSetupPage } from '@/pages/auth/BusinessSetupPage';
 
-const nameInput = () => screen.getByPlaceholderText('ABC Traders') as HTMLInputElement;
+const nameInput = () => screen.getByLabelText(/Business Name/i) as HTMLInputElement;
 const submitButton = () => screen.getByRole('button', { name: /Create Business & Get Started/i });
 
 describe('BusinessSetupPage — a tenant row is only created by an explicit, named submit', () => {

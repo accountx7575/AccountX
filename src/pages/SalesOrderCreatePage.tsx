@@ -13,13 +13,13 @@ import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/common/DatePicker';
+import { TimePicker } from '@/components/common/TimePicker';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { ArrowLeft, Save, Trash2, Plus } from 'lucide-react';
 import { formatCurrency, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
 import { computeDocLine } from '@/lib/payloads';
-import { saveDemoDoc, defaultDemoNumber, countDemoDocs } from '@/lib/demoStore';
 import type { Customer, Product, SalesOrder, SalesOrderItem } from '@/types/db';
 
 type LineItem = {
@@ -43,7 +43,7 @@ const GST_SLABS = [0, 0.25, 3, 5, 12, 18, 28];
 // Terminal-state orders are immutable — mirrors SalesOrdersPage LOCKED semantics.
 const EDITABLE_STATUSES = new Set(['draft', 'confirmed']);
 
-export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) {
+export function SalesOrderCreatePage() {
   const { activeBusiness } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -213,7 +213,7 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
     date: orderDate,
     initialValue: isEdit ? existingQuery.data?.order?.order_number ?? null : null,
     excludeId: editId ?? null,
-    enabled: !demo,
+    enabled: true,
   });
 
   const createMutation = useMutation({
@@ -222,53 +222,6 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
       if (!customerId) throw new Error('Please select a customer');
       const validLines = lines.filter((l) => l.product_name.trim() && l.quantity > 0);
       if (!validLines.length) throw new Error('Add at least one line with a description and quantity');
-
-      // Demo/Proforma sandbox (PBS-112): zero effect on real books — no
-      // sales_orders/sales_order_items rows, no counters, no journal, no stock.
-      if (demo) {
-        const demoRows = validLines.map((l) => {
-          const line = computeDocLine({ quantity: l.quantity, rate: l.rate, discount_amount: l.discount_amount, tax_rate: l.tax_rate, isInterState });
-          return {
-            product_id: l.product_id || null,
-            product_name: l.product_name.trim(),
-            hsn_sac: l.hsn_sac ?? null,
-            quantity: l.quantity,
-            unit: l.unit || 'PCS',
-            rate: l.rate,
-            discount_amount: l.discount_amount,
-            tax_rate: l.tax_rate,
-            taxable_amount: line.taxable_amount,
-            cgst_amount: line.cgst_amount,
-            sgst_amount: line.sgst_amount,
-            igst_amount: line.igst_amount,
-            total_amount: line.total_amount,
-          };
-        });
-        const saved = saveDemoDoc(
-          activeBusiness.id,
-          'sales_order',
-          {
-            order_number: defaultDemoNumber('sales_order', countDemoDocs(activeBusiness.id, 'sales_order') + 1),
-            customer_id: customerId,
-            order_date: orderDate,
-            created_at: combineDateTime(orderDate, orderTime),
-            expected_date: expectedDate || null,
-            subtotal: totals.subtotal,
-            discount_amount: totals.totalDiscount,
-            taxable_amount: totals.taxableAmount,
-            cgst_amount: totals.cgst,
-            sgst_amount: totals.sgst,
-            igst_amount: totals.igst,
-            round_off: 0,
-            grand_total: totals.grandTotal,
-            status: 'draft',
-            notes: notes || null,
-          },
-          demoRows,
-          customers?.find((c) => c.id === customerId) as unknown as Record<string, unknown> | null
-        );
-        return { edited: false, orderId: saved.id };
-      }
 
       // Edit mode: UPDATE the existing order header (status and order_number
       // untouched) and replace its line items, mirroring the sales-invoice edit path.
@@ -424,11 +377,6 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
       ['sales-orders', 'dashboard-stats'].forEach((k) =>
         queryClient.invalidateQueries({ queryKey: [k, activeBusiness?.id] })
       );
-      if (demo && orderId) {
-        toast('Demo sales order saved — sandbox only, books untouched', 'success');
-        navigate(`/app/demo/orders/${orderId}`);
-        return;
-      }
       if (edited) {
         queryClient.invalidateQueries({ queryKey: ['sales-order', activeBusiness?.id, editId] });
         toast('Sales order updated', 'success');
@@ -446,8 +394,8 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
   return (
     <div>
       <PageHeader
-        title={isEdit ? `Edit Sales Order #${existingQuery.data?.order.order_number || ''}` : demo ? 'New Demo Sales Order' : 'New Sales Order'}
-        actions={<Button variant="secondary" onClick={() => navigate(demo ? '/app/demo/orders' : '/app/sales-orders')}><ArrowLeft className="h-4 w-4" /> Back</Button>}
+        title={isEdit ? `Edit Sales Order #${existingQuery.data?.order.order_number || ''}` : 'New Sales Order'}
+        actions={<Button variant="secondary" onClick={() => navigate('/app/sales-orders')}><ArrowLeft className="h-4 w-4" /> Back</Button>}
       />
 
       <div className="card p-6">
@@ -471,12 +419,11 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
               <DatePicker className="input h-10" value={orderDate} onChange={setOrderDate} />
             </FormField>
             <FormField label="Time">
-              <Input
-                type="text"
+              <TimePicker
+                className="h-10"
                 value={orderTime}
-                onChange={(e) => setOrderTime(e.target.value)}
+                onChange={setOrderTime}
                 placeholder="12:00 PM"
-                className="h-10 figure"
               />
             </FormField>
             <FormField label="Expected Delivery">
@@ -662,7 +609,7 @@ export function SalesOrderCreatePage({ demo = false }: { demo?: boolean } = {}) 
 
       <div className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 mt-5 border-t border-secondary-200/80 dark:border-zinc-800 bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md">
         <div className="flex items-center justify-between gap-3">
-          <Button variant="secondary" onClick={() => navigate(demo ? '/app/demo/orders' : '/app/sales-orders')}>Cancel</Button>
+          <Button variant="secondary" onClick={() => navigate('/app/sales-orders')}>Cancel</Button>
           <Button onClick={() => createMutation.mutate()} loading={createMutation.isPending}>
             <Save className="h-4 w-4" /> {isEdit ? 'Save Changes' : 'Save Draft'}
           </Button>

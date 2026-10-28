@@ -16,6 +16,7 @@ export type PartyForm = {
   email: string;
   gstin: string;
   pan: string;
+  aadhaar?: string;
   address: string;
   city: string;
   state: string;
@@ -32,6 +33,7 @@ const partyCore = (form: PartyForm) => ({
   email: form.email || null,
   gstin: form.gstin || null,
   pan: form.pan || null,
+  aadhaar: form.aadhaar ? form.aadhaar.replace(/\D/g, '') || null : null,
   address: form.address || null,
   city: form.city || null,
   state: form.state,

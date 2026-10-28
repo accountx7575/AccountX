@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { GSTIN_REGEX, PAN_REGEX, PHONE_REGEX } from '@/lib/validation';
+import { GSTIN_REGEX, PAN_REGEX, PHONE_REGEX, formatAadhaar } from '@/lib/validation';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -19,8 +19,8 @@ const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chh
 // Shared with SettingsPage.tsx:27 — keep the patterns in sync.
 
 const emptyForm = {
-  name: '', company_name: '', phone: '', email: '', gstin: '', pan: '',
-  address: '', city: '', state: 'Maharashtra', pincode: '', opening_balance: '0',
+  name: '', company_name: '', phone: '', email: '', gstin: '', pan: '', aadhaar: '',
+  address: '', city: '', state: 'Uttar Pradesh', pincode: '', opening_balance: '0',
   credit_limit: '0', notes: '',
 };
 
@@ -55,8 +55,10 @@ export function CustomerCreatePage() {
     if (!c) return;
     setForm({
       name: c.name, company_name: c.company_name || '', phone: c.phone || '', email: c.email || '',
-      gstin: c.gstin || '', pan: c.pan || '', address: c.address || '', city: c.city || '',
-      state: c.state || 'Maharashtra', pincode: c.pincode || '',
+      gstin: c.gstin || '', pan: c.pan || '',
+      aadhaar: c.aadhaar ? formatAadhaar(c.aadhaar, ' ') : '',
+      address: c.address || '', city: c.city || '',
+      state: c.state || 'Uttar Pradesh', pincode: c.pincode || '',
       opening_balance: String(c.opening_balance), credit_limit: String(c.credit_limit),
       notes: c.notes || '',
     });
@@ -73,6 +75,10 @@ export function CustomerCreatePage() {
       const pan = form.pan.trim().toUpperCase();
       if (pan && !PAN_REGEX.test(pan)) {
         throw new Error('Invalid PAN — expected 10 chars like ABCDE1234F');
+      }
+      const aadhaarDigits = (form.aadhaar || '').replace(/\D/g, '');
+      if (form.aadhaar && form.aadhaar.trim() && aadhaarDigits.length !== 12) {
+        throw new Error('Invalid Aadhaar Number — expected exactly 12 numeric digits (e.g., 1234 5678 9012)');
       }
       const phone = form.phone.replace(/[\s-]/g, '');
       if (form.phone.trim() && !PHONE_REGEX.test(phone)) {
@@ -121,37 +127,52 @@ export function CustomerCreatePage() {
       />
 
       <div className="card p-6">
-        <FormSection title="Contact Details" description="Primary identity and reachability">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label="Customer Name" required>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Rahul Enterprises" />
-            </FormField>
-            <FormField label="Company Name">
-              <Input value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} placeholder="Rahul Enterprises Pvt Ltd" />
-            </FormField>
-            <FormField label="Phone">
-              <Input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+91 98765 43210" />
-            </FormField>
-            <FormField label="Email">
-              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="rahul@example.com" />
-            </FormField>
-            <FormField label="GSTIN">
-              <Input value={form.gstin} onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })} placeholder="27ABCDE1234F1Z5" maxLength={15} />
-            </FormField>
-            <FormField label="PAN">
-              <Input value={form.pan} onChange={(e) => setForm({ ...form, pan: e.target.value.toUpperCase() })} placeholder="ABCDE1234F" maxLength={10} />
-            </FormField>
-          </div>
-        </FormSection>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FormField label="Customer Name" required>
+            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="" />
+          </FormField>
+          <FormField label="Company Name">
+            <Input value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} placeholder="" />
+          </FormField>
+          <FormField label="Phone">
+            <Input type="tel" inputMode="numeric" maxLength={10} pattern="[0-9]{10}" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} placeholder="" />
+          </FormField>
+          <FormField label="Email">
+            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="" />
+          </FormField>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+          <FormField label="GSTIN">
+            <Input value={form.gstin} onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })} placeholder="15 digits" maxLength={15} />
+          </FormField>
+          <FormField label="PAN">
+            <Input value={form.pan} onChange={(e) => setForm({ ...form, pan: e.target.value.toUpperCase() })} placeholder="10 characters" maxLength={10} />
+          </FormField>
+          <FormField label="Aadhaar Number">
+            <Input
+              type="text"
+              inputMode="numeric"
+              value={form.aadhaar}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 12);
+                const masked = digits.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+                setForm({ ...form, aadhaar: masked });
+              }}
+              placeholder="12-digit number (XXXX XXXX XXXX)"
+              maxLength={14}
+            />
+          </FormField>
+        </div>
 
         <FormSection title="Address">
           <div className="space-y-4">
             <FormField label="Address">
-              <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="123 Business Street" rows={2} />
+              <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="" rows={2} />
             </FormField>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <FormField label="City">
-                <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Mumbai" />
+                <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="" />
               </FormField>
               <FormField label="State">
                 <select className="input" value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })}>
@@ -159,7 +180,7 @@ export function CustomerCreatePage() {
                 </select>
               </FormField>
               <FormField label="Pincode">
-                <Input value={form.pincode} onChange={(e) => setForm({ ...form, pincode: e.target.value })} placeholder="400001" />
+                <Input value={form.pincode} onChange={(e) => setForm({ ...form, pincode: e.target.value })} placeholder="" />
               </FormField>
             </div>
           </div>
@@ -177,7 +198,7 @@ export function CustomerCreatePage() {
         </FormSection>
 
         <FormSection title="Notes">
-          <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} placeholder="Internal notes about this customer..." />
+          <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} placeholder="" />
         </FormSection>
       </div>
 

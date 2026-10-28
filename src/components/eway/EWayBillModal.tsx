@@ -28,14 +28,11 @@ type Props = {
   business: Business | null;
   invoice: EWayInvoiceRef | null;
   onCreated?: (bill: EWayBill) => void;
-  /** Demo/Proforma sandbox (PBS-112): tag the bill demo=true — it lands in the
-   *  demo e-Way Bills page and is filtered out of the real e-Way Bill page. */
-  demoMode?: boolean;
 };
 
 const inputCls = 'input w-full';
 
-export function EWayBillModal({ open, onClose, business, invoice, onCreated, demoMode = false }: Props) {
+export function EWayBillModal({ open, onClose, business, invoice, onCreated }: Props) {
   const { toast } = useToast();
   const customer = (invoice?.customer || {}) as NonNullable<EWayInvoiceRef['customer']>;
 
@@ -107,7 +104,6 @@ export function EWayBillModal({ open, onClose, business, invoice, onCreated, dem
       return;
     }
     const bill = createEWayBill({
-      ...({ demo: demoMode } as { demo?: boolean }),
       businessId: business.id,
       invoiceId: invoice.id,
       invoiceNumber: invoice.invoice_number,
@@ -130,7 +126,7 @@ export function EWayBillModal({ open, onClose, business, invoice, onCreated, dem
       totalValue: Number(invoice.grand_total) || 0,
     });
     setCreated(bill);
-    toast(demoMode ? `Demo e-Way Bill ${bill.ewayBillNo} generated — sandbox only` : `e-Way Bill ${bill.ewayBillNo} generated`, 'success');
+    toast(`e-Way Bill ${bill.ewayBillNo} generated`, 'success');
     onCreated?.(bill);
   };
 

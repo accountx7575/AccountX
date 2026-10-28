@@ -6,6 +6,7 @@ import {
   mapSalesInvoiceToUniversalData,
   mapPurchaseOrderToUniversalData,
   mapPurchaseBillToUniversalData,
+  resolveBusinessProfile,
 } from './documentMappers';
 
 describe('documentMappers', () => {
@@ -254,6 +255,41 @@ describe('documentMappers', () => {
       expect(data.company?.bank_account_no).toBe('9876543210');
       expect(data.company?.bank_ifsc).toBe('HDFC0001234');
       expect(data.company?.upi_id).toBe('gyftkart@hdfcbank');
+    });
+  });
+
+  describe('resolveBusinessProfile', () => {
+    it('resolves payment receipt terms from business settings', () => {
+      const biz = {
+        name: 'Test Business',
+        terms_payment_receipt: 'All payments subject to clearing.',
+      };
+      const profile = resolveBusinessProfile(biz);
+      expect(profile.terms_payment_receipt).toBe('All payments subject to clearing.');
+      expect(profile.termsPaymentReceipt).toBe('All payments subject to clearing.');
+    });
+
+    it('falls back to null or cache when terms are empty', () => {
+      const biz = {
+        name: 'Test Business',
+      };
+      const profile = resolveBusinessProfile(biz);
+      expect(profile.terms_payment_receipt).toBeNull();
+      expect(profile.termsPaymentReceipt).toBeNull();
+    });
+
+    it('resolves logo_url and logoUrl from business', () => {
+      const biz = {
+        name: 'Avadh Boring Company',
+        logo_url: 'data:image/png;base64,ABC123',
+      };
+      const profile = resolveBusinessProfile(biz);
+      expect(profile.logo_url).toBe('data:image/png;base64,ABC123');
+      expect(profile.logoUrl).toBe('data:image/png;base64,ABC123');
+
+      const mapped = mapSalesOrderToUniversalData(biz, { order_number: 'SO-1' });
+      expect(mapped.company?.logo_url).toBe('data:image/png;base64,ABC123');
+      expect(mapped.company?.logoUrl).toBe('data:image/png;base64,ABC123');
     });
   });
 });

@@ -126,6 +126,7 @@ export function QuotationViewPage() {
 
   const quote = data?.quote;
   const items = data?.items || [];
+  const effectiveBusiness = data?.business || activeBusiness;
 
   // Deep-link auto-print support for list rows: ?action=print, ?print=1, or ?autoprint=true
   useEffect(() => {
@@ -328,7 +329,7 @@ export function QuotationViewPage() {
         <div id="invoice-printable-area">
           <UniversalDocumentTemplate
             data={mapQuotationToUniversalData(
-              mergeBusinessExtras(activeBusiness, activeBusiness?.id || '') || activeBusiness,
+              mergeBusinessExtras(effectiveBusiness, effectiveBusiness?.id || '') || effectiveBusiness,
               quote,
               items
             )}

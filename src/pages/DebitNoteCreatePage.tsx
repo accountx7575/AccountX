@@ -8,6 +8,7 @@ import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/common/DatePicker';
+import { TimePicker } from '@/components/common/TimePicker';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import {
@@ -226,12 +227,11 @@ export function DebitNoteCreatePage() {
               </FormField>
               <FormField label="Date" required><DatePicker className="input h-10" value={date} onChange={setDate} /></FormField>
               <FormField label="Time">
-                <Input
-                  type="text"
+                <TimePicker
+                  className="h-10"
                   value={time}
-                  onChange={(e) => setTime(e.target.value)}
+                  onChange={setTime}
                   placeholder="12:00 PM"
-                  className="h-10 figure"
                 />
               </FormField>
               <FormField label="Restock returned goods">

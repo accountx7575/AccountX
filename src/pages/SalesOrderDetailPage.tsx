@@ -128,6 +128,13 @@ export function SalesOrderDetailPage() {
 
   const order = data?.order;
   const items = data?.items || [];
+  const effectiveBusiness = data?.business || activeBusiness;
+
+  useEffect(() => {
+    if (effectiveBusiness) {
+      console.log('[SalesOrderViewPage] business logo_url:', effectiveBusiness?.logo_url);
+    }
+  }, [effectiveBusiness]);
 
   // Deep-link auto-print support for list rows: ?action=print, ?print=1, or ?autoprint=true
   useEffect(() => {
@@ -334,7 +341,7 @@ export function SalesOrderDetailPage() {
         <div id="invoice-printable-area">
           <UniversalDocumentTemplate
             data={mapSalesOrderToUniversalData(
-              mergeBusinessExtras(activeBusiness, activeBusiness?.id || '') || activeBusiness,
+              mergeBusinessExtras(effectiveBusiness, effectiveBusiness?.id || '') || effectiveBusiness,
               {
                 ...order,
                 customer: order.customer,

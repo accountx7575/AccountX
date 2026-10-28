@@ -27,6 +27,8 @@ export interface PrintableDocData {
   partyName: string;
   partyAddress?: string;
   partyGstin?: string;
+  partyPan?: string;
+  partyAadhaar?: string;
   partyPhone?: string;
   partyPlaceOfSupply?: string;
   shipToName?: string;
@@ -53,8 +55,6 @@ export interface PrintableDocData {
   grandTotal: number;
   notes?: string | null;
   terms?: string | null;
-  /** Demo/Proforma sandbox: 'estimate' | 'demo' | 'clean' — undefined keeps real docs byte-identical. */
-  demoHeader?: 'estimate' | 'demo' | 'clean';
   /** Purchase-bill mode: Billed By = supplier, Billed To = our business,
    *  no bank card, neutral terms, no signature image/For-block. */
   isPurchaseBill?: boolean;
@@ -158,16 +158,12 @@ export function classifyDocumentType(doc: {
   return 'TAX_INVOICE';
 }
 
-/** I-frame/browser title of the printed document (old engine's <title> shape,
- *  including the demo/estimate header overrides). */
+/** I-frame/browser title of the printed document (old engine's <title> shape). */
 function pageTitleFor(
   documentType: DocumentType,
-  demoHeader?: PrintableDocData['demoHeader'],
   docNumber = ''
 ): string {
   let header = getDocumentTitles(documentType).header;
-  if (demoHeader === 'estimate') header = 'ESTIMATE / PROFORMA INVOICE';
-  else if (demoHeader === 'demo') header = `DEMO ${header.split(' / ')[0]}`;
   return docNumber ? `${docNumber} - ${header}` : header;
 }
 
@@ -202,9 +198,8 @@ function businessParty(business: any): PartyDetails {
  * Pure function. Party roles keep the old engine's exact semantics
  * (purchase docs: Billed By = supplier / Billed To = our business, no bank
  * card, neutral terms; sales docs: Billed By = our business / Billed To =
- * the customer), demoHeader passes through for the PBS-112 sandbox, and the
- * terms chain (record terms > business tnc_* > legacy built-ins) resolves
- * via the SAME tncDefaults helpers the old engine used.
+ * the customer), the terms chain (record terms > business tnc_* > legacy
+ * built-ins) resolves via the SAME tncDefaults helpers the old engine used.
  */
 export function mapPrintableDocToUniversalData(
   business: any,
@@ -225,6 +220,8 @@ export function mapPrintableDocToUniversalData(
     name: doc.partyName || 'Customer',
     address: cleanText(doc.partyAddress),
     gstin: cleanText(doc.partyGstin),
+    pan: cleanText(doc.partyPan) || undefined,
+    aadhaar: cleanText(doc.partyAadhaar) || undefined,
     phone: cleanText(doc.partyPhone),
   };
 
@@ -295,7 +292,6 @@ This is a computer-generated document and requires no physical signature.`
           ifsc: cleanText((business as any)?.bank_ifsc_code),
         },
     paymentMode: isPurchase ? undefined : 'Bank / UPI / Credit',
-    demoHeader: doc.demoHeader ?? undefined,
     terms,
     notes: doc.notes || undefined,
   };
@@ -327,7 +323,7 @@ export async function renderDocSheetToPdf(
     const element = (host.firstElementChild as HTMLElement) ?? host;
     printElementInIframe(
       element,
-      pageTitleFor(data.documentType, data.demoHeader ?? undefined, doc.docNumber)
+      pageTitleFor(data.documentType, doc.docNumber)
     );
   } finally {
     root.unmount();

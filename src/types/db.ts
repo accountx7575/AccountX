@@ -41,6 +41,8 @@ export type Business = {
   tnc_quotation?: string | null;
   tnc_sales_order?: string | null;
   tnc_purchase?: string | null;
+  tnc_payment_receipt?: string | null;
+  terms_payment_receipt?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -63,6 +65,7 @@ export type Customer = {
   email: string | null;
   gstin: string | null;
   pan: string | null;
+  aadhaar?: string | null;
   address: string | null;
   city: string | null;
   state: string | null;
@@ -89,6 +92,7 @@ export type Supplier = {
   email: string | null;
   gstin: string | null;
   pan: string | null;
+  aadhaar?: string | null;
   address: string | null;
   city: string | null;
   state: string | null;

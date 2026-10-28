@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatAadhaar } from '@/lib/validation';
 import {
   Building2,
   ShieldCheck,
@@ -70,6 +71,7 @@ export interface UniversalPartyInfo {
   billingPincode?: string;
   gstin?: string;
   pan?: string;
+  aadhaar?: string;
   cin?: string;
   email?: string;
   phone?: string;
@@ -439,6 +441,15 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
     tradeName.length > 0 && tradeName.toLowerCase() !== String(companyName).trim().toLowerCase();
   const signatureUrl = company.signatureUrl || company.signature_url || company.stampUrl || company.stamp_url || null;
   const signatureName = company.signatureName || company.signature_name || 'Authorized Signatory';
+  const logoUrl =
+    company.logoUrl ||
+    company.logo_url ||
+    company.logo ||
+    (data as any).company?.logoUrl ||
+    (data as any).company?.logo_url ||
+    (data as any).logoUrl ||
+    (data as any).logo_url ||
+    null;
   const bankDetails = data.bankDetails || company.bankDetails || {};
   const bankName =
     bankDetails.bankName ||
@@ -557,10 +568,18 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
       {/* 1. Header Section */}
       <div className="grid grid-cols-1 items-start gap-x-6 gap-y-6 border-b-2 border-slate-900 pb-6 sm:grid-cols-[1fr_auto] sm:gap-y-[6px]">
         <div className="order-1 sm:col-start-1 sm:row-start-1">
-          <div className="flex items-center gap-2">
-            <span className="grid place-items-center h-8 w-8 rounded-xl bg-emerald-700 text-white font-black text-sm uppercase">
-              {companyName.charAt(0)}
-            </span>
+          <div className="flex items-center gap-3">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={companyName || 'Company Logo'}
+                className="h-12 w-auto object-contain max-w-[180px]"
+              />
+            ) : (
+              <div className="h-10 w-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-base uppercase">
+                {companyName?.charAt(0) || 'A'}
+              </div>
+            )}
             <span className="font-display text-2xl font-black tracking-tight text-emerald-900">
               {companyName}
             </span>
@@ -662,15 +681,41 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
                     PAN: {customer.pan}
                   </span>
                 )}
+                {customer.aadhaar && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
+                    Aadhaar: {formatAadhaar(customer.aadhaar)}
+                  </span>
+                )}
               </div>
               <p className="text-slate-600 text-[11px] mt-1.5">
                 <span className="text-slate-400">Attn:</span> {customer.name}
               </p>
             </>
           ) : (
-            <p className="text-sm font-extrabold text-slate-900">
-              {customer.name || 'Valued Customer'}
-            </p>
+            <>
+              <p className="text-sm font-extrabold text-slate-900">
+                {customer.name || 'Valued Customer'}
+              </p>
+              {(customer.gstin || customer.pan || customer.aadhaar) && (
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  {customer.gstin && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-emerald-800">
+                      GSTIN: {customer.gstin}
+                    </span>
+                  )}
+                  {customer.pan && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
+                      PAN: {customer.pan}
+                    </span>
+                  )}
+                  {customer.aadhaar && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-[10px] font-mono font-medium text-slate-700">
+                      Aadhaar: {formatAadhaar(customer.aadhaar)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </>
           )}
           <p className="text-slate-600 text-[11px] mt-0.5">{customer.email || '—'}</p>
           {customer.phone && (

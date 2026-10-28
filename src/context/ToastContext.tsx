@@ -44,7 +44,6 @@ const iconColors = {
  */
 const RAW_ERROR_SIGNATURES: Array<{ test: RegExp; message: string }> = [
   { test: /row-level security|permission denied|insufficient privilege|\b42501\b|\bjwt\b|not authorized/i, message: 'You do not have permission to perform this action.' },
-  { test: /could not find the function|schema cache|pgrst\d+|function not implemented|feature not supported|not configured/i, message: 'This feature is not available yet. Please try again later or ask an administrator to check the configuration.' },
   { test: /failed to fetch|networkerror|network request failed|err_network|load failed|fetch failed/i, message: 'Network error — please check your connection and try again.' },
   { test: /duplicate key|violates .*(constraint|policy)|null value in column|does not exist|invalid input syntax|invalid text representation|deadlock detected|could not serialize/i, message: 'Something went wrong while saving. Check the entered values and try again.' },
 ];

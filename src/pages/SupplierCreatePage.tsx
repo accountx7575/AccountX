@@ -20,7 +20,7 @@ const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chh
 
 const emptyForm = {
   name: '', company_name: '', phone: '', email: '', gstin: '', pan: '',
-  address: '', city: '', state: 'Maharashtra', pincode: '', opening_balance: '0', notes: '',
+  address: '', city: '', state: 'Uttar Pradesh', pincode: '', opening_balance: '0', notes: '',
 };
 
 export function SupplierCreatePage() {
@@ -55,7 +55,7 @@ export function SupplierCreatePage() {
     setForm({
       name: s.name, company_name: s.company_name || '', phone: s.phone || '', email: s.email || '',
       gstin: s.gstin || '', pan: s.pan || '', address: s.address || '', city: s.city || '',
-      state: s.state || 'Maharashtra', pincode: s.pincode || '',
+      state: s.state || 'Uttar Pradesh', pincode: s.pincode || '',
       opening_balance: String(s.opening_balance), notes: s.notes || '',
     });
   }, [existingQuery.data]);
@@ -122,22 +122,22 @@ export function SupplierCreatePage() {
         <FormSection title="Contact Details" description="Primary identity and reachability">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Supplier Name" required>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Sharma Traders" />
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="" />
             </FormField>
             <FormField label="Company Name">
-              <Input value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} placeholder="Sharma Traders Pvt Ltd" />
+              <Input value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} placeholder="" />
             </FormField>
             <FormField label="Phone">
-              <Input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+91 98765 43210" />
+              <Input type="tel" inputMode="numeric" maxLength={10} pattern="[0-9]{10}" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} placeholder="" />
             </FormField>
             <FormField label="Email">
-              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="sharma@example.com" />
+              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="" />
             </FormField>
             <FormField label="GSTIN">
-              <Input value={form.gstin} onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })} placeholder="27ABCDE1234F1Z5" maxLength={15} />
+              <Input value={form.gstin} onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })} placeholder="" maxLength={15} />
             </FormField>
             <FormField label="PAN">
-              <Input value={form.pan} onChange={(e) => setForm({ ...form, pan: e.target.value.toUpperCase() })} placeholder="ABCDE1234F" maxLength={10} />
+              <Input value={form.pan} onChange={(e) => setForm({ ...form, pan: e.target.value.toUpperCase() })} placeholder="" maxLength={10} />
             </FormField>
           </div>
         </FormSection>
@@ -145,11 +145,11 @@ export function SupplierCreatePage() {
         <FormSection title="Address">
           <div className="space-y-4">
             <FormField label="Address">
-              <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="123 Business Street" rows={2} />
+              <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="" rows={2} />
             </FormField>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <FormField label="City">
-                <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Mumbai" />
+                <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="" />
               </FormField>
               <FormField label="State">
                 <select className="input" value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })}>
@@ -157,7 +157,7 @@ export function SupplierCreatePage() {
                 </select>
               </FormField>
               <FormField label="Pincode">
-                <Input value={form.pincode} onChange={(e) => setForm({ ...form, pincode: e.target.value })} placeholder="400001" />
+                <Input value={form.pincode} onChange={(e) => setForm({ ...form, pincode: e.target.value })} placeholder="" />
               </FormField>
             </div>
           </div>
@@ -172,7 +172,7 @@ export function SupplierCreatePage() {
         </FormSection>
 
         <FormSection title="Notes">
-          <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} placeholder="Internal notes about this supplier..." />
+          <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} placeholder="" />
         </FormSection>
       </div>
 

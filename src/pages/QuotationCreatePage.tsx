@@ -13,12 +13,12 @@ import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/common/DatePicker';
+import { TimePicker } from '@/components/common/TimePicker';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { ArrowLeft, Save, X } from 'lucide-react';
-import { formatCurrency, roundTo2, combineDateTime } from '@/lib/utils';
+import { formatCurrency, roundTo2, getLocalNowTime, combineDateTime } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
-import { saveDemoDoc, defaultDemoNumber, countDemoDocs } from '@/lib/demoStore';
 import type { Customer, Product, Quotation, QuotationItem } from '@/types/db';
 
 function getLocalTodayDate(): string {
@@ -27,14 +27,6 @@ function getLocalTodayDate(): string {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function getLocalNowTime(): string {
-  return new Date().toLocaleTimeString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
 }
 
 type LineItem = {
@@ -61,7 +53,7 @@ const emptyLine: LineItem = {
   total: 0,
 };
 
-export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
+export function QuotationCreatePage() {
   const { activeBusiness } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -220,45 +212,6 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
       );
       if (!chosenCustomer?.id) throw new Error('Please select a valid customer');
 
-      // Demo/Proforma sandbox (PBS-112): zero effect on real books — no
-      // quotations/quotation_items rows, no counters, no journal, no stock.
-      if (demo) {
-        const saved = saveDemoDoc(
-          activeBusiness.id,
-          'quotation',
-          {
-            quotation_number: defaultDemoNumber('quotation', countDemoDocs(activeBusiness.id, 'quotation') + 1),
-            customer_id: chosenCustomer.id,
-            quote_date: quoteDate,
-            created_at: combineDateTime(quoteDate, quoteTime),
-            expiry_date: expiryDate || null,
-            subtotal: totals.subtotal,
-            discount_amount: 0,
-            taxable_amount: totals.taxableAmount,
-            cgst_amount: totals.cgst,
-            sgst_amount: totals.sgst,
-            igst_amount: totals.igst,
-            round_off: 0,
-            grand_total: totals.grandTotal,
-            status: 'draft',
-            notes: notes.trim() || null,
-          },
-          validLines.map((l) => ({
-            product_id: l.product_id || null,
-            product_name: l.product_name,
-            hsn_sac: l.hsn_sac || null,
-            quantity: Number(l.quantity) || 1,
-            unit: l.unit || 'PCS',
-            rate: Number(l.rate) || 0,
-            tax_rate: Number(l.tax_rate) || 0,
-            taxable_amount: roundTo2(Number(l.quantity) * Number(l.rate)),
-            total_amount: roundTo2(Number(l.quantity) * Number(l.rate) + calculateGstAmounts(roundTo2(Number(l.quantity) * Number(l.rate)), Number(l.tax_rate) || 0, isInterState).total_tax),
-          })),
-          chosenCustomer as unknown as Record<string, unknown>
-        );
-        return saved.id;
-      }
-
       const { data: userData } = await supabase.auth.getUser();
 
       let targetQuoteId: string | undefined = editId;
@@ -409,11 +362,6 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
       ['quotations-data', 'quotations', 'dashboard-stats'].forEach((k) =>
         queryClient.invalidateQueries({ queryKey: [k] })
       );
-      if (demo && demoId) {
-        toast('Demo quotation saved — sandbox only, books untouched', 'success');
-        navigate(`/app/demo/quotations/${demoId}`);
-        return;
-      }
       toast(isEdit ? 'Quotation updated successfully!' : 'Quotation draft saved successfully!', 'success');
       navigate('/app/quotations');
     },
@@ -427,9 +375,9 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
   return (
     <div>
       <PageHeader
-        title={isEdit ? 'Edit Quotation' : demo ? 'New Demo Quotation' : 'New Quotation'}
+        title={isEdit ? 'Edit Quotation' : 'New Quotation'}
         actions={
-          <Button variant="secondary" onClick={() => navigate(demo ? '/app/demo/quotations' : '/app/quotations')}>
+          <Button variant="secondary" onClick={() => navigate('/app/quotations')}>
             <ArrowLeft className="h-4 w-4" /> Back
           </Button>
         }
@@ -464,12 +412,11 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
               <DatePicker className="input h-10" value={quoteDate} onChange={setQuoteDate} />
             </FormField>
             <FormField label="Time">
-              <Input
-                type="text"
+              <TimePicker
+                className="h-10"
                 value={quoteTime}
-                onChange={(e) => setQuoteTime(e.target.value)}
+                onChange={setQuoteTime}
                 placeholder="12:00 PM"
-                className="h-10 figure"
               />
             </FormField>
             <FormField label="Valid Until">
@@ -632,11 +579,11 @@ export function QuotationCreatePage({ demo = false }: { demo?: boolean } = {}) {
 
       <div className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 mt-5 border-t border-secondary-200/80 dark:border-zinc-800 bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md">
         <div className="flex items-center justify-between gap-3">
-          <Button variant="secondary" onClick={() => navigate(demo ? '/app/demo/quotations' : '/app/quotations')}>
+          <Button variant="secondary" onClick={() => navigate('/app/quotations')}>
             Cancel
           </Button>
           <Button onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}>
-            <Save className="h-4 w-4" /> {demo ? 'Create Demo Draft' : isEdit ? 'Update Quotation' : 'Save Draft'}
+            <Save className="h-4 w-4" /> {isEdit ? 'Update Quotation' : 'Save Draft'}
           </Button>
         </div>
       </div>

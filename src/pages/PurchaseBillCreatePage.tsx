@@ -13,6 +13,7 @@ import {
 } from '@/components/documents/DocumentNumberField';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { DatePicker } from '@/components/common/DatePicker';
+import { TimePicker } from '@/components/common/TimePicker';
 import { Input } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { Plus, Trash2, Save, ArrowLeft, ScanText, Upload } from 'lucide-react';
@@ -609,12 +610,11 @@ export function PurchaseBillCreatePage() {
             </div>
             <div>
               <label className="label">Time</label>
-              <Input
-                type="text"
+              <TimePicker
+                className="h-10"
                 value={billTime}
-                onChange={(e) => setBillTime(e.target.value)}
+                onChange={setBillTime}
                 placeholder="12:00 PM"
-                className="h-10 figure"
               />
             </div>
             <div>

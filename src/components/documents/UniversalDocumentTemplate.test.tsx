@@ -553,4 +553,32 @@ describe('UniversalDocumentTemplate - approved GyftKart layout (directive-13)', 
     );
     expect(html).toContain('Barabanki, Uttar Pradesh - 225001');
   });
+
+  it('renders uploaded business logo image when company.logo_url is present', () => {
+    const htmlWithLogo = render(
+      baseData({
+        company: {
+          name: 'Avadh Boring Company',
+          logo_url: 'https://example.com/logo.png',
+        },
+      })
+    );
+    expect(htmlWithLogo).toContain('<img src="https://example.com/logo.png"');
+    expect(htmlWithLogo).toContain('alt="Avadh Boring Company"');
+    expect(htmlWithLogo).toContain('class="h-12 w-auto object-contain max-w-[180px]"');
+  });
+
+  it('renders green circular badge with letter fallback when company logo is absent', () => {
+    const htmlWithoutLogo = render(
+      baseData({
+        company: {
+          name: 'Avadh Boring Company',
+          logo_url: undefined,
+        },
+      })
+    );
+    expect(htmlWithoutLogo).not.toContain('class="h-12 w-auto object-contain max-w-[180px]"');
+    expect(htmlWithoutLogo).toContain('rounded-full bg-emerald-600 text-white');
+    expect(htmlWithoutLogo).toContain('A');
+  });
 });

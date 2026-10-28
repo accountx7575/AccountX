@@ -1,4 +1,4 @@
-export type TncDocType = 'sales_invoice' | 'quotation' | 'sales_order' | 'purchase';
+export type TncDocType = 'sales_invoice' | 'quotation' | 'sales_order' | 'purchase' | 'payment_receipt';
 
 export const STANDARD_TNC_DEFAULTS: Record<TncDocType, string> = {
   sales_invoice:
@@ -9,6 +9,8 @@ export const STANDARD_TNC_DEFAULTS: Record<TncDocType, string> = {
     'Deliveries subject to stock availability and confirmed schedule.\nStandard packaging unless specified otherwise.\nOrders once confirmed cannot be cancelled without mutual agreement.',
   purchase:
     'Goods received are subject to inspection and acceptance as per the purchase order.\nPlease quote this bill number in all future correspondence.\nThis is a computer-generated document and requires no physical signature.',
+  payment_receipt:
+    'All payments are subject to realization of cheque / electronic transfer.\nAny discrepancy must be reported to the accounts department within 7 days.\nThis is a computer-generated receipt.',
 };
 
 const LS_PREFIX = 'accountx_tnc_';
@@ -19,6 +21,10 @@ type TncColumns = {
   tnc_quotation?: string | null;
   tnc_sales_order?: string | null;
   tnc_purchase?: string | null;
+  tnc_payment_receipt?: string | null;
+  terms_payment_receipt?: string | null;
+  termsPaymentReceipt?: string | null;
+  [key: string]: any;
 };
 
 const COL: Record<TncDocType, keyof TncColumns> = {
@@ -26,6 +32,7 @@ const COL: Record<TncDocType, keyof TncColumns> = {
   quotation: 'tnc_quotation',
   sales_order: 'tnc_sales_order',
   purchase: 'tnc_purchase',
+  payment_receipt: 'tnc_payment_receipt',
 };
 
 export function tncStorageKey(businessId: string | null | undefined, docType: TncDocType): string {
@@ -65,7 +72,9 @@ export function resolveDocumentTnc(
   docType: TncDocType,
   business: TncColumns | null | undefined
 ): string {
-  const dbValue = String(business?.[COL[docType]] || '').trim();
+  const directCol = business?.[COL[docType]];
+  const altCol = docType === 'payment_receipt' ? (business?.terms_payment_receipt || business?.termsPaymentReceipt) : undefined;
+  const dbValue = String(directCol || altCol || '').trim();
   if (dbValue) return dbValue;
   return readTncCache(business?.id, docType);
 }

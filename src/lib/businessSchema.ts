@@ -24,6 +24,7 @@ export const BUSINESS_COLUMN_CANDIDATES = [
   'stamp_url', 'logo_url', 'signature_url', 'upi_id', 'upi_qr_url', 'invoice_footer_text',
   'invoice_signature_name', 'bank_name', 'bank_account_number', 'bank_ifsc_code',
   'account_name', 'tnc_invoice', 'tnc_quotation', 'tnc_sales_order', 'tnc_purchase',
+  'tnc_payment_receipt', 'terms_payment_receipt',
   'registered_address', 'signature_name', 'pin_code', 'is_active', 'plan_type',
   'monthly_invoice_quota', 'owner_id',
 ] as const;

@@ -8,6 +8,7 @@ import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/common/DatePicker';
+import { TimePicker } from '@/components/common/TimePicker';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import {
@@ -215,18 +216,16 @@ export function CreditNoteCreatePage() {
       />
 
       <div className="card p-6">
-        <FormSection title="Document Number" description="Editable credit note number — unique within this business">
-          <div className="max-w-xl">
-            <DocumentNumberField
-              value={docNumberField.value}
-              onChange={docNumberField.setValue}
-              error={docNumberField.error}
-              suggesting={docNumberField.suggesting}
-            />
-          </div>
-        </FormSection>
+        <div className="max-w-xl">
+          <DocumentNumberField
+            value={docNumberField.value}
+            onChange={docNumberField.setValue}
+            error={docNumberField.error}
+            suggesting={docNumberField.suggesting}
+          />
+        </div>
 
-        <FormSection title="Against Invoice" description="Credit notes reference a live sales invoice — pick one to load its lines">
+        <FormSection title="Against Invoice">
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-start">
               <FormField label="Sales Invoice" required>
@@ -237,12 +236,11 @@ export function CreditNoteCreatePage() {
               </FormField>
               <FormField label="Date" required><DatePicker className="input h-10" value={date} onChange={setDate} /></FormField>
               <FormField label="Time">
-                <Input
-                  type="text"
+                <TimePicker
+                  className="h-10"
                   value={time}
-                  onChange={(e) => setTime(e.target.value)}
+                  onChange={setTime}
                   placeholder="12:00 PM"
-                  className="h-10 figure"
                 />
               </FormField>
               <FormField label="Restock returned goods">
@@ -257,7 +255,7 @@ export function CreditNoteCreatePage() {
         </FormSection>
 
         {lines.length > 0 && (
-          <FormSection title="Return Lines" description="Enter the quantity being returned per invoiced line">
+          <FormSection title="Return Lines">
             <div className="border border-secondary-200 dark:border-secondary-800 rounded-lg divide-y divide-secondary-100 dark:divide-secondary-800/50">
               <div className="grid grid-cols-[1fr_7rem_7rem] gap-2 px-3 py-2 text-xs font-medium text-secondary-400">
                 <span>Product</span><span className="text-right">Invoiced</span><span className="text-right">Return Qty</span>

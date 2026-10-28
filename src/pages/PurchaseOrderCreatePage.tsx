@@ -13,6 +13,7 @@ import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/common/DatePicker';
+import { TimePicker } from '@/components/common/TimePicker';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { ArrowLeft, Save, Trash2, Plus } from 'lucide-react';
@@ -413,12 +414,11 @@ export function PurchaseOrderCreatePage() {
               <DatePicker className="input h-10" value={orderDate} onChange={setOrderDate} />
             </FormField>
             <FormField label="Time">
-              <Input
-                type="text"
+              <TimePicker
+                className="h-10"
                 value={orderTime}
-                onChange={(e) => setOrderTime(e.target.value)}
+                onChange={setOrderTime}
                 placeholder="12:00 PM"
-                className="h-10 figure"
               />
             </FormField>
             <FormField label="Expected Delivery">

@@ -19,7 +19,9 @@ export type DocPrefixKey =
   | 'purchase_order_prefix'
   | 'purchase_bill_prefix'
   | 'credit_note_prefix'
-  | 'debit_note_prefix';
+  | 'debit_note_prefix'
+  | 'payment_received_prefix'
+  | 'payment_made_prefix';
 
 export const DOC_PREFIX_KEYS: DocPrefixKey[] = [
   'invoice_prefix',
@@ -29,6 +31,8 @@ export const DOC_PREFIX_KEYS: DocPrefixKey[] = [
   'purchase_bill_prefix',
   'credit_note_prefix',
   'debit_note_prefix',
+  'payment_received_prefix',
+  'payment_made_prefix',
 ];
 
 /**
@@ -45,6 +49,8 @@ export const DEFAULT_PREFIXES: Record<DocPrefixKey, string> = {
   purchase_bill_prefix: 'PB',
   credit_note_prefix: 'CN',
   debit_note_prefix: 'DN',
+  payment_received_prefix: 'RCP',
+  payment_made_prefix: 'PM',
 };
 
 const PREFIX_CHARS = /^[A-Za-z0-9\-_.\/]{1,12}$/;
@@ -120,6 +126,8 @@ export const DOC_TYPE_PREFIX_KEY: Record<string, DocPrefixKey> = {
   purchase_bill: 'purchase_bill_prefix',
   credit_note: 'credit_note_prefix',
   debit_note: 'debit_note_prefix',
+  payment_received: 'payment_received_prefix',
+  payment_made: 'payment_made_prefix',
 };
 
 /** Configured prefix for a document type, for callers that hold the business row. */

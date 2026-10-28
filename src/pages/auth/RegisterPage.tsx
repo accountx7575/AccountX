@@ -183,12 +183,15 @@ export function RegisterPage() {
             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400" aria-hidden="true" />
             <Input
               type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              pattern="[0-9]{10}"
               value={form.phone}
               onChange={(e) => {
-                setForm({ ...form, phone: e.target.value });
+                setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 10) });
                 clearError('phone');
               }}
-              placeholder="+91 98765 43210"
+              placeholder=""
               className="pl-10"
               autoComplete="tel"
             />

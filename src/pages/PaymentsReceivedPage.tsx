@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -10,42 +11,269 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
 import { usePagedList } from '@/hooks/usePagedList';
-import { Banknote, Plus, Search, Send } from 'lucide-react';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { Banknote, Plus, Search, Send, Pencil, Trash2, Printer, Eye } from 'lucide-react';
+import { formatCurrency, formatDate, todayDateString, roundTo2, isUuid } from '@/lib/utils';
+import { printPaymentReceipt, type PaymentReceiptParty } from '@/lib/receiptPrint';
 import { SendDialog } from '@/components/comms/SendDialog';
 import { Tooltip } from '@/components/ui/Tooltip';
 import type { Payment } from '@/types/db';
 
 export function PaymentsReceivedPage() {
   const { activeBusiness } = useAuth();
+  const { toast } = useToast();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const list = usePagedList();
   const [statusFilter, setStatusFilter] = useState<'all' | 'unapplied'>('all');
-  const [sendTarget, setSendTarget] = useState<(Payment & { customer: { name: string; email: string | null; phone: string | null } | null; invoice: { invoice_number: string } | null }) | null>(null);
+  const [sendTarget, setSendTarget] = useState<(Payment & { customer: PaymentReceiptParty | null; invoice: { invoice_number: string } | null }) | null>(null);
 
   const { data: payments, isLoading, isError, refetch } = useQuery({
     queryKey: ['payments-received', activeBusiness?.id],
     queryFn: async () => {
-      if (!activeBusiness) return [];
-      const { data } = await supabase
-        .from('payments').select('*, customer:customers(name,email,phone), invoice:sales_invoices(invoice_number)')
-        .eq('business_id', activeBusiness.id).eq('type', 'received')
+      if (!activeBusiness?.id) return [];
+
+      let rawRows: any[] = [];
+
+      // Primary source table: 'payments'
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('business_id', activeBusiness.id)
+        .eq('type', 'received')
         .order('created_at', { ascending: false });
-      return data as (Payment & { customer: { name: string; email: string | null; phone: string | null } | null; invoice: { invoice_number: string } | null })[];
+
+      if (paymentsError) {
+        // Defensive fallback: check if 'payments_received' table or view exists
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('payments')
+          .select('*')
+          .eq('business_id', activeBusiness.id)
+          .order('created_at', { ascending: false });
+
+        if (fallbackError) {
+          console.error('[PaymentsReceivedPage] failed to fetch payments:', paymentsError);
+          throw paymentsError;
+        }
+        rawRows = fallbackData || [];
+      } else {
+        rawRows = paymentsData || [];
+      }
+
+      // Collect customer IDs and invoice IDs
+      const customerIds = Array.from(
+        new Set(
+          rawRows
+            .map((p) => p.party_id || p.customer_id)
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+
+      const invoiceIds = Array.from(
+        new Set(
+          rawRows
+            .map((p) => p.invoice_id)
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+
+      // Fetch customers and invoices in parallel without join failure risks
+      const [customersRes, invoicesRes] = await Promise.all([
+        customerIds.length > 0
+          ? supabase
+              .from('customers')
+              .select('id, name, email, phone, address, city, state, pincode, gstin, pan, aadhaar, company_name')
+              .in('id', customerIds)
+          : Promise.resolve({ data: [] }),
+        invoiceIds.length > 0
+          ? supabase
+              .from('sales_invoices')
+              .select('id, invoice_number')
+              .in('id', invoiceIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const customerMap = new Map((customersRes.data || []).map((c: any) => [c.id, c]));
+      const invoiceMap = new Map((invoicesRes.data || []).map((i: any) => [i.id, i]));
+
+      return rawRows.map((p) => {
+        const custId = p.party_id || p.customer_id;
+        const customer = custId ? customerMap.get(custId) || null : null;
+        const invoice = p.invoice_id ? invoiceMap.get(p.invoice_id) || null : null;
+
+        return {
+          ...p,
+          date: p.date || p.payment_date || p.created_at?.split('T')[0] || todayDateString(),
+          amount: Number(p.amount) || 0,
+          allocated_amount: Number(p.allocated_amount) || 0,
+          payment_number: p.payment_number || p.number || '',
+          payment_method: p.payment_method || p.method || 'cash',
+          customer,
+          invoice,
+        };
+      }) as (Payment & {
+        customer: PaymentReceiptParty | null;
+        invoice: { invoice_number: string } | null;
+      })[];
     },
-    enabled: !!activeBusiness,
+    enabled: !!activeBusiness?.id,
   });
 
   const filtered = useMemo(() => {
     if (!payments) return [];
     return payments.filter((p) => {
-      if (statusFilter === 'unapplied' && Math.round((p.amount - p.allocated_amount) * 100) <= 0) return false;
-      return p.payment_number.toLowerCase().includes(list.search.toLowerCase()) ||
-        (p.customer?.name || '').toLowerCase().includes(list.search.toLowerCase());
+      if (statusFilter === 'unapplied' && Math.round(((p.amount || 0) - (p.allocated_amount || 0)) * 100) <= 0) return false;
+      const searchLower = (list.search || '').toLowerCase();
+      return (
+        (p.payment_number || '').toLowerCase().includes(searchLower) ||
+        (p.customer?.name || '').toLowerCase().includes(searchLower) ||
+        (p.reference || '').toLowerCase().includes(searchLower)
+      );
     });
   }, [payments, list.search, statusFilter]);
 
   const pageRows = filtered.slice(list.from, list.from + list.pageSize);
+
+  const deleteMutation = useMutation({
+    mutationFn: async (payment: Payment) => {
+      if (!activeBusiness?.id) throw new Error('No active business');
+
+      // 1. Revert invoice paid/balance amounts if allocated
+      if (payment.invoice_id && payment.allocated_amount > 0 && isUuid(payment.invoice_id)) {
+        try {
+          const { data: inv } = await supabase
+            .from('sales_invoices')
+            .select('paid_amount, balance_amount, grand_total, status')
+            .eq('id', payment.invoice_id)
+            .eq('business_id', activeBusiness.id)
+            .maybeSingle();
+
+          if (inv) {
+            const currentPaid = Number(inv.paid_amount) || 0;
+            const grandTotal = Number(inv.grand_total) || 0;
+            const newPaid = roundTo2(Math.max(0, currentPaid - Number(payment.allocated_amount)));
+            const newBalance = roundTo2(Math.min(grandTotal, grandTotal - newPaid));
+            const newPayStatus = newBalance <= 0 ? 'paid' : (newPaid > 0 ? 'partial' : 'unpaid');
+            const newStatus = newPayStatus === 'paid' ? 'paid' : (newPaid > 0 ? 'partially_paid' : 'issued');
+
+            await supabase
+              .from('sales_invoices')
+              .update({
+                paid_amount: newPaid,
+                balance_amount: newBalance,
+                payment_status: newPayStatus,
+                status: newStatus,
+              })
+              .eq('id', payment.invoice_id)
+              .eq('business_id', activeBusiness.id);
+          }
+        } catch (invErr) {
+          console.warn('Revert invoice balance warning:', invErr);
+        }
+      }
+
+      // 2. Revert customer balance & total_paid
+      const custId = payment.party_id || (payment as any).customer_id;
+      if (custId && payment.amount > 0 && isUuid(custId)) {
+        try {
+          const [custRes, invRes, payRes] = await Promise.all([
+            supabase
+              .from('customers')
+              .select('opening_balance')
+              .eq('id', custId)
+              .eq('business_id', activeBusiness.id)
+              .maybeSingle(),
+            supabase
+              .from('sales_invoices')
+              .select('grand_total')
+              .eq('customer_id', custId)
+              .eq('business_id', activeBusiness.id)
+              .in('status', ['issued', 'partially_paid', 'paid']),
+            supabase
+              .from('payments')
+              .select('amount')
+              .eq('party_id', custId)
+              .eq('party_type', 'customer')
+              .eq('business_id', activeBusiness.id)
+              .eq('type', 'received')
+              .neq('id', payment.id),
+          ]);
+
+          const openingBal = Number(custRes.data?.opening_balance) || 0;
+          const totalSales = (invRes.data || []).reduce((acc, r) => acc + (Number(r.grand_total) || 0), 0);
+          const totalPaid = (payRes.data || []).reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+          const totalDebit = roundTo2(openingBal + totalSales);
+          const newBal = totalDebit <= 0 ? 0 : Math.max(0, roundTo2(totalDebit - totalPaid));
+
+          await supabase
+            .from('customers')
+            .update({
+              current_balance: newBal,
+              total_sales: roundTo2(totalSales),
+              total_paid: roundTo2(totalPaid),
+            })
+            .eq('id', custId)
+            .eq('business_id', activeBusiness.id);
+        } catch (custErr) {
+          console.warn('Revert customer balance warning:', custErr);
+        }
+      }
+
+      // 3. Delete matching journal entries directly (journal_entry_lines cascades automatically via entry_id FK)
+      try {
+        if (isUuid(payment.id)) {
+          await supabase
+            .from('journal_entries')
+            .delete()
+            .eq('business_id', activeBusiness.id)
+            .eq('reference_type', 'payment_received')
+            .eq('reference_id', payment.id);
+        }
+
+        if (payment.payment_number) {
+          await supabase
+            .from('journal_entries')
+            .delete()
+            .eq('business_id', activeBusiness.id)
+            .ilike('narration', `%${payment.payment_number}%`);
+        }
+      } catch (jeErr) {
+        console.warn('Journal entries cleanup warning:', jeErr);
+      }
+
+      // 4. Delete payment from primary payments table
+      const { error } = await supabase
+        .from('payments')
+        .delete()
+        .eq('id', payment.id)
+        .eq('business_id', activeBusiness.id);
+
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['ledger'] });
+      await queryClient.invalidateQueries({ queryKey: ['journal-lines-ledger'] });
+      await queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      await queryClient.invalidateQueries({ queryKey: ['payments-received'] });
+      await queryClient.invalidateQueries({ queryKey: ['customers'] });
+      await queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      await queryClient.invalidateQueries({ queryKey: ['cashflow-series'] });
+      await queryClient.invalidateQueries({ queryKey: ['liquid-cash'] });
+      await queryClient.invalidateQueries({ queryKey: ['receivables'] });
+      await queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      await queryClient.invalidateQueries({ queryKey: ['trial-balance'] });
+      toast('Payment deleted successfully', 'success');
+    },
+    onError: (err: any) => {
+      toast(err?.message || 'Failed to delete payment', 'error');
+    },
+  });
+
+  const handleDelete = (payment: Payment) => {
+    if (window.confirm(`Are you sure you want to delete payment ${payment.payment_number}?`)) {
+      deleteMutation.mutate(payment);
+    }
+  };
 
   return (
     <div>
@@ -100,7 +328,7 @@ export function PaymentsReceivedPage() {
         ) : filtered.length === 0 ? (
           <EmptyState icon={Banknote} title="No payments received yet" description="Record payments from your customers" action={<Button onClick={() => navigate('/app/payments-received/new')}><Plus className="h-4 w-4" /> Receive Payment</Button>} />
         ) : (
-          <div className="overflow-x-auto scrollbar-thin">
+          <div className="w-full">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
@@ -115,7 +343,15 @@ export function PaymentsReceivedPage() {
               <tbody>
                 {pageRows.map((p) => (
                   <tr key={p.id} className="border-b border-secondary-100 dark:border-secondary-800/50 table-row-hover">
-                    <td className="px-4 py-3 font-medium text-primary-600 dark:text-primary-400">{p.payment_number}</td>
+                    <td className="px-4 py-3 font-medium text-primary-600 dark:text-primary-400">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/app/payments-received/${p.id}`)}
+                        className="hover:underline text-left font-medium text-primary-600 dark:text-primary-400 focus:outline-none"
+                      >
+                        {p.payment_number}
+                      </button>
+                    </td>
                     <td className="px-4 py-3 text-secondary-900 dark:text-secondary-100">{p.customer?.name || '—'}</td>
                     <td className="px-4 py-3 hidden sm:table-cell text-secondary-500">{formatDate(p.date)}</td>
                     <td className="px-4 py-3 hidden md:table-cell text-secondary-600 dark:text-secondary-300 uppercase text-xs">{p.payment_method}</td>
@@ -128,11 +364,59 @@ export function PaymentsReceivedPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <Tooltip label="Send receipt to the customer">
-                        <Button size="sm" variant="ghost" onClick={() => setSendTarget(p)}>
-                          <Send className="h-3.5 w-3.5" /> Receipt
-                        </Button>
-                      </Tooltip>
+                      <div className="flex items-center justify-end gap-1">
+                        <Tooltip label="Send receipt to the customer">
+                          <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={() => setSendTarget(p)}>
+                            <Send className="h-3.5 w-3.5 sm:mr-1" />
+                            <span className="hidden sm:inline">Receipt</span>
+                          </Button>
+                        </Tooltip>
+                        <Tooltip label="View receipt">
+                          <button
+                            onClick={() => navigate(`/app/payments-received/${p.id}`)}
+                            className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                            title="View receipt"
+                            aria-label="View receipt"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                        </Tooltip>
+                        <Tooltip label="Print Receipt">
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              printPaymentReceipt(p, activeBusiness);
+                            }}
+                            className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                            title="Print Receipt"
+                            aria-label="Print Receipt"
+                          >
+                            <Printer className="h-4 w-4" />
+                          </button>
+                        </Tooltip>
+                        <Tooltip label="Edit payment">
+                          <button
+                            onClick={() => navigate(`/app/payments-received/${p.id}/edit`)}
+                            className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                            title="Edit payment"
+                            aria-label="Edit payment"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        </Tooltip>
+                        <Tooltip label="Delete payment">
+                          <button
+                            onClick={() => handleDelete(p)}
+                            disabled={deleteMutation.isPending}
+                            className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors disabled:opacity-50"
+                            title="Delete payment"
+                            aria-label="Delete payment"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </Tooltip>
+                      </div>
                     </td>
                   </tr>
                 ))}

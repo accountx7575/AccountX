@@ -42,6 +42,7 @@ const CreditNoteCreatePage = lazy(() => import('@/pages/CreditNoteCreatePage').t
 const DebitNoteCreatePage = lazy(() => import('@/pages/DebitNoteCreatePage').then((m) => ({ default: m.DebitNoteCreatePage })));
 const JournalEntryCreatePage = lazy(() => import('@/pages/JournalEntryCreatePage').then((m) => ({ default: m.JournalEntryCreatePage })));
 const PaymentsReceivedPage = lazy(() => import('@/pages/PaymentsReceivedPage').then((m) => ({ default: m.PaymentsReceivedPage })));
+const PaymentReceivedViewPage = lazy(() => import('@/pages/PaymentReceivedViewPage').then((m) => ({ default: m.PaymentReceivedViewPage })));
 const CreditNotesPage = lazy(() => import('@/pages/CreditNotesPage').then((m) => ({ default: m.CreditNotesPage })));
 const DebitNotesPage = lazy(() => import('@/pages/DebitNotesPage').then((m) => ({ default: m.DebitNotesPage })));
 const QuotationsPage = lazy(() => import('@/pages/QuotationsPage').then((m) => ({ default: m.QuotationsPage })));
@@ -77,13 +78,6 @@ const EWayBillPage = lazy(() => import('@/pages/EWayBillPage').then((m) => ({ de
 const CommunicationsPage = lazy(() => import('@/pages/CommunicationsPage').then((m) => ({ default: m.CommunicationsPage })));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const SleuthNotFoundPage = lazy(() => import('@/pages/SleuthNotFoundPage').then((m) => ({ default: m.SleuthNotFoundPage })));
-const DemoQuotationsPage = lazy(() => import('@/pages/demo/DemoDocListPage').then((m) => ({ default: m.DemoQuotationsPage })));
-const DemoInvoicesPage = lazy(() => import('@/pages/demo/DemoDocListPage').then((m) => ({ default: m.DemoInvoicesPage })));
-const DemoOrdersPage = lazy(() => import('@/pages/demo/DemoDocListPage').then((m) => ({ default: m.DemoOrdersPage })));
-const DemoEWayBillPage = lazy(() => import('@/pages/demo/DemoEWayBillPage').then((m) => ({ default: m.DemoEWayBillPage })));
-const DemoQuotationPreviewPage = lazy(() => import('@/pages/demo/DemoDocPreviewPage').then((m) => ({ default: m.DemoQuotationPreviewPage })));
-const DemoInvoicePreviewPage = lazy(() => import('@/pages/demo/DemoDocPreviewPage').then((m) => ({ default: m.DemoInvoicePreviewPage })));
-const DemoOrderPreviewPage = lazy(() => import('@/pages/demo/DemoDocPreviewPage').then((m) => ({ default: m.DemoOrderPreviewPage })));
 
 const SuperAdminDashboardPage = lazy(() => import('@/pages/superadmin/SuperAdminDashboardPage').then((m) => ({ default: m.DashboardPage })));
 const SuperAdminUsersPage = lazy(() => import('@/pages/superadmin/SuperAdminUsersPage').then((m) => ({ default: m.UsersPage })));
@@ -161,12 +155,14 @@ function AppRoutes() {
         <Route path="purchase-bills/:id" element={<PurchaseBillViewPage />} />
         <Route path="purchase-bills/:id/edit" element={<PurchaseBillCreatePage />} />
         <Route path="payments-received" element={<PaymentsReceivedPage />} />
+        <Route path="payments-received/new" element={<PaymentReceiveCreatePage />} />
+        <Route path="payments-received/:id" element={<PaymentReceivedViewPage />} />
+        <Route path="payments-received/:id/edit" element={<PaymentReceiveCreatePage />} />
         <Route path="credit-notes" element={<CreditNotesPage />} />
         <Route path="credit-notes/new" element={<CreditNoteCreatePage />} />
         <Route path="debit-notes" element={<DebitNotesPage />} />
         <Route path="debit-notes/new" element={<DebitNoteCreatePage />} />
         <Route path="journal-entries/new" element={<JournalEntryCreatePage />} />
-        <Route path="payments-received/new" element={<PaymentReceiveCreatePage />} />
         <Route path="payments-made" element={<PaymentsMadePage />} />
         <Route path="payments-made/new" element={<PaymentMakeCreatePage />} />
         <Route path="expenses" element={<ExpensesPage />} />
@@ -191,18 +187,6 @@ function AppRoutes() {
         <Route path="gst/reconciliation" element={<GstReconciliationPage />} />
         <Route path="tally" element={<TallyWizardPage />} />
         <Route path="eway-bill" element={<EWayBillPage />} />
-
-        {/* Demo/Proforma Sandbox (PBS-112) */}
-        <Route path="demo/quotations" element={<DemoQuotationsPage />} />
-        <Route path="demo/invoices" element={<DemoInvoicesPage />} />
-        <Route path="demo/orders" element={<DemoOrdersPage />} />
-        <Route path="demo/eway-bill" element={<DemoEWayBillPage />} />
-        <Route path="demo/quotations/new" element={<QuotationCreatePage demo />} />
-        <Route path="demo/invoices/new" element={<SalesInvoiceCreatePage demo />} />
-        <Route path="demo/orders/new" element={<SalesOrderCreatePage demo />} />
-        <Route path="demo/quotations/:id" element={<DemoQuotationPreviewPage />} />
-        <Route path="demo/invoices/:id" element={<DemoInvoicePreviewPage />} />
-        <Route path="demo/orders/:id" element={<DemoOrderPreviewPage />} />
         <Route path="tally/mapping" element={<TallyMappingPage />} />
         <Route path="tally/history" element={<TallyHistoryPage />} />
         

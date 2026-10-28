@@ -1,14 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { PageHeader } from '@/components/PageHeader';
-import { Select } from '@/components/ui/Input';
+import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/common/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { BookOpen, Printer, Download } from 'lucide-react';
+import { BookOpen, Printer, Download, Search, ChevronDown, X } from 'lucide-react';
 import { formatCurrency, formatDate, todayDateString, roundTo2, cn } from '@/lib/utils';
 import { fetchLedgerLines } from '@/lib/accounting';
 import { PageMotion } from '@/lib/motion';
@@ -47,6 +47,32 @@ export function LedgerPage() {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState(todayDateString());
 
+  // Pending filter state — distinct from applied state; changes here do NOT re-fetch
+  const [pendingAccountId, setPendingAccountId] = useState('');
+  const [pendingFromDate, setPendingFromDate] = useState('');
+  const [pendingToDate, setPendingToDate] = useState(todayDateString());
+
+  // Combobox state
+  const [accountSearch, setAccountSearch] = useState('');
+  const [comboboxOpen, setComboboxOpen] = useState(false);
+  const [comboboxHighlighted, setComboboxHighlighted] = useState(-1);
+  const comboboxRef = useRef<HTMLDivElement>(null);
+
+  // Close combobox when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      if (comboboxRef.current && !comboboxRef.current.contains(e.target as Node)) {
+        setComboboxOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, []);
+
   const { data: accounts } = useQuery({
     queryKey: ['accounts', activeBusiness?.id],
     queryFn: async () => {
@@ -56,6 +82,15 @@ export function LedgerPage() {
     },
     enabled: !!activeBusiness,
   });
+
+  const filteredAccounts = useMemo(() => {
+    const q = accountSearch.trim().toLowerCase();
+    if (!q) return (accounts || []).slice();
+    return (accounts || []).filter((a: any) =>
+      a.name.toLowerCase().includes(q) ||
+      (a.phone && a.phone.toLowerCase().includes(q))
+    );
+  }, [accounts, accountSearch]);
 
   const { data: lines, isLoading, isError, refetch } = useQuery({
     queryKey: ['journal-lines-ledger', activeBusiness?.id, accountId, fromDate, toDate],
@@ -92,6 +127,20 @@ export function LedgerPage() {
   const closingBalance = roundTo2(openingBalance + totalDebit - totalCredit);
   const sym = activeBusiness?.currency_symbol || '₹';
 
+  const handleApplyFilter = () => {
+    if (!pendingAccountId) return;
+    setAccountId(pendingAccountId);
+    setFromDate(pendingFromDate);
+    setToDate(pendingToDate);
+    setComboboxOpen(false);
+  };
+
+  const handleSelectAccount = (account: any) => {
+    setPendingAccountId(account.id);
+    setAccountSearch(account.name);
+    setComboboxOpen(false);
+  };
+
   const handleExport = () => {
     downloadCsv(`ledger_${selectedAccount?.name ?? 'account'}_${fromDate || 'start'}_${toDate}.csv`, [
       ['Date', 'Particulars', 'Debit', 'Credit', 'Balance'],
@@ -99,6 +148,31 @@ export function LedgerPage() {
       ...rowsWithBalance.map((r) => [formatDate(r.date), r.particular, r.debit, r.credit, r.balance]),
       ['', `Closing Balance (${closingBalance >= 0 ? 'Dr' : 'Cr'})`, totalDebit, totalCredit, closingBalance],
     ]);
+  };
+
+  const handleInputKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleApplyFilter();
+    }
+  };
+
+  const handleComboboxKeyDown = (e: React.KeyboardEvent) => {
+    if (!comboboxOpen) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setComboboxHighlighted((p) => Math.min(p + 1, filteredAccounts.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setComboboxHighlighted((p) => Math.max(p - 1, -1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (comboboxHighlighted >= 0 && filteredAccounts[comboboxHighlighted]) {
+        handleSelectAccount(filteredAccounts[comboboxHighlighted]);
+      }
+    } else if (e.key === 'Escape') {
+      setComboboxOpen(false);
+    }
   };
 
   return (
@@ -113,24 +187,84 @@ export function LedgerPage() {
       />
 
       <div className="card p-4 mb-6">
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <div>
+        <div className="flex flex-col sm:flex-row gap-4 items-end">
+          <div className="flex-1 relative">
             <label className="label">Select Account</label>
-            <Select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-              <option value="">Select account...</option>
-              {accounts?.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </Select>
+            <div ref={comboboxRef} className="relative">
+              <Input
+                className="input h-10"
+                value={accountSearch}
+                onChange={(e) => {
+                  setAccountSearch(e.target.value);
+                  setPendingAccountId('');
+                  setComboboxOpen(true);
+                }}
+                onFocus={() => setComboboxOpen(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); handleApplyFilter(); }
+                  else if (e.key === 'ArrowDown') { e.preventDefault(); setComboboxHighlighted((p) => Math.min(p + 1, filteredAccounts.length - 1)); setComboboxOpen(true); }
+                  else if (e.key === 'ArrowUp') { e.preventDefault(); setComboboxHighlighted((p) => Math.max(p - 1, -1)); setComboboxOpen(true); }
+                  else if (e.key === 'Escape') { setComboboxOpen(false); }
+                }}
+                placeholder="Search account…"
+              />
+              {comboboxOpen && (
+                <div className="absolute z-10 w-full mt-1 bg-white dark:bg-secondary-900 border border-secondary-200 dark:border-secondary-800 rounded-lg shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+                  {filteredAccounts.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-secondary-500 dark:text-secondary-400">No matching accounts</div>
+                  ) : (
+                    filteredAccounts.map((a: any, i) => (
+                      <div
+                        key={a.id}
+                        onMouseDown={(e) => { e.preventDefault(); handleSelectAccount(a); }}
+                        className={cn(
+                          'px-3 py-2 text-sm cursor-pointer hover:bg-secondary-100 dark:hover:bg-secondary-800',
+                          comboboxHighlighted === i ? 'bg-primary-600 text-white' : 'text-secondary-900 dark:text-secondary-100'
+                        )}
+                      >
+                        <div className="text-sm font-medium text-secondary-900 dark:text-secondary-100">{a.name}</div>
+                        {a.phone && (
+                          <div className="text-[10px] text-secondary-500 dark:text-secondary-400">{a.phone}</div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                  <div className="px-3 py-2 text-xs text-secondary-500 dark:text-secondary-400 border-t border-secondary-100 dark:border-secondary-800">
+                    <span className="mr-2">↑↓ navigate</span>
+                    <span className="ml-2">⏎ select</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-          <div>
+          <div className="flex-1">
             <label className="label">From Date</label>
-            <DatePicker value={fromDate} onChange={setFromDate} />
+            <DatePicker
+              value={pendingFromDate}
+              onChange={(date) => setPendingFromDate(date)}
+            />
           </div>
-          <div>
+          <div className="flex-1">
             <label className="label">To Date</label>
-            <DatePicker value={toDate} onChange={setToDate} />
+            <DatePicker
+              value={pendingToDate}
+              onChange={(date) => setPendingToDate(date)}
+            />
           </div>
-          <div className="flex items-end">
-            <Button className="w-full" variant="secondary" disabled title="Ledger updates automatically as filters change">Apply Filter</Button>
+          <div className="flex-1">
+            <label className="block text-xs invisible select-none">Action</label>
+            <Button
+              onClick={handleApplyFilter}
+              disabled={!pendingAccountId}
+              className={cn(
+                'w-full h-[38px]',
+                !pendingAccountId
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'bg-primary-600 hover:bg-primary-700 text-white'
+              )}
+            >
+              Apply Filter
+            </Button>
           </div>
         </div>
         {selectedAccount && (
@@ -151,7 +285,7 @@ export function LedgerPage() {
       </div>
 
       {!accountId ? (
-        <EmptyState icon={BookOpen} title="Select an account" description="Choose an account from the dropdown above to view its ledger" />
+        <EmptyState icon={BookOpen} title="Select an account" description="Choose an account from the dropdown above and click Apply Filter to view its ledger" />
       ) : isError ? (
         <ErrorState title="Unable to load ledger." onRetry={() => refetch()} />
       ) : isLoading ? (
@@ -172,7 +306,7 @@ export function LedgerPage() {
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b border-secondary-100 dark:border-secondary-800/50 bg-secondary-50/50 dark:bg-secondary-800/30">
+                <tr className="border-b border-secondary-100 dark:border-secondary-800 hover:bg-secondary-50/60 dark:hover:bg-secondary-800/30">
                   <td className="px-4 py-3 text-secondary-400">—</td>
                   <td className="px-4 py-3 text-secondary-500 italic">Opening Balance</td>
                   <td className="px-4 py-3"></td>
@@ -180,7 +314,7 @@ export function LedgerPage() {
                   <td className={cn('px-4 py-3 text-right tabular-nums figure font-medium', drCrTone(openingBalance))}>{formatCurrency(Math.abs(openingBalance), sym)} {openingBalance >= 0 ? 'Dr' : 'Cr'}</td>
                 </tr>
                 {rowsWithBalance.map((r, i) => (
-                  <tr key={i} className="border-b border-secondary-100 dark:border-secondary-800/50 table-row-hover">
+                  <tr key={i} className="border-b border-secondary-100 dark:border-secondary-800 table-row-hover">
                     <td className="px-4 py-3 text-secondary-500 whitespace-nowrap figure">{formatDate(r.date)}</td>
                     <td className="px-4 py-3 text-secondary-900 dark:text-secondary-100">{r.particular}</td>
                     <td className="px-4 py-3 text-right tabular-nums figure">{r.debit > 0 ? formatCurrency(r.debit, sym) : '—'}</td>

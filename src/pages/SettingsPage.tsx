@@ -47,6 +47,7 @@ const tncMirrorFromPayload = (payload: Record<string, unknown>): Record<TncDocTy
   quotation: (payload.tnc_quotation as string | null) || null,
   sales_order: (payload.tnc_sales_order as string | null) || null,
   purchase: (payload.tnc_purchase as string | null) || null,
+  payment_receipt: (payload.tnc_payment_receipt as string | null) || (payload.terms_payment_receipt as string | null) || null,
 });
 
 const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Chandigarh','Puducherry'];
@@ -145,11 +146,12 @@ export function SettingsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
-    name: '', legal_name: '', phone: '', email: '', address: '', city: '', state: 'Maharashtra',
+    name: '', legal_name: '', phone: '', email: '', address: '', city: '', state: 'Uttar Pradesh',
     pincode: '',
     gstin: '', pan: '', cin: '', website: '', financial_year: '2026-27', currency_symbol: '₹', invoice_prefix: 'INV',
     quotation_prefix: 'QT', sales_order_prefix: 'SO', purchase_order_prefix: 'PO',
     purchase_bill_prefix: 'PB', credit_note_prefix: 'CN', debit_note_prefix: 'DN',
+    payment_received_prefix: 'RCP', payment_made_prefix: 'PM',
     gst_registered: false,
     stamp_url: '' as string | null,
     logo_url: '' as string | null,
@@ -166,6 +168,7 @@ export function SettingsPage() {
     tnc_quotation: '',
     tnc_sales_order: '',
     tnc_purchase: '',
+    tnc_payment_receipt: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -218,7 +221,7 @@ export function SettingsPage() {
         email: activeBusiness.email || '',
         address: activeBusiness.address || '',
         city: activeBusiness.city || '',
-        state: activeBusiness.state || 'Maharashtra',
+        state: activeBusiness.state || 'Uttar Pradesh',
         pincode: activeBusiness.pincode || '',
         gstin: activeBusiness.gstin || '',
         pan: activeBusiness.pan || '',
@@ -243,6 +246,11 @@ export function SettingsPage() {
         tnc_quotation: activeBusiness.tnc_quotation || readTncCache(activeBusiness.id, 'quotation') || '',
         tnc_sales_order: activeBusiness.tnc_sales_order || readTncCache(activeBusiness.id, 'sales_order') || '',
         tnc_purchase: activeBusiness.tnc_purchase || readTncCache(activeBusiness.id, 'purchase') || '',
+        tnc_payment_receipt:
+          (activeBusiness as any).terms_payment_receipt ||
+          (activeBusiness as any).tnc_payment_receipt ||
+          readTncCache(activeBusiness.id, 'payment_receipt') ||
+          '',
       });
     }
   }, [activeBusiness]);
@@ -370,6 +378,8 @@ export function SettingsPage() {
         purchase_bill_prefix: normalizePrefix(form.purchase_bill_prefix),
         credit_note_prefix: normalizePrefix(form.credit_note_prefix),
         debit_note_prefix: normalizePrefix(form.debit_note_prefix),
+        payment_received_prefix: normalizePrefix(form.payment_received_prefix),
+        payment_made_prefix: normalizePrefix(form.payment_made_prefix),
         gst_registered: form.gst_registered,
         stamp_url: form.stamp_url || null,
         logo_url: form.logo_url || null,
@@ -386,6 +396,8 @@ export function SettingsPage() {
         tnc_quotation: form.tnc_quotation.trim() || null,
         tnc_sales_order: form.tnc_sales_order.trim() || null,
         tnc_purchase: form.tnc_purchase.trim() || null,
+        tnc_payment_receipt: form.tnc_payment_receipt.trim() || null,
+        terms_payment_receipt: form.tnc_payment_receipt.trim() || null,
       };
       if (form.gst_registered) {
         payload.gstin = form.gstin || null;
@@ -570,7 +582,7 @@ export function SettingsPage() {
                 onChange={(e) => { clearError('gstin'); setForm({ ...form, gstin: e.target.value.toUpperCase() }); }}
                 onBlur={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase().trim() })}
                 maxLength={15}
-                placeholder="27ABCDE1234F1Z5"
+                placeholder=""
                 disabled={!form.gst_registered || !canEditSettings}
               />
               {!form.gst_registered && <p className="text-xs text-secondary-400 mt-1">Enable GST registration in Taxes &amp; Currency to edit</p>}
@@ -581,7 +593,7 @@ export function SettingsPage() {
                 onChange={(e) => { clearError('pan'); setForm({ ...form, pan: e.target.value.toUpperCase() }); }}
                 onBlur={(e) => setForm({ ...form, pan: e.target.value.toUpperCase().trim() })}
                 maxLength={10}
-                placeholder="ABCDE1234F"
+                placeholder=""
                 disabled={!canEditSettings}
               />
             </FormField>
@@ -591,11 +603,11 @@ export function SettingsPage() {
                 onChange={(e) => setForm({ ...form, cin: e.target.value.toUpperCase() })}
                 onBlur={(e) => setForm({ ...form, cin: e.target.value.toUpperCase().trim() })}
                 maxLength={21}
-                placeholder="U74999UP2019PTC112218"
+                placeholder=""
                 disabled={!canEditSettings}
               />
             </FormField>
-            <FormField label="Phone"><Input type="tel" value={form.phone} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></FormField>
+            <FormField label="Phone"><Input type="tel" inputMode="numeric" maxLength={10} pattern="[0-9]{10}" value={form.phone} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} /></FormField>
             <FormField label="Email" error={errors.email}>
               <Input type="email" value={form.email} disabled={!canEditSettings} onChange={(e) => { clearError('email'); setForm({ ...form, email: e.target.value }); }} />
             </FormField>
@@ -605,7 +617,7 @@ export function SettingsPage() {
                 value={form.website}
                 onChange={(e) => setForm({ ...form, website: e.target.value })}
                 onBlur={(e) => setForm({ ...form, website: e.target.value.trim() })}
-                placeholder="https://www.example.com"
+                placeholder=""
                 disabled={!canEditSettings}
               />
             </FormField>
@@ -625,7 +637,7 @@ export function SettingsPage() {
                   disabled={!canEditSettings}
                   maxLength={6}
                   inputMode="numeric"
-                  placeholder="400001"
+                  placeholder=""
                   onChange={(e) => { clearError('pincode'); setForm({ ...form, pincode: e.target.value.replace(/[^0-9]/g, '').slice(0, 6) }); }}
                 />
               </FormField>
@@ -763,6 +775,9 @@ export function SettingsPage() {
               <FormField label="Purchase Documents">
                 <Textarea rows={4} className="w-full min-h-[110px] border border-secondary-200 dark:border-secondary-700 rounded-lg p-3 text-xs md:text-sm" value={form.tnc_purchase} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_purchase: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.purchase} />
               </FormField>
+              <FormField label="Payment Receipts">
+                <Textarea rows={4} className="w-full min-h-[110px] border border-secondary-200 dark:border-secondary-700 rounded-lg p-3 text-xs md:text-sm" value={form.tnc_payment_receipt} disabled={!canEditSettings} onChange={(e) => setForm({ ...form, tnc_payment_receipt: e.target.value })} placeholder={STANDARD_TNC_DEFAULTS.payment_receipt} />
+              </FormField>
             </div>
             <p className="mt-3 text-[11px] text-secondary-500 dark:text-secondary-400">Leave empty to use standard defaults. Saved with business settings; while the database migration is pending these are stored on this device only.</p>
         </div>
@@ -842,6 +857,24 @@ export function SettingsPage() {
                 maxLength={12}
                 placeholder="DN"
                 onChange={(e) => { clearError('debit_note_prefix'); setForm({ ...form, debit_note_prefix: e.target.value }); }}
+              />
+            </FormField>
+            <FormField label="Payment Received Prefix" error={errors.payment_received_prefix}>
+              <Input
+                value={form.payment_received_prefix}
+                disabled={!canEditSettings}
+                maxLength={12}
+                placeholder="RCP"
+                onChange={(e) => { clearError('payment_received_prefix'); setForm({ ...form, payment_received_prefix: e.target.value }); }}
+              />
+            </FormField>
+            <FormField label="Payment Made Prefix" error={errors.payment_made_prefix}>
+              <Input
+                value={form.payment_made_prefix}
+                disabled={!canEditSettings}
+                maxLength={12}
+                placeholder="PM"
+                onChange={(e) => { clearError('payment_made_prefix'); setForm({ ...form, payment_made_prefix: e.target.value }); }}
               />
             </FormField>
           </div>
