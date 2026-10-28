@@ -13,8 +13,9 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { usePagedList, likePattern } from '@/hooks/usePagedList';
 import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
 import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
-import { Package, Plus, Pencil, Archive, Boxes } from 'lucide-react';
+import { Package, Plus, Pencil, Trash2, Boxes } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { deleteProduct } from '@/services/productService';
 import type { Product } from '@/types/db';
 
 export function ProductsPage() {
@@ -23,7 +24,7 @@ export function ProductsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const list = usePagedList();
-  const [archiveId, setArchiveId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['products', activeBusiness?.id, { q: list.debouncedSearch, page: list.page, pageSize: list.pageSize }],
@@ -50,17 +51,21 @@ export function ProductsPage() {
   const products = data?.rows ?? [];
   const totalProducts = data?.total ?? 0;
 
-  const archiveMutation = useMutation({
+  const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('products').update({ is_active: false }).eq('id', id).eq('business_id', activeBusiness?.id!);
-      if (error) throw error;
+      if (!activeBusiness?.id) throw new Error('No active business');
+      await deleteProduct(activeBusiness.id, id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products', activeBusiness?.id] });
-      toast('Product archived', 'success');
-      setArchiveId(null);
+      queryClient.invalidateQueries({ queryKey: ['stock', activeBusiness?.id] });
+      toast('Product deleted successfully', 'success');
+      setDeleteId(null);
     },
-    onError: (err: any) => toast(err.message || 'Failed to archive product', 'error'),
+    onError: (err: any) => {
+      setDeleteId(null);
+      toast(err.message || 'Failed to delete product', 'error');
+    },
   });
 
   const openEdit = (p: Product) => {
@@ -167,8 +172,13 @@ export function ProductsPage() {
                         <button onClick={() => openEdit(p)} title="Edit product" aria-label="Edit product" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={() => setArchiveId(p.id)} title="Archive product" aria-label="Archive product" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-warning-600 hover:bg-warning-50 dark:hover:bg-warning-900/30 transition-colors">
-                          <Archive className="h-3.5 w-3.5" />
+                        <button
+                          onClick={() => setDeleteId(p.id)}
+                          title="Delete product"
+                          aria-label="Delete product"
+                          className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </td>
@@ -190,13 +200,14 @@ export function ProductsPage() {
       </div>
 
       <ConfirmDialog
-        open={!!archiveId}
-        onClose={() => setArchiveId(null)}
-        onConfirm={() => archiveId && archiveMutation.mutate(archiveId)}
-        title="Archive Product?"
-        message="The product will be hidden from active lists and can no longer be transacted. Its history is preserved."
-        confirmText="Archive"
-        loading={archiveMutation.isPending}
+        open={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
+        title="Delete Product?"
+        message="Are you sure you want to permanently delete this product? This action cannot be undone."
+        confirmText="Delete"
+        danger={true}
+        loading={deleteMutation.isPending}
       />
     </div>
   );
