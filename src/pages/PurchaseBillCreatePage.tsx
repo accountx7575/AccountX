@@ -25,6 +25,7 @@ import {
   sanitizeUuid,
   sanitizePurchaseBillPayload,
   sanitizePurchaseBillItemPayload,
+  createPurchaseBillService,
 } from '@/services/purchaseBillService';
 import type { Supplier, Product, PurchaseBill, PurchaseBillItem } from '@/types/db';
 
@@ -473,14 +474,14 @@ export function PurchaseBillCreatePage() {
         total_amount: it.total_amount,
       }));
 
-      // Call RPC with one retry on duplicate key (23505)
+      // Call createPurchaseBillService with one retry on duplicate key (23505)
       let rpcResult: { data: any; error: any } | null = null;
       for (let attempt = 0; attempt < 2; attempt++) {
-        rpcResult = await supabase.rpc('create_purchase_bill', {
-          p_business_id: activeBusiness.id,
-          p_bill,
-          p_items,
-          p_status: status,
+        rpcResult = await createPurchaseBillService({
+          businessId: activeBusiness.id,
+          bill: p_bill,
+          items: p_items,
+          status,
         });
         if (!rpcResult.error) break;
         if (rpcResult.error.code === '23505' && attempt === 0) {
