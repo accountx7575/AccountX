@@ -21,6 +21,11 @@ import { formatCurrency, roundTo2, todayDateString, getLocalNowTime, combineDate
 import { computeDocLine } from '@/lib/payloads';
 import { extractBillText } from '@/lib/billTextExtractor';
 import { parseBillText } from '@/lib/billParser';
+import {
+  sanitizeUuid,
+  sanitizePurchaseBillPayload,
+  sanitizePurchaseBillItemPayload,
+} from '@/services/purchaseBillService';
 import type { Supplier, Product, PurchaseBill, PurchaseBillItem } from '@/types/db';
 
 type LineItem = {
@@ -340,7 +345,8 @@ export function PurchaseBillCreatePage() {
   const saveMutation = useMutation({
     mutationFn: async (status: 'confirmed' | 'draft' = 'confirmed') => {
       if (!activeBusiness) throw new Error('No active business');
-      if (!supplierId) throw new Error('Please select a supplier');
+      const cleanSupplier = sanitizeUuid(supplierId);
+      if (!cleanSupplier) throw new Error('Please select a supplier');
       if (items.some((it) => !it.product_name || it.quantity <= 0)) throw new Error('Please fill all item details');
       setSaving(true);
 
@@ -351,26 +357,27 @@ export function PurchaseBillCreatePage() {
         const loaded = existingQuery.data;
         if (!loaded) throw new Error('Bill not loaded yet');
         const biz = activeBusiness.id;
+        const updatePayload = sanitizePurchaseBillPayload({
+          supplier_id: cleanSupplier,
+          bill_number: billNumber.trim() || loaded.bill.bill_number,
+          bill_date: billDate,
+          created_at: combineDateTime(billDate, billTime),
+          due_date: dueDate?.trim() ? dueDate : null,
+          subtotal: totals.subtotal,
+          discount_amount: totals.totalDiscount,
+          taxable_amount: totals.taxableAmount,
+          cgst_amount: totals.cgst,
+          sgst_amount: totals.sgst,
+          igst_amount: totals.igst,
+          cess_amount: 0,
+          round_off: totals.roundOff,
+          grand_total: totals.grandTotal,
+          payment_method: paymentMethod || null,
+          notes: notes || null,
+        });
         const { error: headerError } = await supabase
           .from('purchase_bills')
-          .update({
-            supplier_id: supplierId,
-            bill_number: billNumber.trim() || loaded.bill.bill_number,
-            bill_date: billDate,
-            created_at: combineDateTime(billDate, billTime),
-            due_date: dueDate || null,
-            subtotal: totals.subtotal,
-            discount_amount: totals.totalDiscount,
-            taxable_amount: totals.taxableAmount,
-            cgst_amount: totals.cgst,
-            sgst_amount: totals.sgst,
-            igst_amount: totals.igst,
-            cess_amount: 0,
-            round_off: totals.roundOff,
-            grand_total: totals.grandTotal,
-            payment_method: paymentMethod || null,
-            notes: notes || null,
-          })
+          .update(updatePayload)
           .eq('business_id', biz)
           .eq('id', editId!);
         if (headerError) throw headerError;
@@ -383,7 +390,7 @@ export function PurchaseBillCreatePage() {
         const rows = items.map((it) => ({
           business_id: biz,
           bill_id: editId!,
-          product_id: it.product_id,
+          product_id: sanitizeUuid(it.product_id),
           product_name: it.product_name,
           hsn_sac: it.hsn_sac || '',
           quantity: it.quantity,
@@ -403,10 +410,10 @@ export function PurchaseBillCreatePage() {
         return { billId: editId!, status: loaded.bill.status, edited: true };
       }
 
-      const p_bill: Record<string, unknown> = {
-        supplier_id: supplierId,
+      const p_bill: Record<string, unknown> = sanitizePurchaseBillPayload({
+        supplier_id: cleanSupplier,
         bill_date: billDate,
-        due_date: dueDate || null,
+        due_date: dueDate?.trim() ? dueDate : null,
         subtotal: totals.subtotal,
         discount_amount: totals.totalDiscount,
         taxable_amount: totals.taxableAmount,
@@ -418,7 +425,7 @@ export function PurchaseBillCreatePage() {
         grand_total: totals.grandTotal,
         payment_method: paymentMethod || null,
         notes: notes || null,
-      };
+      });
       // Determine the bill number: custom if typed, else fetch fresh from
       // the atomic counter right before the RPC.
       let finalBillNumber = billNumber.trim();
@@ -428,7 +435,7 @@ export function PurchaseBillCreatePage() {
           column: 'bill_number',
           businessId: activeBusiness.id,
           value: finalBillNumber,
-          excludeId: editId ?? undefined,
+          excludeId: sanitizeUuid(editId) ?? undefined,
         });
         if (taken) {
           setBillNumberError(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
@@ -450,7 +457,7 @@ export function PurchaseBillCreatePage() {
       }
 
       const p_items = items.map((it) => ({
-        product_id: it.product_id,
+        product_id: sanitizeUuid(it.product_id),
         product_name: it.product_name,
         hsn_sac: it.hsn_sac || '',
         quantity: it.quantity,

@@ -5,6 +5,7 @@ const h = vi.hoisted(() => ({
   taken: [] as string[],
   rpcResult: { data: null as unknown, error: null as unknown },
   orFilters: [] as string[],
+  neqFilters: [] as Array<[string, string]>,
   businessRow: null as Record<string, unknown> | null,
 }));
 
@@ -16,6 +17,10 @@ vi.mock('./supabase', () => ({
         select: () => q,
         eq: (col: string, val: string) => {
           if (table !== 'businesses' && col !== 'business_id') candidate = val;
+          return q;
+        },
+        neq: (col: string, val: string) => {
+          h.neqFilters.push([col, val]);
           return q;
         },
         or: (filter: string) => {
@@ -38,7 +43,7 @@ vi.mock('./supabase', () => ({
   },
 }));
 
-import { allocateDocumentNumber, swapPrefix } from './numbering';
+import { allocateDocumentNumber, swapPrefix, documentNumberTaken } from './numbering';
 import { financialYearShort, syncDocumentNumberWithCurrentPrefix } from './numberingSync';
 
 const SO = { docType: 'sales_order' as const, table: 'sales_orders', numberColumn: 'order_number' };
@@ -174,5 +179,52 @@ describe('syncDocumentNumberWithCurrentPrefix', () => {
         businessSettings: { quotation_prefix: 'QT/ABC/SE' },
       })
     ).toThrow(/no trailing sequence/i);
+  });
+});
+
+describe('documentNumberTaken UUID sanitization', () => {
+  it('does not add neq filter when excludeId is undefined, null, or placeholder _none_', async () => {
+    h.neqFilters = [];
+    h.taken = [];
+    await documentNumberTaken({
+      table: 'purchase_bills',
+      column: 'bill_number',
+      businessId: '14c1652a-9a48-441b-be9d-6c9da6e11a95',
+      value: 'BILL/26-27/1',
+      excludeId: undefined,
+    });
+    expect(h.neqFilters).toEqual([]);
+
+    await documentNumberTaken({
+      table: 'purchase_bills',
+      column: 'bill_number',
+      businessId: '14c1652a-9a48-441b-be9d-6c9da6e11a95',
+      value: 'BILL/26-27/1',
+      excludeId: '_none_',
+    });
+    expect(h.neqFilters).toEqual([]);
+
+    await documentNumberTaken({
+      table: 'purchase_bills',
+      column: 'bill_number',
+      businessId: '14c1652a-9a48-441b-be9d-6c9da6e11a95',
+      value: 'BILL/26-27/1',
+      excludeId: '__none__',
+    });
+    expect(h.neqFilters).toEqual([]);
+  });
+
+  it('adds neq filter when excludeId is a valid UUID', async () => {
+    h.neqFilters = [];
+    h.taken = [];
+    const validId = 'ede3cbe7-cb34-48a2-893b-447e4a2b9038';
+    await documentNumberTaken({
+      table: 'purchase_bills',
+      column: 'bill_number',
+      businessId: '14c1652a-9a48-441b-be9d-6c9da6e11a95',
+      value: 'BILL/26-27/1',
+      excludeId: validId,
+    });
+    expect(h.neqFilters).toEqual([['id', validId]]);
   });
 });

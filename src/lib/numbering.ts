@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { DOCUMENT_PREFIXES, type DocumentType } from './payloads';
 import { normalizePrefix, docPrefixFor, DOC_PREFIX_KEYS, DOC_TYPE_PREFIX_KEY } from './docPrefixes';
+import { sanitizeUuid } from '@/services/purchaseBillService';
 
 const SUFFIX_RE = /(?:^|[/\-])(\d+)$/;
 const MAX_PROBES = 25;
@@ -55,12 +56,20 @@ export async function documentNumberTaken({
 }): Promise<boolean> {
   const docColumn = column || numberColumn;
   if (!docColumn) throw new Error('documentNumberTaken needs the document-number column');
-  const { data, error } = await supabase
+  let query = supabase
     .from(table)
     .select('id')
     .eq('business_id', businessId)
-    .eq(docColumn, value)
-    .neq('id', excludeId ?? '__none__');
+    .eq(docColumn, value);
+
+  // Only apply neq filter if a valid existing UUID is provided.
+  // Avoids invalid input syntax for type uuid: '_none_' / '__none__'
+  const cleanExclude = sanitizeUuid(excludeId);
+  if (cleanExclude) {
+    query = query.neq('id', cleanExclude);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return !!(data && data.length > 0);
 }

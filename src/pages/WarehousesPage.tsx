@@ -75,11 +75,14 @@ export function WarehousesPage() {
       if (!name) throw new Error('Warehouse name is required');
 
       if (form.is_default && editing?.is_default !== true) {
-        const { error: clearErr } = await supabase
+        let clearQuery = supabase
           .from('warehouses')
           .update({ is_default: false })
-          .eq('business_id', activeBusiness.id)
-          .neq('id', editing?.id ?? '00000000-0000-0000-0000-000000000000');
+          .eq('business_id', activeBusiness.id);
+        if (editing?.id) {
+          clearQuery = clearQuery.neq('id', editing.id);
+        }
+        const { error: clearErr } = await clearQuery;
         if (clearErr) throw clearErr;
       }
 
