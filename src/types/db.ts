@@ -168,6 +168,16 @@ export type StockMovement = {
   created_at: string;
 };
 
+export type StockAdjustment = {
+  id: string;
+  business_id: string;
+  product_id: string;
+  adjustment_type: string;
+  quantity: number;
+  reason: string | null;
+  created_at: string;
+};
+
 export type SalesInvoice = {
   id: string;
   business_id: string;
