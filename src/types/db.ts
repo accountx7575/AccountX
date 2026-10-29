@@ -184,6 +184,8 @@ export type SalesInvoice = {
   customer_id: string;
   invoice_number: string;
   invoice_date: string;
+  invoice_time?: string | null;
+  time?: string | null;
   due_date: string | null;
   place_of_supply: string | null;
   subtotal: number;

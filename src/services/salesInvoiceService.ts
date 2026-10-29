@@ -51,10 +51,18 @@ export function buildSalesInvoiceItemRows(
 export async function updateSalesInvoiceService(params: UpdateSalesInvoiceParams) {
   const { businessId, invoiceId, invoiceData, items } = params;
 
+  // Ensure invoice_time and time are synchronized if provided
+  const headerData = { ...invoiceData };
+  if (headerData.invoice_time && !headerData.time) {
+    headerData.time = headerData.invoice_time;
+  } else if (headerData.time && !headerData.invoice_time) {
+    headerData.invoice_time = headerData.time;
+  }
+
   // 1. Update header
   const { data: updatedInvoice, error: headerError } = await supabase
     .from('sales_invoices')
-    .update(invoiceData)
+    .update(headerData)
     .eq('business_id', businessId)
     .eq('id', invoiceId)
     .select()

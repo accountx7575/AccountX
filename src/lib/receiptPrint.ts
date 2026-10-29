@@ -125,8 +125,8 @@ export function formatReceiptDateTime(
 
   if (typeof dateVal === 'object' && dateVal !== null) {
     const p = dateVal;
-    effectiveDate = p.payment_date || p.date || null;
-    effectiveTime = p.time || p.payment_time || null;
+    effectiveDate = p.payment_date || p.date || p.invoice_date || null;
+    effectiveTime = p.invoice_time || p.time || p.payment_time || null;
     effectiveCreated = p.created_at || null;
   }
 
@@ -901,7 +901,11 @@ export function generateReceiptHtml(
   const unapplied = Math.max(0, amount - allocated);
   const methodLabel = (payment.payment_method || 'cash').toUpperCase().replace('_', ' ');
   const amountInWords = amountInWordsIndian(amount);
-  const receiptDateTimeStr = formatReceiptDateTime(payment.payment_date || payment.date, payment.created_at, payment.time);
+  const receiptDateTimeStr = formatReceiptDateTime(
+    payment.payment_date || (payment as any).invoice_date || payment.date,
+    payment.created_at,
+    (payment as any).invoice_time || payment.time
+  );
 
   const configuredTerms = resolveTermsLines('payment_receipt', business, (payment as any).terms);
   const termsList = configuredTerms.length > 0

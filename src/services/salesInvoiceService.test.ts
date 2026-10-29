@@ -117,4 +117,21 @@ describe('salesInvoiceService', () => {
       }),
     ]);
   });
+
+  it('updateSalesInvoiceService synchronizes invoice_time and time in header data', async () => {
+    const businessId = '14c1652a-9a48-441b-be9d-6c9da6e11a95';
+    const invoiceId = '91bc33f9-70fd-40f8-96e7-867be4077a47';
+
+    await updateSalesInvoiceService({
+      businessId,
+      invoiceId,
+      invoiceData: { invoice_time: '04:32 pm' },
+      items: [],
+    });
+
+    expect(mockUpdate).toHaveBeenCalledWith({
+      invoice_time: '04:32 pm',
+      time: '04:32 pm',
+    });
+  });
 });

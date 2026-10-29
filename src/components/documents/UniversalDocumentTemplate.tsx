@@ -117,8 +117,11 @@ export interface UniversalDocumentData {
   documentNumber: string;
   invoiceNumber?: string;
   date: string;
+  invoice_date?: string;
   completedAt?: string;
   time?: string;
+  invoice_time?: string;
+  created_at?: string;
   dueDate?: string | null;
   expiryDate?: string | null;
   expectedDeliveryDate?: string | null;
@@ -223,30 +226,81 @@ export function numberToWordsINR(num: number): string {
   return `${out.trim()} Rupees Only`;
 }
 
-const formatDocDateTime = (dateVal?: string | null) => {
-  if (!dateVal) return '—';
-  const d = new Date(dateVal);
-  if (isNaN(d.getTime())) return dateVal;
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const year = d.getFullYear();
-  let hours = d.getHours();
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  const ampm = hours >= 12 ? 'pm' : 'am';
-  hours = hours % 12 || 12;
-  const formattedHours = String(hours).padStart(2, '0');
-  return `${day}/${month}/${year}, ${formattedHours}:${minutes} ${ampm}`;
+const formatDocTime = (timeVal?: string | null, fallbackDate?: string | null): string => {
+  if (timeVal && typeof timeVal === 'string' && timeVal.trim()) {
+    const raw = timeVal.trim();
+    const ampmMatch = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)$/i);
+    if (ampmMatch) {
+      const h = String(parseInt(ampmMatch[1], 10)).padStart(2, '0');
+      const m = ampmMatch[2];
+      const ampm = ampmMatch[3].toLowerCase();
+      return `${h}:${m} ${ampm}`;
+    }
+    const h24Match = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (h24Match) {
+      let h = parseInt(h24Match[1], 10);
+      const m = h24Match[2];
+      const ampm = h >= 12 ? 'pm' : 'am';
+      h = h % 12 || 12;
+      return `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+    }
+    return raw;
+  }
+
+  if (fallbackDate && typeof fallbackDate === 'string') {
+    if (fallbackDate.includes('T') || (fallbackDate.includes(':') && !/^\d{4}-\d{2}-\d{2}$/.test(fallbackDate))) {
+      const d = new Date(fallbackDate);
+      if (!isNaN(d.getTime())) {
+        let hours = d.getHours();
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'pm' : 'am';
+        hours = hours % 12 || 12;
+        return `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+      }
+    }
+  }
+
+  return '';
 };
 
 const formatDocDate = (dateVal?: string | null) => {
   if (!dateVal) return '—';
-  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateVal);
+  const clean = dateVal.trim();
+  const dmyMatch = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (dmyMatch) {
+    const [, d, m, y] = dmyMatch;
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+  }
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})/.exec(clean);
   if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
-  const d = new Date(dateVal);
-  if (isNaN(d.getTime())) return dateVal;
+  const d = new Date(clean);
+  if (isNaN(d.getTime())) return clean;
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
   return `${day}/${month}/${d.getFullYear()}`;
+};
+
+const formatDocDateTime = (
+  dateVal?: string | null,
+  timeVal?: string | null,
+  createdAtVal?: string | null
+) => {
+  const effectiveDate = dateVal || createdAtVal;
+  if (!effectiveDate) return '—';
+
+  if (!timeVal && typeof effectiveDate === 'string' && /^\d{1,2}\/\d{1,2}\/\d{4},\s*\d{1,2}:\d{2}\s*(am|pm)$/i.test(effectiveDate.trim())) {
+    return effectiveDate.trim();
+  }
+
+  const formattedDate = formatDocDate(effectiveDate);
+  const formattedTime = formatDocTime(
+    timeVal,
+    effectiveDate && (effectiveDate.includes('T') || (effectiveDate.includes(':') && !/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)))
+      ? effectiveDate
+      : createdAtVal
+  );
+
+  return formattedTime ? `${formattedDate}, ${formattedTime}` : formattedDate;
 };
 
 export const GST_STATE_CODE_MAP: Record<string, { code: string; name: string }> = {
@@ -611,6 +665,52 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
       ? data.expectedDeliveryDate || data.expected_delivery_date || data.dueDate
       : data.dueDate;
   const formattedDueDate = formatDocDate(dueDateSource);
+
+  // Date & Time computation requested by user (avoids UTC 00:00 -> IST 05:30 am shift)
+  const rawDateVal = (data as any).invoice_date || data.date || data.completedAt;
+  let displayDate = '';
+  if (rawDateVal) {
+    const ymdMatch = String(rawDateVal).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    const dmyMatch = String(rawDateVal).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (ymdMatch) {
+      const [, y, m, d] = ymdMatch;
+      displayDate = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    } else if (dmyMatch) {
+      const [, d, m, y] = dmyMatch;
+      displayDate = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    } else {
+      const d = new Date(rawDateVal);
+      displayDate = !isNaN(d.getTime())
+        ? d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : String(rawDateVal);
+    }
+  }
+
+  const rawTime = data.invoice_time || data.time || (data as any).rawTime;
+  let displayTime = '';
+  if (rawTime && typeof rawTime === 'string' && rawTime.trim()) {
+    const t = rawTime.trim();
+    const ampmMatch = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)$/i);
+    const h24Match = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (ampmMatch) {
+      displayTime = `${ampmMatch[1].padStart(2, '0')}:${ampmMatch[2]} ${ampmMatch[3].toLowerCase()}`;
+    } else if (h24Match) {
+      let h = parseInt(h24Match[1], 10);
+      const m = h24Match[2];
+      const ampm = h >= 12 ? 'pm' : 'am';
+      h = h % 12 || 12;
+      displayTime = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+    } else {
+      displayTime = t;
+    }
+  } else if (data.created_at || (data as any).createdAt) {
+    const cd = new Date(data.created_at || (data as any).createdAt);
+    if (!isNaN(cd.getTime())) {
+      displayTime = cd.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    }
+  }
+
+  const dateAndTimeString = displayTime ? `${displayDate}, ${displayTime}` : displayDate;
   
   const subtotal = Number(data.subtotal || 0);
   const totalTax = Number(data.tax ?? data.taxAmount ?? ((data.cgst || 0) + (data.sgst || 0) + (data.igst || 0)));
@@ -724,7 +824,7 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
           </p>
           <p>
             <span className="text-slate-500 font-sans">Date &amp; Time:</span>{' '}
-            <span className="text-slate-900 font-semibold">{formatDocDateTime(data.completedAt || data.date || (data as any).created_at)}</span>
+            <span className="text-slate-900 font-semibold">{dateAndTimeString}</span>
           </p>
           <p>
             <span className="text-slate-500 font-sans">{dueDateLabel}:</span>{' '}
@@ -1213,6 +1313,8 @@ export function mapSalesOrderToUniversalData(business: any, order: any, items: a
     documentNumber: persistedNumber,
     invoiceNumber: persistedNumber,
     date: order?.order_date || order?.created_at || '19 Oct 2026, 12:34 pm',
+    time: order?.order_time || order?.time,
+    created_at: order?.created_at,
     status: order?.status || 'Confirmed',
     orderNumber: order?.order_number,
     expectedDeliveryDate: order?.expected_delivery_date || order?.expected_date || null,
@@ -1270,6 +1372,9 @@ export function mapSalesInvoiceToUniversalData(business: any, invoice: any, item
     documentType: 'TAX_INVOICE',
     documentNumber: invoice?.invoice_number || invoice?.number || 'INV-001',
     date: invoice?.invoice_date || invoice?.created_at || '19 Oct 2026, 12:34 pm',
+    time: invoice?.invoice_time || invoice?.time,
+    invoice_time: invoice?.invoice_time || invoice?.time,
+    created_at: invoice?.created_at,
     status: invoice?.status || 'Confirmed',
     dueDate: invoice?.due_date || null,
     company: business,
@@ -1325,6 +1430,8 @@ export function mapQuotationToUniversalData(business: any, quote: any, items: an
     documentNumber: quote?.quotation_number || quote?.number || 'QT-001',
     orderNumber: quote?.quotation_number || quote?.number,
     date: quote?.quotation_date || quote?.created_at || '19 Oct 2026, 12:34 pm',
+    time: quote?.quotation_time || quote?.time,
+    created_at: quote?.created_at,
     status: quote?.status || 'Draft',
     expiryDate: quote?.expiry_date || quote?.valid_until || null,
     dueDate: quote?.due_date || null,
@@ -1380,6 +1487,8 @@ export function mapPurchaseOrderToUniversalData(business: any, order: any, items
     documentType: 'PURCHASE_ORDER',
     documentNumber: order?.order_number || order?.po_number || order?.number || 'PO-001',
     date: order?.order_date || order?.created_at || '19 Oct 2026, 12:34 pm',
+    time: order?.order_time || order?.po_time || order?.time,
+    created_at: order?.created_at,
     status: order?.status || 'Confirmed',
     dueDate: order?.due_date || order?.expected_date || null,
     company: business,
@@ -1438,6 +1547,8 @@ export function mapPurchaseBillToUniversalData(business: any, bill: any, items: 
     documentType: 'PURCHASE_BILL',
     documentNumber: bill?.bill_number || bill?.number || 'BILL-001',
     date: bill?.bill_date || bill?.created_at || '19 Oct 2026, 12:34 pm',
+    time: bill?.bill_time || bill?.time,
+    created_at: bill?.created_at,
     status: bill?.status || 'Confirmed',
     dueDate: bill?.due_date || null,
     isPurchaseBill: true,

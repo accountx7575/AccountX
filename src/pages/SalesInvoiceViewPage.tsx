@@ -183,11 +183,14 @@ export function SalesInvoiceViewPage() {
     paid: 'success', cancelled: 'error', void: 'error',
   };
 
+  const viewTime = invoice.invoice_time || invoice.time || (invoice.created_at ? new Date(invoice.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '');
+  const viewDateTime = viewTime ? `${formatDate(invoice.invoice_date)}, ${viewTime}` : formatDate(invoice.invoice_date);
+
   return (
     <div>
       <PageHeader
         title={`Invoice ${invoice.invoice_number}`}
-        subtitle={`${formatDate(invoice.invoice_date)}${invoice.due_date ? ` • Due ${formatDate(invoice.due_date)}` : ''}`}
+        subtitle={`${viewDateTime}${invoice.due_date ? ` • Due ${formatDate(invoice.due_date)}` : ''}`}
         actions={
           <div className="flex flex-wrap gap-2 print:hidden">
             <Button variant="secondary" onClick={() => navigate('/app/sales-invoices')}>

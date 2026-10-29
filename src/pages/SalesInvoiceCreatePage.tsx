@@ -106,7 +106,9 @@ export function SalesInvoiceCreatePage() {
     setCustomerId(inv.customer_id);
     setInvoiceNumber(inv.invoice_number);
     setInvoiceDate(inv.invoice_date);
-    if (inv.created_at) {
+    if ((inv as any).invoice_time || (inv as any).time) {
+      setInvoiceTime((inv as any).invoice_time || (inv as any).time);
+    } else if (inv.created_at) {
       setInvoiceTime(
         new Date(inv.created_at).toLocaleTimeString('en-IN', {
           hour: '2-digit',
@@ -316,6 +318,8 @@ export function SalesInvoiceCreatePage() {
             invoice_number: validatedNumber,
             customer_id: customerId,
             invoice_date: invoiceDate,
+            invoice_time: invoiceTime,
+            time: invoiceTime,
             created_at: combinedCreatedAt,
             due_date: dueDate || null,
             place_of_supply: selectedCustomer?.state || activeBusiness.state,
@@ -400,7 +404,11 @@ export function SalesInvoiceCreatePage() {
       if (invoiceId && combinedCreatedAt) {
         await supabase
           .from('sales_invoices')
-          .update({ created_at: combinedCreatedAt })
+          .update({
+            created_at: combinedCreatedAt,
+            invoice_time: invoiceTime,
+            time: invoiceTime,
+          })
           .eq('id', invoiceId)
           .eq('business_id', activeBusiness.id);
       }
@@ -460,6 +468,8 @@ export function SalesInvoiceCreatePage() {
     customer_id: customerId,
     invoice_number: invoiceNumber || `${activeBusiness?.invoice_prefix || 'INV'}/…/PREVIEW`,
     invoice_date: invoiceDate,
+    invoice_time: invoiceTime,
+    time: invoiceTime,
     created_at: combineDateTime(invoiceDate, invoiceTime),
     due_date: dueDate || null,
     place_of_supply: selectedCustomer?.state || activeBusiness?.state || null,

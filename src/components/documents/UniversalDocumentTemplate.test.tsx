@@ -187,6 +187,48 @@ describe('UniversalDocumentTemplate - approved GyftKart layout (directive-13)', 
     expect(render(baseData())).not.toContain('Supply Type');
   });
 
+  it('renders exact invoice_time alongside invoice_date matching form field', () => {
+    const html = render(
+      baseData({
+        date: '2026-10-26',
+        invoice_time: '04:32 pm',
+      })
+    );
+    expect(html).toContain('Date &amp; Time:');
+    expect(html).toContain('26/10/2026, 04:32 pm');
+    expect(html).not.toContain('05:30 am');
+  });
+
+  it('renders 24-hour time property cleanly in 12-hour am/pm format', () => {
+    const html = render(
+      baseData({
+        date: '2026-10-26',
+        time: '16:32',
+      })
+    );
+    expect(html).toContain('26/10/2026, 04:32 pm');
+  });
+
+  it('falls back to created_at timestamp when explicit time string is omitted', () => {
+    const html = render(
+      baseData({
+        date: '2026-10-26',
+        created_at: '2026-10-26T11:02:00.000Z',
+      })
+    );
+    expect(html).toContain('26/10/2026, 04:32 pm');
+  });
+
+  it('renders clean date only when dateVal is date-only and no time is provided', () => {
+    const html = render(
+      baseData({
+        date: '2026-10-26',
+      })
+    );
+    expect(html).toContain('26/10/2026');
+    expect(html).not.toContain('05:30 am');
+  });
+
   it('formats Place of Supply with 2-digit Indian GST State Code dynamically', () => {
     expect(formatPlaceOfSupply('Uttar Pradesh')).toBe('Uttar Pradesh (09)');
     expect(formatPlaceOfSupply('Uttar Pradesh (09)')).toBe('Uttar Pradesh (09)');

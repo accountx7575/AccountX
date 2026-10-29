@@ -107,6 +107,22 @@ describe('documentMappers', () => {
       expect(data.customer.name).toBe('ayan');
       expect(data.customer.address).toBe('123 Business Street\nBarabanki, Uttar Pradesh - 225001');
     });
+
+    it('maps invoice_time, time, and created_at to universal data', () => {
+      const invoice = {
+        invoice_number: 'ABC/SE/26-27/13',
+        invoice_date: '2026-10-26',
+        invoice_time: '04:32 pm',
+        time: '04:32 pm',
+        created_at: '2026-10-26T11:02:00.000Z',
+        customer: { name: 'Acme Corp' },
+      };
+      const data = mapSalesInvoiceToUniversalData({ name: 'Avadh Boring' }, invoice);
+      expect(data.date).toBe('2026-10-26');
+      expect(data.invoice_time).toBe('04:32 pm');
+      expect(data.time).toBe('04:32 pm');
+      expect(data.created_at).toBe('2026-10-26T11:02:00.000Z');
+    });
   });
 
   describe('mapPurchaseOrderToUniversalData', () => {
