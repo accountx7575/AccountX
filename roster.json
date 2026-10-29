@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-10-28T17:18:55.243Z",
+  "savedAt": "2026-10-29T10:35:48.621Z",
   "agents": [
     {
       "id": "god",
@@ -19,8 +19,7 @@
       "command": "opencode --model claude-opus-5-5",
       "provider": "opencode",
       "model": "claude-opus-5-5",
-      "isGod": true,
-      "lastPrompt": "/model"
+      "isGod": true
     },
     {
       "id": "oscar-mv5jajvw",
@@ -32,14 +31,14 @@
       "tmuxTarget": "",
       "cwd": "/Users/mohdsaad/Documents/Website/AccountX/project-bolt-sb1-AccountXbolt",
       "status": "idle",
-      "action": "awaiting",
+      "action": "idle",
       "progress": 0,
       "ptyId": "pty-oscar-mv5jajvw",
       "command": "opencode",
       "provider": "opencode",
       "lastPrompt": "freecontinue",
       "archived": false,
-      "currentStation": "desk"
+      "currentStation": "terminal"
     },
     {
       "id": "stanley-mv5jax01",
@@ -51,7 +50,7 @@
       "tmuxTarget": "",
       "cwd": "/Users/mohdsaad/Documents/Website/AccountX/project-bolt-sb1-AccountXbolt",
       "status": "idle",
-      "action": "awaiting",
+      "action": "idle",
       "progress": 0,
       "ptyId": "pty-stanley-mv5jax01",
       "command": "opencode",
@@ -171,15 +170,6 @@
       "lastPrompt": "continue"
     }
   ],
-  "queues": {
-    "god": [
-      {
-        "id": "q-1793187284114-105",
-        "text": "You have new hive inbox message(s): 1, printed below.\n\n[1 of 1]\nid: 2026-10-28T11-34-43-848Z-16b052\nfrom: scheduler\ntype: request (reply expected)\nwork: conv-f601d5\nsubject: Hourly ops standup\nbody:\n> Hourly ops standup. Review every agent: who is doing what, and confirm each is still running (not stalled or idle-stale). Check the task board — are in-flight tasks on track, and is anything blocked or unowned? Flag stale agents and at-risk tasks, and keep the board accurate. (As part of this standup each working agent is asked to summarise its current task and the next step, then compact and resume from the same point — so terminal contexts stay bounded without losing work. The compaction is queued and runs when an agent is idle, so it never interrupts work mid-step.)\n\nThese messages are filed for you when your turn ends: 2026-10-28T11-34-43-848Z-16b052. Do not open or move the inbox files for them. Open a file only where a path is given. Do not send a reply that only acknowledges. Act autonomously; only message god if you genuinely need a decision.",
-        "ts": 1793187284114,
-        "precondition": "inbox-nonempty"
-      }
-    ]
-  },
-  "selectedId": "god"
+  "queues": {},
+  "selectedId": "meredith-mvhtn7u1"
 }
