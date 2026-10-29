@@ -25,6 +25,7 @@ import { mergeBusinessExtras } from '@/lib/businessExtras';
 import { Modal } from '@/components/ui/Modal';
 import { useSubscriptionQuota } from '@/hooks/useSubscriptionQuota';
 import { printInvoice, exportPdfFromElement, exportInvoiceExcel, type InvoiceWithCustomer } from '@/lib/invoiceExport';
+import { updateSalesInvoiceService } from '@/services/salesInvoiceService';
 import type { Customer, Product, SalesInvoice, SalesInvoiceItem } from '@/types/db';
 
 type LineItem = {
@@ -308,9 +309,10 @@ export function SalesInvoiceCreatePage() {
         if (!validatedNumber) throw new Error(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
 
         const combinedCreatedAt = combineDateTime(invoiceDate, invoiceTime);
-        const { error: headerError } = await supabase
-          .from('sales_invoices')
-          .update({
+        await updateSalesInvoiceService({
+          businessId: biz,
+          invoiceId: editId!,
+          invoiceData: {
             invoice_number: validatedNumber,
             customer_id: customerId,
             invoice_date: invoiceDate,
@@ -330,38 +332,9 @@ export function SalesInvoiceCreatePage() {
             payment_status: paymentStatus,
             payment_method: paymentMethod || null,
             notes: notes || null,
-          })
-          .eq('business_id', biz)
-          .eq('id', editId!);
-        if (headerError) throw headerError;
-
-        const { error: clearError } = await supabase
-          .from('sales_invoice_items')
-          .delete()
-          .eq('invoice_id', editId!);
-        if (clearError) throw clearError;
-
-        const rows = items.map((it) => ({
-          invoice_id: editId!,
-          product_id: it.product_id,
-          product_name: it.product_name,
-          hsn_sac: it.hsn_sac || '',
-          quantity: it.quantity,
-          unit: it.unit || 'PCS',
-          rate: it.rate,
-          discount_amount: it.discount_amount,
-          tax_rate: it.tax_rate,
-          taxable_amount: it.taxable_amount,
-          cgst_amount: it.cgst_amount,
-          sgst_amount: it.sgst_amount,
-          igst_amount: it.igst_amount,
-          cess_amount: 0,
-          total_amount: it.total_amount,
-        }));
-        const { error: itemsError } = await supabase
-          .from('sales_invoice_items')
-          .insert(rows);
-        if (itemsError) throw itemsError;
+          },
+          items,
+        });
 
         return { invoiceId: editId!, status: loaded.invoice.status, edited: true };
       }
