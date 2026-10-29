@@ -1,12 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildSalesInvoiceItemRows, updateSalesInvoiceService } from './salesInvoiceService';
+import {
+  buildSalesInvoiceItemRows,
+  updateSalesInvoiceService,
+  issueSalesInvoiceService,
+} from './salesInvoiceService';
 
 const mockUpdate = vi.fn();
 const mockDelete = vi.fn();
 const mockInsert = vi.fn();
+const mockRpc = vi.fn();
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
+    rpc: (fn: string, params: any) => mockRpc(fn, params),
     from: (table: string) => {
       if (table === 'sales_invoices') {
         return {
@@ -16,7 +22,24 @@ vi.mock('@/lib/supabase', () => ({
               eq: (col1: string, val1: any) => ({
                 eq: (col2: string, val2: any) => ({
                   select: () => ({
-                    single: () => Promise.resolve({ data: { id: val2, ...data }, error: null }),
+                    single: () =>
+                      Promise.resolve({
+                        data: {
+                          id: val2,
+                          invoice_number: 'INV-100',
+                          customer_id: '19afa4ac-15b3-4134-9d08-6bf4e041952a',
+                          grand_total: 160000,
+                          balance_amount: 160000,
+                          items: [
+                            {
+                              product_id: '663fc922-9e4a-4520-bf1d-08b45f43c054',
+                              quantity: 1,
+                            },
+                          ],
+                          ...data,
+                        },
+                        error: null,
+                      }),
                   }),
                 }),
               }),
@@ -40,6 +63,36 @@ vi.mock('@/lib/supabase', () => ({
               select: () => Promise.resolve({ data: rows, error: null }),
             };
           },
+        };
+      }
+      if (table === 'products') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: { current_stock: 2 }, error: null }),
+            }),
+          }),
+          update: () => ({
+            eq: () => Promise.resolve({ error: null }),
+          }),
+        };
+      }
+      if (table === 'customers') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({ data: { current_balance: 0, total_sales: 0 }, error: null }),
+            }),
+          }),
+          update: () => ({
+            eq: () => Promise.resolve({ error: null }),
+          }),
+        };
+      }
+      if (table === 'stock_movements' || table === 'audit_logs') {
+        return {
+          insert: () => Promise.resolve({ error: null }),
         };
       }
       return {};
@@ -133,5 +186,38 @@ describe('salesInvoiceService', () => {
       invoice_time: '04:32 pm',
       time: '04:32 pm',
     });
+  });
+
+  it('issueSalesInvoiceService calls issue_document RPC when available', async () => {
+    mockRpc.mockResolvedValueOnce({ data: 'entry-uuid', error: null });
+
+    const res = await issueSalesInvoiceService({
+      businessId: '14c1652a-9a48-441b-be9d-6c9da6e11a95',
+      invoiceId: '4ee46ef4-a562-4c2f-a274-aefa2d738b97',
+    });
+
+    expect(res.success).toBe(true);
+    expect(mockRpc).toHaveBeenCalledWith('issue_document', {
+      p_business_id: '14c1652a-9a48-441b-be9d-6c9da6e11a95',
+      p_doc_type: 'sales_invoice',
+      p_doc_id: '4ee46ef4-a562-4c2f-a274-aefa2d738b97',
+    });
+  });
+
+  it('issueSalesInvoiceService falls back to direct table update when RPC fails with 404', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'PGRST202', message: 'Could not find the function issue_document' },
+    });
+
+    const res = await issueSalesInvoiceService({
+      businessId: '14c1652a-9a48-441b-be9d-6c9da6e11a95',
+      invoiceId: '4ee46ef4-a562-4c2f-a274-aefa2d738b97',
+    });
+
+    expect(res.success).toBe(true);
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'issued' })
+    );
   });
 });

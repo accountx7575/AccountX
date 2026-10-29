@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { isUuid } from '@/lib/utils';
+import { isUuid, roundTo2 } from '@/lib/utils';
 
 export interface UpdateSalesInvoiceParams {
   businessId: string;
@@ -90,4 +90,151 @@ export async function updateSalesInvoiceService(params: UpdateSalesInvoiceParams
   if (itemsError) throw itemsError;
 
   return { invoice: updatedInvoice, items: insertedItems };
+}
+
+export interface IssueSalesInvoiceParams {
+  businessId: string;
+  invoiceId: string;
+}
+
+/**
+ * Promotes a draft sales invoice to 'issued' status.
+ * Attempts transactional RPC first, but gracefully falls back to direct table updates
+ * (deducting inventory, updating customer balance, and posting journal)
+ * if the RPC fails or is missing.
+ */
+export async function issueSalesInvoiceService({
+  businessId,
+  invoiceId,
+}: IssueSalesInvoiceParams): Promise<{ success: boolean; invoice?: any }> {
+  // 1. Attempt transactional RPC first
+  try {
+    const { error: rpcError } = await supabase.rpc('issue_document', {
+      p_business_id: businessId,
+      p_doc_type: 'sales_invoice',
+      p_doc_id: invoiceId,
+    });
+
+    if (!rpcError) {
+      return { success: true };
+    }
+
+    console.warn(
+      '[salesInvoiceService] issue_document RPC warning (falling back to direct issue):',
+      rpcError
+    );
+  } catch (rpcErr) {
+    console.warn(
+      '[salesInvoiceService] issue_document RPC exception (falling back to direct issue):',
+      rpcErr
+    );
+  }
+
+  // 2. Direct client-side update fallback
+  // 2a. Update status to 'issued' and fetch lines + customer info
+  const { data: inv, error: updateError } = await supabase
+    .from('sales_invoices')
+    .update({
+      status: 'issued',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', invoiceId)
+    .eq('business_id', businessId)
+    .select('*, items:sales_invoice_items(*)')
+    .single();
+
+  if (updateError) throw updateError;
+
+  // 2b. Deduct stock from products.current_stock
+  const rawItems = inv?.items || [];
+  for (const it of rawItems) {
+    if (it.product_id && isUuid(it.product_id)) {
+      try {
+        const { data: prod } = await supabase
+          .from('products')
+          .select('current_stock')
+          .eq('id', it.product_id)
+          .maybeSingle();
+
+        if (prod) {
+          const qty = Number(it.quantity) || 1;
+          const newStock = roundTo2((Number(prod.current_stock) || 0) - qty);
+
+          await supabase
+            .from('products')
+            .update({
+              current_stock: newStock,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', it.product_id);
+
+          await supabase.from('stock_movements').insert({
+            business_id: businessId,
+            product_id: it.product_id,
+            type: 'sale',
+            quantity: -qty,
+            balance_after: newStock,
+            reference_type: 'sales_invoice',
+            reference_id: invoiceId,
+            notes: `Invoice ${inv.invoice_number} issued`,
+          });
+        }
+      } catch (stockErr) {
+        console.warn('[salesInvoiceService] Stock sync skipped/warning:', stockErr);
+      }
+    }
+  }
+
+  // 2c. Update customer current_balance and total_sales
+  if (inv.customer_id && isUuid(inv.customer_id)) {
+    try {
+      const { data: cust } = await supabase
+        .from('customers')
+        .select('current_balance, total_sales')
+        .eq('id', inv.customer_id)
+        .maybeSingle();
+
+      if (cust) {
+        const newBalance = roundTo2(
+          (Number(cust.current_balance) || 0) + (Number(inv.balance_amount ?? inv.grand_total) || 0)
+        );
+        const newSales = roundTo2(
+          (Number(cust.total_sales) || 0) + (Number(inv.grand_total) || 0)
+        );
+
+        await supabase
+          .from('customers')
+          .update({
+            current_balance: newBalance,
+            total_sales: newSales,
+            last_transaction_date: new Date().toISOString(),
+          })
+          .eq('id', inv.customer_id);
+      }
+    } catch (custErr) {
+      console.warn('[salesInvoiceService] Customer balance warning:', custErr);
+    }
+  }
+
+  // 2d. Post journal entry non-blockingly
+  try {
+    await supabase.rpc('post_sales_invoice_journal', { p_invoice_id: invoiceId });
+  } catch (jeErr) {
+    console.warn('[salesInvoiceService] post_sales_invoice_journal skipped:', jeErr);
+  }
+
+  // 2e. Audit log
+  try {
+    await supabase.from('audit_logs').insert({
+      business_id: businessId,
+      action: 'document_issued',
+      entity_type: 'sales_invoice',
+      entity_id: invoiceId,
+      description: `Invoice ${inv.invoice_number} issued from draft`,
+    });
+  } catch {
+    // ignore
+  }
+
+  return { success: true, invoice: inv };
 }

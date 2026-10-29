@@ -19,6 +19,7 @@ import { fetchInvoiceItems, exportInvoiceExcel } from '@/lib/invoiceExport';
 import { printDocument, downloadDocumentPdf } from '@/lib/documentActions';
 import { EWayBillModal } from '@/components/eway/EWayBillModal';
 import { openWhatsAppShare } from '@/lib/whatsapp';
+import { issueSalesInvoiceService } from '@/services/salesInvoiceService';
 import type { Customer } from '@/types/db';
 import type { SalesInvoice } from '@/types/db';
 
@@ -111,12 +112,10 @@ export function SalesInvoicesPage() {
   const issueDraftMutation = useMutation({
     mutationFn: async (id: string) => {
       if (!activeBusiness) throw new Error('No business selected');
-      const { error } = await supabase.rpc('issue_document', {
-        p_business_id: activeBusiness.id,
-        p_doc_type: 'sales_invoice',
-        p_doc_id: id,
+      await issueSalesInvoiceService({
+        businessId: activeBusiness.id,
+        invoiceId: id,
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       ['sales-invoices', 'products', 'journal-entries', 'accounts', 'trial-balance', 'dashboard-stats'].forEach((k) =>
