@@ -17,7 +17,7 @@ import { TimePicker } from '@/components/common/TimePicker';
 import { Input } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { Plus, Trash2, Save, ArrowLeft, ScanText, Upload } from 'lucide-react';
-import { formatCurrency, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
+import { formatCurrency, formatRoundOff, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
 import { computeDocLine } from '@/lib/payloads';
 import { extractBillText } from '@/lib/billTextExtractor';
 import { parseBillText } from '@/lib/billParser';
@@ -750,7 +750,7 @@ export function PurchaseBillCreatePage() {
                   <div className="flex justify-between text-sm"><span className="text-secondary-500">SGST</span><span className="figure">{formatCurrency(totals.sgst, sym)}</span></div>
                 </>
               )}
-              {totals.roundOff !== 0 && <div className="flex justify-between text-sm"><span className="text-secondary-500">Round Off</span><span className="figure">{formatCurrency(totals.roundOff, sym)}</span></div>}
+              {totals.roundOff !== 0 && <div className="flex justify-between text-sm"><span className="text-secondary-500">Round Off</span><span className="figure">{formatRoundOff(totals.roundOff, sym)}</span></div>}
               <div className="border-t border-secondary-200 dark:border-secondary-800 pt-2 flex justify-between items-baseline">
                 <span className="text-base font-semibold">Grand Total</span>
                 <span className="figure text-xl font-bold text-primary-600 dark:text-primary-400">{formatCurrency(totals.grandTotal, sym)}</span>

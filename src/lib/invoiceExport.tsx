@@ -1,5 +1,5 @@
 import type { Business, Customer, SalesInvoice, SalesInvoiceItem } from '@/types/db';
-import { formatDate, formatCurrency, formatNumber } from '@/lib/utils';
+import { formatDate, formatCurrency, formatNumber, formatRoundOff } from '@/lib/utils';
 import { captureElementToPdf } from '@/lib/pdfCapture';
 
 /** Invoice record joined with its customer (the shape the invoice pages carry). */
@@ -92,6 +92,9 @@ export function exportInvoiceExcel(
     Number(invoice.cgst_amount) + Number(invoice.sgst_amount) + Number(invoice.igst_amount) + Number(invoice.cess_amount);
   lines.push(['Subtotal', formatCurrency(Number(invoice.subtotal), sym)].map(csvCell).join(','));
   lines.push(['Total Tax', formatCurrency(totalTax, sym)].map(csvCell).join(','));
+  if (invoice.round_off !== undefined && invoice.round_off !== null && Number(invoice.round_off) !== 0) {
+    lines.push(['Round Off', formatRoundOff(Number(invoice.round_off), sym)].map(csvCell).join(','));
+  }
   lines.push(['Grand Total', formatCurrency(Number(invoice.grand_total), sym)].map(csvCell).join(','));
 
   const csv = '\uFEFF' + lines.join('\r\n');

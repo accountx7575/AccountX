@@ -421,6 +421,36 @@ describe('UniversalDocumentTemplate - approved GyftKart layout (directive-13)', 
     expect(html).toContain('- ₹50.00');
   });
 
+  it('renders Round Off row with formatted value when round_off or roundOff is provided', () => {
+    // Negative round off (-₹0.05)
+    const htmlNeg = render(baseData({ subtotal: 152381, tax: 7619.05, round_off: -0.05, totalAmount: 160000 }));
+    expect(htmlNeg).toContain('Round Off:');
+    expect(htmlNeg).toContain('-₹0.05');
+    expect(htmlNeg).toContain('Grand Total (INR):');
+    expect(htmlNeg).toContain('₹1,60,000.00');
+
+    // Sequence verification: Subtotal -> CGST -> SGST -> Round Off -> Grand Total
+    const subIdx = htmlNeg.indexOf('Subtotal (Taxable Value):');
+    const cgstIdx = htmlNeg.indexOf('Central GST');
+    const sgstIdx = htmlNeg.indexOf('State GST');
+    const roundIdx = htmlNeg.indexOf('Round Off:');
+    const grandIdx = htmlNeg.indexOf('Grand Total (INR):');
+    expect(subIdx).toBeGreaterThan(-1);
+    expect(cgstIdx).toBeGreaterThan(subIdx);
+    expect(sgstIdx).toBeGreaterThan(cgstIdx);
+    expect(roundIdx).toBeGreaterThan(sgstIdx);
+    expect(grandIdx).toBeGreaterThan(roundIdx);
+
+    // Positive round off (+₹0.48)
+    const htmlPos = render(baseData({ subtotal: 1000, tax: 180, roundOff: 0.48, totalAmount: 1180.48 }));
+    expect(htmlPos).toContain('Round Off:');
+    expect(htmlPos).toContain('+₹0.48');
+
+    // Omits when 0
+    const htmlZero = render(baseData({ subtotal: 1000, tax: 180, round_off: 0, totalAmount: 1180 }));
+    expect(htmlZero).not.toContain('Round Off:');
+  });
+
   it('renders the authorized signatory block', () => {
     const html = render(baseData());
     expect(html).toContain('Authorized Signatory');

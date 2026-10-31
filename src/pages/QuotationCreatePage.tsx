@@ -17,7 +17,7 @@ import { TimePicker } from '@/components/common/TimePicker';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { ArrowLeft, Save, X } from 'lucide-react';
-import { formatCurrency, roundTo2, getLocalNowTime, combineDateTime } from '@/lib/utils';
+import { formatCurrency, formatRoundOff, roundTo2, getLocalNowTime, combineDateTime } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
 import type { Customer, Product, Quotation, QuotationItem } from '@/types/db';
 
@@ -178,13 +178,17 @@ export function QuotationCreatePage() {
       sgst += gst.sgst_amount;
       igst += gst.igst_amount;
     }
-    const grandTotal = roundTo2(roundTo2(taxableAmount) + roundTo2(cgst + sgst + igst));
+    const totalTax = roundTo2(cgst + sgst + igst);
+    const grandBeforeRound = roundTo2(taxableAmount + totalTax);
+    const roundOff = roundTo2(Math.round(grandBeforeRound) - grandBeforeRound);
+    const grandTotal = roundTo2(grandBeforeRound + roundOff);
     return {
       subtotal: roundTo2(taxableAmount),
       taxableAmount: roundTo2(taxableAmount),
       cgst: roundTo2(cgst),
       sgst: roundTo2(sgst),
       igst: roundTo2(igst),
+      roundOff,
       grandTotal,
     };
   }, [lines, isInterState]);
@@ -234,6 +238,7 @@ export function QuotationCreatePage() {
             cgst_amount: totals.cgst,
             sgst_amount: totals.sgst,
             igst_amount: totals.igst,
+            round_off: totals.roundOff,
             grand_total: totals.grandTotal,
             notes: notes.trim() || null,
           })
@@ -295,7 +300,7 @@ export function QuotationCreatePage() {
               sgst_amount: totals.sgst,
               igst_amount: totals.igst,
               cess_amount: 0,
-              round_off: 0,
+              round_off: totals.roundOff,
               grand_total: totals.grandTotal,
               status: 'draft',
               notes: notes.trim() || null,
@@ -563,6 +568,12 @@ export function QuotationCreatePage() {
                   <div className="flex justify-between">
                     <span className="text-secondary-500">IGST</span>
                     <span className="figure">{formatCurrency(totals.igst, sym)}</span>
+                  </div>
+                )}
+                {totals.roundOff !== 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-secondary-500">Round Off</span>
+                    <span className="figure">{formatRoundOff(totals.roundOff, sym)}</span>
                   </div>
                 )}
                 <div className="flex justify-between font-semibold border-t border-secondary-200 dark:border-secondary-700 pt-1 mt-1">

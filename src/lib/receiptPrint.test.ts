@@ -91,6 +91,24 @@ describe('receiptPrint', () => {
     expect(html).toContain('Unallocated / Balance');
   });
 
+  it('renders Round Off row when payment has round_off or roundOff', () => {
+    const paymentWithRoundOff = {
+      ...payment,
+      round_off: -0.05,
+    };
+    const html = generateReceiptHtml(paymentWithRoundOff, business);
+    expect(html).toContain('Round Off:');
+    expect(html).toContain('-₹0.05');
+
+    const paymentWithPosRoundOff = {
+      ...payment,
+      roundOff: 0.48,
+    };
+    const htmlPos = generateReceiptHtml(paymentWithPosRoundOff, business);
+    expect(htmlPos).toContain('Round Off:');
+    expect(htmlPos).toContain('+₹0.48');
+  });
+
   it('formats top-right metadata block into clean single lines with Receipt Date & Time in 12-hour format', () => {
     const paymentWithTimestamp = {
       ...payment,

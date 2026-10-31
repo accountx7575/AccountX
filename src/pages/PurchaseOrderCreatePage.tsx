@@ -17,7 +17,7 @@ import { TimePicker } from '@/components/common/TimePicker';
 import { Input, FormField, Textarea } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { ArrowLeft, Save, Trash2, Plus } from 'lucide-react';
-import { formatCurrency, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
+import { formatCurrency, formatRoundOff, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
 import { computeDocLine } from '@/lib/payloads';
 import type { Supplier, Product, PurchaseOrder, PurchaseOrderItem } from '@/types/db';
@@ -199,8 +199,11 @@ export function PurchaseOrderCreatePage() {
       sgst += line.sgst_amount;
       igst += line.igst_amount;
     }
-    const grandTotal = roundTo2(roundTo2(taxableAmount) + roundTo2(cgst + sgst + igst));
-    return { subtotal: roundTo2(subtotal), totalDiscount: roundTo2(totalDiscount), taxableAmount: roundTo2(taxableAmount), cgst: roundTo2(cgst), sgst: roundTo2(sgst), igst: roundTo2(igst), grandTotal };
+    const totalTax = roundTo2(cgst + sgst + igst);
+    const grandBeforeRound = roundTo2(taxableAmount + totalTax);
+    const roundOff = roundTo2(Math.round(grandBeforeRound) - grandBeforeRound);
+    const grandTotal = roundTo2(grandBeforeRound + roundOff);
+    return { subtotal: roundTo2(subtotal), totalDiscount: roundTo2(totalDiscount), taxableAmount: roundTo2(taxableAmount), cgst: roundTo2(cgst), sgst: roundTo2(sgst), igst: roundTo2(igst), roundOff, grandTotal };
   }, [lines, isInterState]);
 
   const docNumber = useDocumentNumber({
@@ -246,7 +249,7 @@ export function PurchaseOrderCreatePage() {
             sgst_amount: totals.sgst,
             igst_amount: totals.igst,
             cess_amount: 0,
-            round_off: 0,
+            round_off: totals.roundOff,
             grand_total: totals.grandTotal,
             notes: notes || null,
           })
@@ -323,7 +326,7 @@ export function PurchaseOrderCreatePage() {
           sgst_amount: totals.sgst,
           igst_amount: totals.igst,
           cess_amount: 0,
-          round_off: 0,
+          round_off: totals.roundOff,
           grand_total: totals.grandTotal,
           status: 'draft',
           notes: notes || null,
@@ -592,6 +595,12 @@ export function PurchaseOrderCreatePage() {
                     <span className="figure">{formatCurrency(totals.sgst, sym)}</span>
                   </div>
                 </>
+              )}
+              {totals.roundOff !== 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-secondary-500">Round Off</span>
+                  <span className="figure">{formatRoundOff(totals.roundOff, sym)}</span>
+                </div>
               )}
               <div className="border-t border-secondary-200 dark:border-secondary-800 pt-2 flex justify-between items-baseline">
                 <span className="text-base font-semibold">Grand Total</span>

@@ -166,6 +166,7 @@ export interface UniversalDocumentData {
   isIntraState?: boolean;
   discount?: number;
   roundOff?: number;
+  round_off?: number;
   totalAmount: number;
   grandTotal?: number;
 
@@ -183,6 +184,21 @@ export const inrDecimal = (val: number = 0): string => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(val || 0));
+};
+
+export const formatRoundOff = (
+  val: number | string | null | undefined,
+  currency = '₹'
+): string => {
+  const num = Number(val || 0);
+  if (isNaN(num) || Math.abs(num) < 0.0001) return `${currency}0.00`;
+  const formatted = new Intl.NumberFormat('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(num));
+  if (num > 0) return `+${currency}${formatted}`;
+  if (num < 0) return `-${currency}${formatted}`;
+  return `${currency}0.00`;
 };
 
 export function numberToWordsINR(num: number): string {
@@ -727,6 +743,22 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
   const sgstAmount = isIntraState ? (data.sgstAmount ?? (totalTax / 2)) : 0;
   const igstAmount = !isIntraState ? (data.igstAmount ?? totalTax) : 0;
 
+  const rawRoundOff = data.roundOff !== undefined ? data.roundOff : data.round_off;
+  const inferredRoundOff =
+    totalTax > 0 || subtotal > 0
+      ? Number((totalAmount - (subtotal + totalTax - Number(data.discount || 0))).toFixed(2))
+      : 0;
+  const roundOff =
+    rawRoundOff !== undefined && rawRoundOff !== null && Number(rawRoundOff) !== 0
+      ? Number(rawRoundOff)
+      : Math.abs(inferredRoundOff) > 0.001 && Math.abs(inferredRoundOff) < 1
+      ? inferredRoundOff
+      : Number(rawRoundOff || 0);
+
+  const hasRoundOff =
+    (rawRoundOff !== undefined && rawRoundOff !== null && Number(rawRoundOff) !== 0) ||
+    (Math.abs(inferredRoundOff) > 0.001 && Math.abs(inferredRoundOff) < 1);
+
   return (
     <div
       id={id}
@@ -1119,6 +1151,12 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
             <div className="flex justify-between py-1 text-emerald-600 font-semibold">
               <span className="font-sans">Discount:</span>
               <span>- ₹{inrDecimal(data.discount)}</span>
+            </div>
+          ) : null}
+          {hasRoundOff ? (
+            <div className="flex justify-between py-1 text-slate-500">
+              <span className="font-sans">Round Off:</span>
+              <span>{formatRoundOff(roundOff)}</span>
             </div>
           ) : null}
           <div className="flex justify-between items-center rounded-xl bg-emerald-50/70 border border-emerald-200 p-3 font-sans mt-3">

@@ -1,8 +1,10 @@
-import { formatCurrency, formatDate, amountInWordsIndian } from '@/lib/utils';
+import { formatCurrency, formatDate, amountInWordsIndian, formatRoundOff } from '@/lib/utils';
 import { formatAadhaar } from '@/lib/validation';
 import { extractBankDetails } from '@/lib/documentMappers';
 import { resolveTermsLines, tncLines, STANDARD_TNC_DEFAULTS } from '@/lib/tncDefaults';
 import type { Payment } from '@/types/db';
+
+export { formatRoundOff };
 
 export interface PaymentReceiptParty {
   name: string;
@@ -1167,6 +1169,12 @@ export function generateReceiptHtml(
             <span>Unallocated / Balance:</span>
             <span class="val">${unapplied > 0 ? formatCurrency(unapplied, sym) : '—'}</span>
           </div>
+          ${((payment.round_off !== undefined && payment.round_off !== null && Number(payment.round_off) !== 0) || (payment.roundOff !== undefined && payment.roundOff !== null && Number(payment.roundOff) !== 0)) ? `
+          <div class="total-line">
+            <span>Round Off:</span>
+            <span class="val">${formatRoundOff(payment.round_off ?? payment.roundOff, sym)}</span>
+          </div>
+          ` : ''}
           <div class="grand-total-bar">
             <span class="grand-total-label">${isVoucher ? 'Total Paid (INR):' : 'Total Received (INR):'}</span>
             <span class="grand-total-val">${formatCurrency(amount, sym)}</span>

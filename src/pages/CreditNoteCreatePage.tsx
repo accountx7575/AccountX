@@ -17,7 +17,7 @@ import {
   useDocumentNumber,
 } from '@/components/documents/DocumentNumberField';
 import { ArrowLeft, Save } from 'lucide-react';
-import { formatCurrency, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
+import { formatCurrency, formatRoundOff, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
 import { calculateGstAmounts } from '@/lib/accounting';
 import type { SalesInvoiceItem } from '@/types/db';
 
@@ -105,13 +105,18 @@ export function CreditNoteCreatePage() {
       sgst += gst.sgst_amount;
       igst += gst.igst_amount;
     }
-    const grandTotal = roundTo2(roundTo2(taxableAmount) + roundTo2(cgst + sgst + igst));
+    const totalTax = roundTo2(cgst + sgst + igst);
+    const grandBeforeRound = roundTo2(taxableAmount + totalTax);
+    const roundOff = roundTo2(Math.round(grandBeforeRound) - grandBeforeRound);
+    const grandTotal = roundTo2(grandBeforeRound + roundOff);
     return {
       subtotal: roundTo2(taxableAmount),
       taxableAmount: roundTo2(taxableAmount),
       cgst: roundTo2(cgst),
       sgst: roundTo2(sgst),
       igst: roundTo2(igst),
+      totalTax,
+      roundOff,
       grandTotal,
     };
   }, [lines, isInterState]);
@@ -164,7 +169,7 @@ export function CreditNoteCreatePage() {
         sgst_amount: totals.sgst,
         igst_amount: totals.igst,
         cess_amount: 0,
-        round_off: 0,
+        round_off: totals.roundOff,
         grand_total: totals.grandTotal,
         created_by: userData.user?.id,
       }).select('id').single();
@@ -285,6 +290,12 @@ export function CreditNoteCreatePage() {
               <div className="w-full sm:w-72 space-y-1 text-sm">
                 <div className="flex justify-between"><span className="text-secondary-500">Taxable</span><span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span></div>
                 <div className="flex justify-between"><span className="text-secondary-500">{isInterState ? 'IGST' : 'CGST + SGST'}</span><span className="figure">{formatCurrency(isInterState ? totals.igst : roundTo2(totals.cgst + totals.sgst), sym)}</span></div>
+                {totals.roundOff !== 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-secondary-500">Round Off</span>
+                    <span className="figure">{formatRoundOff(totals.roundOff, sym)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-semibold border-t border-secondary-200 dark:border-secondary-700 pt-1 mt-1"><span>Credit Total</span><span className="figure text-primary-600 dark:text-primary-400">{formatCurrency(totals.grandTotal, sym)}</span></div>
               </div>
             )}

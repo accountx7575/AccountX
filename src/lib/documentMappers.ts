@@ -98,6 +98,7 @@ export interface TaxCalculationResult {
   sgstAmount: number;
   igstAmount: number;
   totalTax: number;
+  roundOff?: number;
   grandTotal: number;
   isIntraState: boolean;
   amountInWords: string;
@@ -453,6 +454,12 @@ export function calculateDocumentTotals(
     (subtotal + totalTax)
   ));
 
+  const explicitRoundOff = doc?.round_off !== undefined ? doc.round_off : doc?.roundOff;
+  const inferredRoundOff = roundTo2(grandTotal - (subtotal + totalTax - Number(doc?.discount_amount || doc?.discount || 0)));
+  const roundOff = explicitRoundOff !== undefined && explicitRoundOff !== null && Number(explicitRoundOff) !== 0
+    ? Number(explicitRoundOff)
+    : (Math.abs(inferredRoundOff) > 0.001 && Math.abs(inferredRoundOff) < 1 ? inferredRoundOff : Number(explicitRoundOff || 0));
+
   const amountInWords = numberToWordsINR(grandTotal);
 
   return {
@@ -463,6 +470,7 @@ export function calculateDocumentTotals(
     sgstAmount,
     igstAmount,
     totalTax,
+    roundOff,
     grandTotal,
     isIntraState,
     amountInWords,
@@ -600,7 +608,8 @@ export function mapSalesOrderToUniversalData(
     igst: totals.igstAmount,
     isIntraState: totals.isIntraState,
     discount: Number(order?.discount_amount || order?.discount || 0),
-    roundOff: Number(order?.round_off || 0),
+    roundOff: Number(order?.round_off ?? totals.roundOff ?? 0),
+    round_off: Number(order?.round_off ?? totals.roundOff ?? 0),
     totalAmount: totals.grandTotal,
     grandTotal: totals.grandTotal,
     amountInWords: totals.amountInWords,
@@ -743,7 +752,8 @@ export function mapSalesInvoiceToUniversalData(
     igst: totals.igstAmount,
     isIntraState: totals.isIntraState,
     discount: Number(invoice?.discount_amount || invoice?.discount || 0),
-    roundOff: Number(invoice?.round_off || 0),
+    roundOff: Number(invoice?.round_off ?? totals.roundOff ?? 0),
+    round_off: Number(invoice?.round_off ?? totals.roundOff ?? 0),
     totalAmount: totals.grandTotal,
     grandTotal: totals.grandTotal,
     amountInWords: totals.amountInWords,
@@ -887,7 +897,8 @@ export function mapQuotationToUniversalData(
     igst: totals.igstAmount,
     isIntraState: totals.isIntraState,
     discount: Number(quote?.discount_amount || quote?.discount || 0),
-    roundOff: Number(quote?.round_off || 0),
+    roundOff: Number(quote?.round_off ?? totals.roundOff ?? 0),
+    round_off: Number(quote?.round_off ?? totals.roundOff ?? 0),
     totalAmount: totals.grandTotal,
     grandTotal: totals.grandTotal,
     amountInWords: totals.amountInWords,
@@ -1020,7 +1031,8 @@ export function mapPurchaseOrderToUniversalData(
     igst: totals.igstAmount,
     isIntraState: totals.isIntraState,
     discount: Number(order?.discount_amount || order?.discount || 0),
-    roundOff: Number(order?.round_off || 0),
+    roundOff: Number(order?.round_off ?? totals.roundOff ?? 0),
+    round_off: Number(order?.round_off ?? totals.roundOff ?? 0),
     totalAmount: totals.grandTotal,
     grandTotal: totals.grandTotal,
     amountInWords: totals.amountInWords,
@@ -1128,7 +1140,8 @@ export function mapPurchaseBillToUniversalData(
     igst: totals.igstAmount,
     isIntraState: totals.isIntraState,
     discount: Number(bill?.discount_amount || bill?.discount || 0),
-    roundOff: Number(bill?.round_off || 0),
+    roundOff: Number(bill?.round_off ?? totals.roundOff ?? 0),
+    round_off: Number(bill?.round_off ?? totals.roundOff ?? 0),
     totalAmount: totals.grandTotal,
     grandTotal: totals.grandTotal,
     amountInWords: totals.amountInWords,

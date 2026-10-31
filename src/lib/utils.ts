@@ -246,3 +246,23 @@ export function debounce<T extends (...args: any[]) => void>(fn: T, delay: numbe
     timeoutId = setTimeout(() => fn(...args), delay);
   }) as T;
 }
+
+/**
+ * Format round off value according to standard accounting conventions:
+ * e.g., -₹0.05, +₹0.48, or ₹0.00
+ */
+export function formatRoundOff(
+  val: number | string | null | undefined,
+  currency = '₹'
+): string {
+  const num = Number(val || 0);
+  if (isNaN(num) || Math.abs(num) < 0.0001) return `${currency}0.00`;
+  const formatted = new Intl.NumberFormat('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(num));
+  if (num > 0) return `+${currency}${formatted}`;
+  if (num < 0) return `-${currency}${formatted}`;
+  return `${currency}0.00`;
+}
+

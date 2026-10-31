@@ -251,6 +251,35 @@ describe('documentMappers', () => {
       expect(data.amountInWords).toBe('Twenty Three Thousand Six Hundred Rupees Only');
     });
 
+    it('maps explicit and inferred round_off correctly across documents', () => {
+      // 1. Explicit round_off
+      const invoice = {
+        invoice_number: 'ABC/SE/26-27/13',
+        subtotal: 152381,
+        taxable_amount: 152381,
+        cgst_amount: 3809.53,
+        sgst_amount: 3809.52,
+        round_off: -0.05,
+        grand_total: 160000,
+      };
+      const data = mapSalesInvoiceToUniversalData(business, invoice, []);
+      expect(data.roundOff).toBe(-0.05);
+      expect(data.round_off).toBe(-0.05);
+      expect(data.totalAmount).toBe(160000);
+
+      // 2. Inferred round_off when round_off is omitted but total balances
+      const quote = {
+        quotation_number: 'QT-001',
+        subtotal: 100,
+        cgst_amount: 2.5,
+        sgst_amount: 2.5,
+        grand_total: 105.48, // round off was +0.48
+      };
+      const quoteData = mapQuotationToUniversalData(business, quote, []);
+      expect(quoteData.roundOff).toBe(0.48);
+      expect(quoteData.round_off).toBe(0.48);
+    });
+
     it('falls back to calculated totals when grand_total or total_amount is 0 or missing in doc', () => {
       const quote = {
         quotation_number: 'QT-999',

@@ -17,7 +17,7 @@ import { TimePicker } from '@/components/common/TimePicker';
 import { Input } from '@/components/ui/Input';
 import { FormSection } from '@/components/ui/FormSection';
 import { Plus, Trash2, Save, ArrowLeft, Printer, FileText, FileSpreadsheet, Rocket, Loader2 } from 'lucide-react';
-import { formatCurrency, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
+import { formatCurrency, formatRoundOff, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
 import { computeDocLine } from '@/lib/payloads';
 import { UniversalDocumentTemplate } from '@/components/documents/UniversalDocumentTemplate';
 import { mapSalesInvoiceToUniversalData } from '@/lib/documentMappers';
@@ -536,7 +536,7 @@ export function SalesInvoiceCreatePage() {
       {totals.roundOff !== 0 && (
         <div className="flex justify-between text-sm">
           <span className="text-secondary-500">Round Off</span>
-          <span className="figure">{formatCurrency(totals.roundOff, sym)}</span>
+          <span className="figure">{formatRoundOff(totals.roundOff, sym)}</span>
         </div>
       )}
       <div className="border-t border-secondary-200 dark:border-secondary-800 pt-2 flex justify-between items-baseline">
