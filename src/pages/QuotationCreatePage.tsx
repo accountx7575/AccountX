@@ -181,7 +181,7 @@ export function QuotationCreatePage() {
     const totalTax = roundTo2(cgst + sgst + igst);
     const grandBeforeRound = roundTo2(taxableAmount + totalTax);
     const roundOff = roundTo2(Math.round(grandBeforeRound) - grandBeforeRound);
-    const grandTotal = roundTo2(grandBeforeRound + roundOff);
+    const grandTotal = Math.round(grandBeforeRound + roundOff);
     return {
       subtotal: roundTo2(taxableAmount),
       taxableAmount: roundTo2(taxableAmount),
@@ -553,7 +553,7 @@ export function QuotationCreatePage() {
             {totals.grandTotal > 0 && (
               <div className="w-full md:w-80 md:ml-auto space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-secondary-500">Taxable</span>
+                  <span className="text-secondary-500">Subtotal (Taxable Value)</span>
                   <span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span>
                 </div>
                 <div className="flex justify-between">
@@ -577,7 +577,7 @@ export function QuotationCreatePage() {
                   </div>
                 )}
                 <div className="flex justify-between font-semibold border-t border-secondary-200 dark:border-secondary-700 pt-1 mt-1">
-                  <span>Total</span>
+                  <span>Grand Total</span>
                   <span className="figure text-primary-600 dark:text-primary-400">
                     {formatCurrency(totals.grandTotal, sym)}
                   </span>

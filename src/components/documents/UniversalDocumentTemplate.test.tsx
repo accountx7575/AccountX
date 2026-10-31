@@ -449,6 +449,34 @@ describe('UniversalDocumentTemplate - approved GyftKart layout (directive-13)', 
     // Omits when 0
     const htmlZero = render(baseData({ subtotal: 1000, tax: 180, round_off: 0, totalAmount: 1180 }));
     expect(htmlZero).not.toContain('Round Off:');
+
+    // Dynamic on-the-fly rounding when document has unrounded grand_total (160000.05)
+    const htmlUnroundedQuote = render(baseData({
+      documentType: 'QUOTATION',
+      documentNumber: 'QT/ABC/SE/26-27/1',
+      subtotal: 152381,
+      tax: 7619.05,
+      totalAmount: 160000.05,
+    }));
+    expect(htmlUnroundedQuote).toContain('Round Off:');
+    expect(htmlUnroundedQuote).toContain('-₹0.05');
+    expect(htmlUnroundedQuote).toContain('Grand Total (INR):');
+    expect(htmlUnroundedQuote).toContain('₹1,60,000.00');
+    expect(htmlUnroundedQuote).not.toContain('₹1,60,000.05');
+
+    // Dynamic on-the-fly rounding for Sales Order SO/ABC/SE/26-27/1
+    const htmlUnroundedOrder = render(baseData({
+      documentType: 'SALES_ORDER',
+      documentNumber: 'SO/ABC/SE/26-27/1',
+      subtotal: 152381,
+      tax: 7619.05,
+      totalAmount: 160000.05,
+    }));
+    expect(htmlUnroundedOrder).toContain('Round Off:');
+    expect(htmlUnroundedOrder).toContain('-₹0.05');
+    expect(htmlUnroundedOrder).toContain('Grand Total (INR):');
+    expect(htmlUnroundedOrder).toContain('₹1,60,000.00');
+    expect(htmlUnroundedOrder).not.toContain('₹1,60,000.05');
   });
 
   it('renders the authorized signatory block', () => {

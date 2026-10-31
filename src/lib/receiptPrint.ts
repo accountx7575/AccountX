@@ -899,10 +899,16 @@ export function generateReceiptHtml(
   }
 
   const amount = Number(payment.amount) || 0;
+  const rawPaymentRoundOff = payment.round_off !== undefined ? payment.round_off : (payment.roundOff !== undefined ? payment.roundOff : (payment as any)?.roundoff);
+  const autoPaymentRoundOff = Number((Math.round(amount) - amount).toFixed(2));
+  const paymentRoundOff = rawPaymentRoundOff !== undefined && rawPaymentRoundOff !== null && Number(rawPaymentRoundOff) !== 0
+    ? Number(rawPaymentRoundOff)
+    : (Math.abs(autoPaymentRoundOff) > 0.0001 ? autoPaymentRoundOff : 0);
+  const finalReceiptTotal = Math.round(amount + paymentRoundOff);
   const allocated = Number(payment.allocated_amount) || 0;
   const unapplied = Math.max(0, amount - allocated);
   const methodLabel = (payment.payment_method || 'cash').toUpperCase().replace('_', ' ');
-  const amountInWords = amountInWordsIndian(amount);
+  const amountInWords = amountInWordsIndian(finalReceiptTotal);
   const receiptDateTimeStr = formatReceiptDateTime(
     payment.payment_date || (payment as any).invoice_date || payment.date,
     payment.created_at,
@@ -1169,15 +1175,15 @@ export function generateReceiptHtml(
             <span>Unallocated / Balance:</span>
             <span class="val">${unapplied > 0 ? formatCurrency(unapplied, sym) : '—'}</span>
           </div>
-          ${((payment.round_off !== undefined && payment.round_off !== null && Number(payment.round_off) !== 0) || (payment.roundOff !== undefined && payment.roundOff !== null && Number(payment.roundOff) !== 0)) ? `
+          ${paymentRoundOff !== 0 ? `
           <div class="total-line">
             <span>Round Off:</span>
-            <span class="val">${formatRoundOff(payment.round_off ?? payment.roundOff, sym)}</span>
+            <span class="val">${formatRoundOff(paymentRoundOff, sym)}</span>
           </div>
           ` : ''}
           <div class="grand-total-bar">
             <span class="grand-total-label">${isVoucher ? 'Total Paid (INR):' : 'Total Received (INR):'}</span>
-            <span class="grand-total-val">${formatCurrency(amount, sym)}</span>
+            <span class="grand-total-val">${formatCurrency(finalReceiptTotal, sym)}</span>
           </div>
         </div>
       </div>

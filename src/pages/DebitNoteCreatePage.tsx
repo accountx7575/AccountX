@@ -108,7 +108,7 @@ export function DebitNoteCreatePage() {
     const totalTax = roundTo2(cgst + sgst + igst);
     const grandBeforeRound = roundTo2(taxableAmount + totalTax);
     const roundOff = roundTo2(Math.round(grandBeforeRound) - grandBeforeRound);
-    const grandTotal = roundTo2(grandBeforeRound + roundOff);
+    const grandTotal = Math.round(grandBeforeRound + roundOff);
     return {
       subtotal: roundTo2(taxableAmount),
       taxableAmount: roundTo2(taxableAmount),
@@ -279,7 +279,7 @@ export function DebitNoteCreatePage() {
             </div>
             {totals.grandTotal > 0 && (
               <div className="w-full sm:w-72 space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-secondary-500">Taxable</span><span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span></div>
+                <div className="flex justify-between"><span className="text-secondary-500">Subtotal (Taxable Value)</span><span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span></div>
                 <div className="flex justify-between"><span className="text-secondary-500">{isInterState ? 'IGST' : 'CGST + SGST'}</span><span className="figure">{formatCurrency(isInterState ? totals.igst : roundTo2(totals.cgst + totals.sgst), sym)}</span></div>
                 {totals.roundOff !== 0 && (
                   <div className="flex justify-between">
@@ -287,7 +287,7 @@ export function DebitNoteCreatePage() {
                     <span className="figure">{formatRoundOff(totals.roundOff, sym)}</span>
                   </div>
                 )}
-                <div className="flex justify-between font-semibold border-t border-secondary-200 dark:border-secondary-700 pt-1 mt-1"><span>Debit Total</span><span className="figure text-primary-600 dark:text-primary-400">{formatCurrency(totals.grandTotal, sym)}</span></div>
+                <div className="flex justify-between font-semibold border-t border-secondary-200 dark:border-secondary-700 pt-1 mt-1"><span>Grand Total</span><span className="figure text-primary-600 dark:text-primary-400">{formatCurrency(totals.grandTotal, sym)}</span></div>
               </div>
             )}
           </div>

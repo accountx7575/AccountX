@@ -6,6 +6,8 @@ import {
   mapSalesInvoiceToUniversalData,
   mapPurchaseOrderToUniversalData,
   mapPurchaseBillToUniversalData,
+  mapCreditNoteToUniversalData,
+  mapDebitNoteToUniversalData,
   resolveBusinessProfile,
 } from './documentMappers';
 
@@ -267,17 +269,55 @@ describe('documentMappers', () => {
       expect(data.round_off).toBe(-0.05);
       expect(data.totalAmount).toBe(160000);
 
-      // 2. Inferred round_off when round_off is omitted but total balances
+      // 2. Quotation QT/ABC/SE/26-27/1 without round_off in DB (grand_total was 160000.05)
       const quote = {
-        quotation_number: 'QT-001',
-        subtotal: 100,
-        cgst_amount: 2.5,
-        sgst_amount: 2.5,
-        grand_total: 105.48, // round off was +0.48
+        quotation_number: 'QT/ABC/SE/26-27/1',
+        subtotal: 152381,
+        cgst_amount: 3809.53,
+        sgst_amount: 3809.52,
+        round_off: 0,
+        grand_total: 160000.05,
       };
       const quoteData = mapQuotationToUniversalData(business, quote, []);
-      expect(quoteData.roundOff).toBe(0.48);
-      expect(quoteData.round_off).toBe(0.48);
+      expect(quoteData.roundOff).toBe(-0.05);
+      expect(quoteData.round_off).toBe(-0.05);
+      expect(quoteData.grandTotal).toBe(160000);
+      expect(quoteData.totalAmount).toBe(160000);
+
+      // 3. Sales Order SO/ABC/SE/26-27/1 without round_off in DB
+      const order = {
+        order_number: 'SO/ABC/SE/26-27/1',
+        subtotal: 152381,
+        cgst_amount: 3809.53,
+        sgst_amount: 3809.52,
+        grand_total: 160000.05,
+      };
+      const orderData = mapSalesOrderToUniversalData(business, order, []);
+      expect(orderData.roundOff).toBe(-0.05);
+      expect(orderData.round_off).toBe(-0.05);
+      expect(orderData.grandTotal).toBe(160000);
+      expect(orderData.totalAmount).toBe(160000);
+
+      // 4. Credit Note & Debit Note mappers
+      const cn = {
+        credit_note_number: 'CN/ABC/SE/26-27/1',
+        subtotal: 152381,
+        cgst_amount: 3809.53,
+        sgst_amount: 3809.52,
+      };
+      const cnData = mapCreditNoteToUniversalData(business, cn, []);
+      expect(cnData.roundOff).toBe(-0.05);
+      expect(cnData.grandTotal).toBe(160000);
+
+      const dn = {
+        debit_note_number: 'DN/ABC/SE/26-27/1',
+        subtotal: 152381,
+        cgst_amount: 3809.53,
+        sgst_amount: 3809.52,
+      };
+      const dnData = mapDebitNoteToUniversalData(business, dn, []);
+      expect(dnData.roundOff).toBe(-0.05);
+      expect(dnData.grandTotal).toBe(160000);
     });
 
     it('falls back to calculated totals when grand_total or total_amount is 0 or missing in doc', () => {

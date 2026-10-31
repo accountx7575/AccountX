@@ -179,6 +179,10 @@ export interface UniversalDocumentTemplateProps {
   id?: string;
 }
 
+export const roundTo2 = (n: number = 0): number => {
+  return Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100;
+};
+
 export const inrDecimal = (val: number = 0): string => {
   return new Intl.NumberFormat('en-IN', {
     minimumFractionDigits: 2,
@@ -730,7 +734,7 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
   
   const subtotal = Number(data.subtotal || 0);
   const totalTax = Number(data.tax ?? data.taxAmount ?? ((data.cgst || 0) + (data.sgst || 0) + (data.igst || 0)));
-  const totalAmount = Number(data.totalAmount ?? data.grandTotal ?? (subtotal + totalTax));
+  const discount = Number(data.discount || 0);
 
   const effectiveTaxRate =
     totalTax > 0 && subtotal > 0
@@ -743,21 +747,25 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
   const sgstAmount = isIntraState ? (data.sgstAmount ?? (totalTax / 2)) : 0;
   const igstAmount = !isIntraState ? (data.igstAmount ?? totalTax) : 0;
 
-  const rawRoundOff = data.roundOff !== undefined ? data.roundOff : data.round_off;
-  const inferredRoundOff =
-    totalTax > 0 || subtotal > 0
-      ? Number((totalAmount - (subtotal + totalTax - Number(data.discount || 0))).toFixed(2))
-      : 0;
+  const computedBeforeRound = roundTo2(subtotal + totalTax - discount);
+  const autoRoundOff = roundTo2(Math.round(computedBeforeRound) - computedBeforeRound);
+
+  const rawRoundOff =
+    data.roundOff !== undefined
+      ? data.roundOff
+      : data.round_off !== undefined
+      ? data.round_off
+      : (data as any)?.roundoff;
+
   const roundOff =
     rawRoundOff !== undefined && rawRoundOff !== null && Number(rawRoundOff) !== 0
-      ? Number(rawRoundOff)
-      : Math.abs(inferredRoundOff) > 0.001 && Math.abs(inferredRoundOff) < 1
-      ? inferredRoundOff
-      : Number(rawRoundOff || 0);
+      ? roundTo2(Number(rawRoundOff))
+      : autoRoundOff;
 
-  const hasRoundOff =
-    (rawRoundOff !== undefined && rawRoundOff !== null && Number(rawRoundOff) !== 0) ||
-    (Math.abs(inferredRoundOff) > 0.001 && Math.abs(inferredRoundOff) < 1);
+  const hasRoundOff = Math.abs(roundOff) > 0.0001;
+
+  // Force grand_total / totalAmount to reflect the final rounded integer amount
+  const totalAmount = Math.round(computedBeforeRound + roundOff);
 
   return (
     <div

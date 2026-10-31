@@ -203,7 +203,7 @@ export function PurchaseBillCreatePage() {
     const totalTax = roundTo2(cgst + sgst + igst);
     const beforeRound = roundTo2(taxableAmount + totalTax);
     const roundOff = roundTo2(Math.round(beforeRound) - beforeRound);
-    const grandTotal = roundTo2(beforeRound + roundOff);
+    const grandTotal = Math.round(beforeRound + roundOff);
     return { subtotal, totalDiscount, taxableAmount, cgst: roundTo2(cgst), sgst: roundTo2(sgst), igst: roundTo2(igst), roundOff, grandTotal };
   }, [items, isInterState]);
 
@@ -739,7 +739,7 @@ export function PurchaseBillCreatePage() {
               </div>
             </div>
             <div className="w-full md:w-80 md:ml-auto space-y-2">
-              <div className="flex justify-between text-sm"><span className="text-secondary-500">Subtotal</span><span className="figure">{formatCurrency(totals.subtotal, sym)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-secondary-500">Subtotal (Taxable Value)</span><span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span></div>
               {totals.totalDiscount > 0 && <div className="flex justify-between text-sm"><span className="text-secondary-500">Discount</span><span className="figure text-error-600 dark:text-error-400">-{formatCurrency(totals.totalDiscount, sym)}</span></div>}
               <div className="flex justify-between text-sm"><span className="text-secondary-500">Taxable Amount</span><span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span></div>
               {isInterState ? (

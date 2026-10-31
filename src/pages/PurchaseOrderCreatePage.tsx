@@ -202,7 +202,7 @@ export function PurchaseOrderCreatePage() {
     const totalTax = roundTo2(cgst + sgst + igst);
     const grandBeforeRound = roundTo2(taxableAmount + totalTax);
     const roundOff = roundTo2(Math.round(grandBeforeRound) - grandBeforeRound);
-    const grandTotal = roundTo2(grandBeforeRound + roundOff);
+    const grandTotal = Math.round(grandBeforeRound + roundOff);
     return { subtotal: roundTo2(subtotal), totalDiscount: roundTo2(totalDiscount), taxableAmount: roundTo2(taxableAmount), cgst: roundTo2(cgst), sgst: roundTo2(sgst), igst: roundTo2(igst), roundOff, grandTotal };
   }, [lines, isInterState]);
 
@@ -566,8 +566,8 @@ export function PurchaseOrderCreatePage() {
             </div>
             <div className="w-full sm:w-80 md:ml-auto space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-secondary-500">Subtotal</span>
-                <span className="figure">{formatCurrency(totals.subtotal, sym)}</span>
+                <span className="text-secondary-500">Subtotal (Taxable Value)</span>
+                <span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span>
               </div>
               {totals.totalDiscount > 0 && (
                 <div className="flex justify-between text-sm">

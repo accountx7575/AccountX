@@ -447,18 +447,28 @@ export function calculateDocumentTotals(
 
   const totalTax = roundTo2(cgstAmount + sgstAmount + igstAmount);
 
-  const grandTotal = roundTo2(Number(
-    doc?.grand_total ||
-    doc?.total_amount ||
-    doc?.total ||
-    (subtotal + totalTax)
-  ));
+  const discount = Number(doc?.discount_amount || doc?.discount || 0);
+  const computedTotalWithTax = roundTo2(subtotal + totalTax - discount);
+  const roundedTotal = Math.round(computedTotalWithTax);
+  const computedRoundOff = roundTo2(roundedTotal - computedTotalWithTax);
 
-  const explicitRoundOff = doc?.round_off !== undefined ? doc.round_off : doc?.roundOff;
-  const inferredRoundOff = roundTo2(grandTotal - (subtotal + totalTax - Number(doc?.discount_amount || doc?.discount || 0)));
-  const roundOff = explicitRoundOff !== undefined && explicitRoundOff !== null && Number(explicitRoundOff) !== 0
-    ? Number(explicitRoundOff)
-    : (Math.abs(inferredRoundOff) > 0.001 && Math.abs(inferredRoundOff) < 1 ? inferredRoundOff : Number(explicitRoundOff || 0));
+  // Extract round_off / roundoff from source record
+  const rawRecordRoundOff =
+    doc?.round_off !== undefined
+      ? doc.round_off
+      : doc?.roundOff !== undefined
+      ? doc.roundOff
+      : doc?.roundoff;
+
+  // If round_off is explicitly stored in the record and non-zero, respect it;
+  // otherwise, compute it dynamically on the fly:
+  const roundOff =
+    rawRecordRoundOff !== undefined && rawRecordRoundOff !== null && Number(rawRecordRoundOff) !== 0
+      ? roundTo2(Number(rawRecordRoundOff))
+      : computedRoundOff;
+
+  // Force grand_total to reflect the final rounded integer amount
+  const grandTotal = Math.round(computedTotalWithTax + roundOff);
 
   const amountInWords = numberToWordsINR(grandTotal);
 
@@ -608,8 +618,8 @@ export function mapSalesOrderToUniversalData(
     igst: totals.igstAmount,
     isIntraState: totals.isIntraState,
     discount: Number(order?.discount_amount || order?.discount || 0),
-    roundOff: Number(order?.round_off ?? totals.roundOff ?? 0),
-    round_off: Number(order?.round_off ?? totals.roundOff ?? 0),
+    roundOff: totals.roundOff,
+    round_off: totals.roundOff,
     totalAmount: totals.grandTotal,
     grandTotal: totals.grandTotal,
     amountInWords: totals.amountInWords,
@@ -752,8 +762,8 @@ export function mapSalesInvoiceToUniversalData(
     igst: totals.igstAmount,
     isIntraState: totals.isIntraState,
     discount: Number(invoice?.discount_amount || invoice?.discount || 0),
-    roundOff: Number(invoice?.round_off ?? totals.roundOff ?? 0),
-    round_off: Number(invoice?.round_off ?? totals.roundOff ?? 0),
+    roundOff: totals.roundOff,
+    round_off: totals.roundOff,
     totalAmount: totals.grandTotal,
     grandTotal: totals.grandTotal,
     amountInWords: totals.amountInWords,
@@ -897,8 +907,8 @@ export function mapQuotationToUniversalData(
     igst: totals.igstAmount,
     isIntraState: totals.isIntraState,
     discount: Number(quote?.discount_amount || quote?.discount || 0),
-    roundOff: Number(quote?.round_off ?? totals.roundOff ?? 0),
-    round_off: Number(quote?.round_off ?? totals.roundOff ?? 0),
+    roundOff: totals.roundOff,
+    round_off: totals.roundOff,
     totalAmount: totals.grandTotal,
     grandTotal: totals.grandTotal,
     amountInWords: totals.amountInWords,
@@ -1031,8 +1041,8 @@ export function mapPurchaseOrderToUniversalData(
     igst: totals.igstAmount,
     isIntraState: totals.isIntraState,
     discount: Number(order?.discount_amount || order?.discount || 0),
-    roundOff: Number(order?.round_off ?? totals.roundOff ?? 0),
-    round_off: Number(order?.round_off ?? totals.roundOff ?? 0),
+    roundOff: totals.roundOff,
+    round_off: totals.roundOff,
     totalAmount: totals.grandTotal,
     grandTotal: totals.grandTotal,
     amountInWords: totals.amountInWords,
@@ -1140,8 +1150,8 @@ export function mapPurchaseBillToUniversalData(
     igst: totals.igstAmount,
     isIntraState: totals.isIntraState,
     discount: Number(bill?.discount_amount || bill?.discount || 0),
-    roundOff: Number(bill?.round_off ?? totals.roundOff ?? 0),
-    round_off: Number(bill?.round_off ?? totals.roundOff ?? 0),
+    roundOff: totals.roundOff,
+    round_off: totals.roundOff,
     totalAmount: totals.grandTotal,
     grandTotal: totals.grandTotal,
     amountInWords: totals.amountInWords,
@@ -1149,3 +1159,189 @@ export function mapPurchaseBillToUniversalData(
     terms: bill?.terms || null,
   };
 }
+
+export function mapCreditNoteToUniversalData(
+  business: any,
+  note: any,
+  items: any[] = []
+): UniversalDocumentData {
+  const persistedNumber = note?.credit_note_number || note?.number || 'CN-001';
+  const cust = (Array.isArray(note?.customer) ? note?.customer[0] : note?.customer) || note?.client || {};
+  const formattedAddr = formatCustomerAddress(cust);
+  const streetAddress = formattedAddr.streetAddress || note?.customer_address || '';
+  const fullAddress = formattedAddr.fullAddress || streetAddress;
+
+  const rawItems = items && items.length > 0 ? items : note?.items || note?.credit_note_items || [];
+  const businessState = business?.state || business?.billingState || '';
+  const partyState = cust?.state || cust?.billingState || note?.place_of_supply || '';
+
+  const totals = calculateDocumentTotals(note, rawItems, businessState, partyState);
+  const resolvedBiz = resolveBusinessProfile(business);
+  const signatureUrl =
+    business?.signature_url ||
+    business?.signatureUrl ||
+    business?.stamp_url ||
+    business?.stampUrl ||
+    resolvedBiz?.signature_url ||
+    null;
+  const signatureName =
+    business?.signature_name ||
+    business?.signatureName ||
+    business?.invoice_signature_name ||
+    business?.invoiceSignatureName ||
+    resolvedBiz?.signature_name ||
+    'Authorized Signatory';
+  const bankDetails = extractBankDetails(business);
+  const companyObj = {
+    ...business,
+    ...resolvedBiz,
+    signatureUrl,
+    signatureName,
+  };
+
+  const sellerAddr = formatCustomerAddress(companyObj);
+  const sellerStreet = sellerAddr.streetAddress || companyObj.address || companyObj.registered_address || '';
+  const sellerFullAddr = sellerAddr.fullAddress || sellerStreet;
+
+  return {
+    documentType: 'CREDIT_NOTE',
+    documentNumber: persistedNumber,
+    date: note?.date || note?.created_at || '19 Oct 2026',
+    time: note?.time || note?.created_at,
+    created_at: note?.created_at,
+    status: note?.status || 'Draft',
+    company: {
+      name: companyObj.name || companyObj.business_name || 'Business',
+      address: sellerFullAddr || companyObj.address,
+      streetAddress: sellerStreet || companyObj.address,
+      city: companyObj.city || companyObj.billing_city || companyObj.billingCity,
+      state: companyObj.state || companyObj.billing_state || companyObj.billingState,
+      pincode: companyObj.pincode || companyObj.pin_code || companyObj.billing_pincode || companyObj.billingPincode,
+      gstin: companyObj.gstin,
+      pan: companyObj.pan,
+      phone: companyObj.phone || companyObj.mobile || companyObj.phone_number,
+      email: companyObj.email || companyObj.email_address,
+      signatureUrl,
+      signatureName,
+      logo_url: companyObj.logo_url || companyObj.logoUrl || null,
+      logoUrl: companyObj.logo_url || companyObj.logoUrl || null,
+    },
+    customer: {
+      name: cust.name || cust.company_name || 'Customer',
+      company_name: cust.company_name,
+      address: fullAddress || cust.address,
+      streetAddress: streetAddress || cust.address,
+      city: cust.city,
+      state: cust.state,
+      pincode: cust.pincode || cust.pin_code,
+      gstin: cust.gstin,
+      pan: cust.pan,
+      phone: cust.phone || cust.mobile,
+      email: cust.email,
+    },
+    items: totals.items,
+    subtotal: totals.subtotal,
+    taxableAmount: totals.taxableAmount,
+    tax: totals.totalTax,
+    taxAmount: totals.totalTax,
+    cgstAmount: totals.cgstAmount,
+    sgstAmount: totals.sgstAmount,
+    igstAmount: totals.igstAmount,
+    cgst: totals.cgstAmount,
+    sgst: totals.sgstAmount,
+    igst: totals.igstAmount,
+    isIntraState: totals.isIntraState,
+    discount: Number(note?.discount_amount || note?.discount || 0),
+    roundOff: totals.roundOff,
+    round_off: totals.roundOff,
+    totalAmount: totals.grandTotal,
+    grandTotal: totals.grandTotal,
+    amountInWords: totals.amountInWords,
+    bankDetails,
+    notes: note?.notes || note?.reason || null,
+  };
+}
+
+export function mapDebitNoteToUniversalData(
+  business: any,
+  note: any,
+  items: any[] = []
+): UniversalDocumentData {
+  const persistedNumber = note?.debit_note_number || note?.number || 'DN-001';
+  const supplier = (Array.isArray(note?.supplier) ? note?.supplier[0] : note?.supplier) || note?.vendor || {};
+  const formattedAddr = formatCustomerAddress(supplier);
+  const streetAddress = formattedAddr.streetAddress || note?.supplier_address || '';
+  const fullAddress = formattedAddr.fullAddress || streetAddress;
+
+  const rawItems = items && items.length > 0 ? items : note?.items || note?.debit_note_items || [];
+  const businessState = business?.state || business?.billingState || '';
+  const partyState = supplier?.state || supplier?.billingState || '';
+
+  const totals = calculateDocumentTotals(note, rawItems, businessState, partyState);
+
+  const buyerAddr = formatCustomerAddress(business);
+  const buyerStreet = buyerAddr.streetAddress || business?.address || business?.registered_address || '';
+  const buyerFullAddr = buyerAddr.fullAddress || buyerStreet;
+
+  return {
+    documentType: 'DEBIT_NOTE',
+    documentNumber: persistedNumber,
+    date: note?.date || note?.created_at || '19 Oct 2026',
+    time: note?.time || note?.created_at,
+    created_at: note?.created_at,
+    status: note?.status || 'Draft',
+    company: {
+      name: note?.supplier_name || supplier.name || 'Supplier',
+      address: fullAddress || streetAddress || supplier.address,
+      streetAddress: streetAddress || supplier.address,
+      city: supplier.city,
+      state: supplier.state,
+      pincode: supplier.pincode || supplier.pin_code,
+      gstin: supplier.gstin,
+      pan: supplier.pan,
+      phone: supplier.phone || supplier.mobile,
+      email: supplier.email,
+    },
+    customer: {
+      name: business?.name || business?.business_name || 'Business',
+      company_name: business?.company_name || business?.name,
+      address: buyerFullAddr || business?.address,
+      streetAddress: buyerStreet || business?.streetAddress || business?.address,
+      city: business?.city || business?.billing_city || business?.billingCity,
+      state: business?.state || business?.billing_state || business?.billingState,
+      pincode: business?.pincode || business?.pin_code || business?.billing_pincode || business?.billingPincode,
+      gstin: business?.gstin,
+      pan: business?.pan,
+      phone: business?.phone || business?.mobile || business?.phone_number,
+      email: business?.email || business?.email_address,
+    },
+    items: totals.items,
+    subtotal: totals.subtotal,
+    taxableAmount: totals.taxableAmount,
+    tax: totals.totalTax,
+    taxAmount: totals.totalTax,
+    cgstAmount: totals.cgstAmount,
+    sgstAmount: totals.sgstAmount,
+    igstAmount: totals.igstAmount,
+    cgst: totals.cgstAmount,
+    sgst: totals.sgstAmount,
+    igst: totals.igstAmount,
+    isIntraState: totals.isIntraState,
+    discount: Number(note?.discount_amount || note?.discount || 0),
+    roundOff: totals.roundOff,
+    round_off: totals.roundOff,
+    totalAmount: totals.grandTotal,
+    grandTotal: totals.grandTotal,
+    amountInWords: totals.amountInWords,
+    notes: note?.notes || note?.reason || null,
+  };
+}
+
+// Aliases matching user request specifications
+export const mapQuotationToDocument = mapQuotationToUniversalData;
+export const mapSalesOrderToDocument = mapSalesOrderToUniversalData;
+export const mapSalesInvoiceToDocument = mapSalesInvoiceToUniversalData;
+export const mapPurchaseOrderToDocument = mapPurchaseOrderToUniversalData;
+export const mapPurchaseBillToDocument = mapPurchaseBillToUniversalData;
+export const mapCreditNoteToDocument = mapCreditNoteToUniversalData;
+export const mapDebitNoteToDocument = mapDebitNoteToUniversalData;
