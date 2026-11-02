@@ -134,6 +134,8 @@ export type Product = {
   opening_stock: number;
   current_stock: number;
   minimum_stock: number;
+  min_stock?: number;
+  reorder_level?: number;
   warehouse_id: string | null;
   description: string | null;
   image_url: string | null;

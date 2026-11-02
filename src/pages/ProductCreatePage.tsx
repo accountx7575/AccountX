@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Save } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { updateProductService } from '@/services/productService';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -61,50 +62,38 @@ export function ProductCreatePage() {
     mutationFn: async () => {
       if (!activeBusiness) throw new Error('No active business');
       if (!form.name.trim()) throw new Error('Please enter a product name');
+      if (isEdit) {
+        // Update path: only metadata is editable. Historical opening_stock
+        // and live current_stock are never touched here — stock changes
+        // go through the Stock Adjustment module.
+        await updateProductService({
+          businessId: activeBusiness.id,
+          productId: editId!,
+          form,
+        });
+        return;
+      }
+      const minStockValue = parseFloat(form.minimum_stock) || 0;
       const base = {
         business_id: activeBusiness.id,
         category_id: form.category_id || null,
-        name: form.name,
-        sku: form.sku || null,
-        barcode: form.barcode || null,
+        name: form.name.trim(),
+        sku: form.sku.trim() || null,
+        barcode: form.barcode.trim() || null,
         type: form.type,
-        hsn_sac: form.hsn_sac || null,
-        unit: form.unit,
+        hsn_sac: form.hsn_sac.trim() || null,
+        unit: form.unit.trim() || 'PCS',
         purchase_price: parseFloat(form.purchase_price) || 0,
         selling_price: parseFloat(form.selling_price) || 0,
         tax_rate: parseFloat(form.tax_rate) || 0,
         tax_inclusive: form.tax_inclusive,
         opening_stock: parseFloat(form.opening_stock) || 0,
-        minimum_stock: parseFloat(form.minimum_stock) || 0,
-        description: form.description || null,
+        minimum_stock: minStockValue,
+        min_stock: minStockValue,
+        reorder_level: minStockValue,
+        description: form.description.trim() || null,
         is_active: true,
       };
-      if (isEdit) {
-        // Update path: only metadata is editable. Historical opening_stock
-        // and live current_stock are never touched here — stock changes
-        // go through the Stock Adjustment module.
-        const payload = {
-          name: form.name.trim(),
-          type: form.type,
-          unit: form.unit,
-          sku: form.sku.trim() || null,
-          barcode: form.barcode.trim() || null,
-          hsn_sac: form.hsn_sac.trim() || null,
-          tax_rate: Number(form.tax_rate) || 0,
-          purchase_price: Number(form.purchase_price) || 0,
-          selling_price: Number(form.selling_price) || 0,
-          min_stock: Number(form.minimum_stock) || 0,
-          description: form.description.trim() || null,
-          category_id: form.category_id || null,
-        };
-        const { error } = await supabase
-          .from('products')
-          .update(payload)
-          .eq('business_id', activeBusiness.id)
-          .eq('id', editId!);
-        if (error) throw error;
-        return;
-      }
       const payload = { ...base, current_stock: parseFloat(form.opening_stock) || 0 };
       const { data: newProduct, error } = await supabase.from('products').insert(payload).select().single();
       if (error) throw error;
