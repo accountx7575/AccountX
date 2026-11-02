@@ -115,6 +115,7 @@ export interface QuotationProjectDetails {
   plant_type?: string;
   roof_type?: string;
   subsidy_scheme?: string;
+  discom_utility?: string;
   [key: string]: any;
 }
 
@@ -982,12 +983,6 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
               )}
             </p>
           )}
-          {discomUtility && (
-            <p className="text-xs text-slate-600 leading-snug pt-0.5">
-              <strong className="text-slate-700">DISCOM Utility:</strong>{' '}
-              <span className="font-semibold text-slate-800">{discomUtility}</span>
-            </p>
-          )}
           {customer.userId && (
             <p className="text-[10px] font-mono text-slate-400 mt-1">
               Customer UUID: {customer.userId}
@@ -1019,6 +1014,12 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
               <span className="text-emerald-800 font-semibold sm:w-28 shrink-0">Subsidy Scheme:</span>
               <span>
                 {projectDetails.subsidy_scheme || 'Central PM Surya Ghar + UPNEDA State DBT'}
+              </span>
+            </p>
+            <p className="flex flex-col sm:flex-row sm:items-baseline text-slate-600 pt-0.5">
+              <span className="text-slate-500 font-medium sm:w-24 shrink-0">DISCOM Utility:</span>
+              <span className="text-slate-800 font-medium">
+                {projectDetails.discom_utility || discomUtility || 'PVVNL'}
               </span>
             </p>
           </div>
