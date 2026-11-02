@@ -1,0 +1,464 @@
+import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
+import { PageHeader } from '@/components/PageHeader';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
+import { FileText, Plus, Ban, Eye, Pencil, CheckCircle2, Trash2, FileSpreadsheet, Share2, Truck, Printer, Download, Loader2 } from 'lucide-react';
+import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { usePagedList } from '@/hooks/usePagedList';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { fetchInvoiceItems, exportInvoiceExcel } from '@/lib/invoiceExport';
+import { printDocument, downloadDocumentPdf } from '@/lib/documentActions';
+import { EWayBillModal } from '@/components/eway/EWayBillModal';
+import { openWhatsAppShare } from '@/lib/whatsapp';
+import { issueSalesInvoiceService } from '@/services/salesInvoiceService';
+import type { Customer } from '@/types/db';
+import type { SalesInvoice } from '@/types/db';
+
+export function SalesInvoicesPage() {
+  const { activeBusiness } = useAuth();
+  const { toast } = useToast();
+
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  const handlePrint = (id: string) => {
+    printDocument('sales_invoice', id, activeBusiness, navigate);
+  };
+
+  const handleDownload = async (id: string) => {
+    if (!activeBusiness || actionLoadingId) return;
+    setActionLoadingId(`${id}-download`);
+    try {
+      await downloadDocumentPdf('sales_invoice', id, activeBusiness);
+      toast('PDF downloaded', 'success');
+    } catch (err: any) {
+      toast(err.message || 'Failed to download PDF', 'error');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleRowExport = async (
+    inv: { id: string; invoice_number: string; customer?: { name: string | null } | null }
+  ) => {
+    if (!activeBusiness || exportingId) return;
+    setExportingId(inv.id);
+    try {
+      const items = await fetchInvoiceItems(inv.id);
+      const withCustomer = { ...inv, customer: (inv.customer ?? { name: null }) as Customer };
+      exportInvoiceExcel(activeBusiness, withCustomer as never, items);
+      toast('Excel (.csv) exported', 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Export failed', 'error');
+    } finally {
+      setExportingId(null);
+    }
+  };
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const list = usePagedList();
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [cancelTarget, setCancelTarget] = useState<SalesInvoice | null>(null);
+  const [discardTarget, setDiscardTarget] = useState<SalesInvoice | null>(null);
+  const [ewayTarget, setEwayTarget] = useState<(SalesInvoice & { customer: { name: string; phone: string | null } | null }) | null>(null);
+
+  const { data: invoices, isLoading, isError, refetch } = useQuery({
+    queryKey: ['sales-invoices', activeBusiness?.id],
+    queryFn: async () => {
+      if (!activeBusiness) return [];
+      const { data, error } = await supabase
+        .from('sales_invoices')
+        .select('*, customer:customers(name,phone,company_name,address,city,state,pincode)')
+        .eq('business_id', activeBusiness.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data as (SalesInvoice & { customer: { name: string; phone: string | null } | null })[];
+    },
+    enabled: !!activeBusiness,
+  });
+
+  const filtered = useMemo(() => {
+    if (!invoices) return [];
+    return invoices.filter((inv) => {
+      const matchSearch = inv.invoice_number.toLowerCase().includes(list.search.toLowerCase()) ||
+        (inv.customer?.name || '').toLowerCase().includes(list.search.toLowerCase());
+      const matchStatus = statusFilter === 'all' || inv.status === statusFilter;
+      return matchSearch && matchStatus;
+    });
+  }, [invoices, list.search, statusFilter]);
+
+  const pageRows = useMemo(
+    () => filtered.slice(list.from, list.from + list.pageSize),
+    [filtered, list.from, list.pageSize],
+  );
+
+  const statusVariant = (status: string) => {
+    const map: Record<string, 'success' | 'warning' | 'error' | 'info' | 'neutral'> = {
+      draft: 'neutral', issued: 'info', partially_paid: 'warning',
+      paid: 'success', cancelled: 'error', void: 'error',
+    };
+    return map[status] || 'neutral';
+  };
+
+  const issueDraftMutation = useMutation({
+    mutationFn: async (id: string) => {
+      if (!activeBusiness) throw new Error('No business selected');
+      await issueSalesInvoiceService({
+        businessId: activeBusiness.id,
+        invoiceId: id,
+      });
+    },
+    onSuccess: () => {
+      ['sales-invoices', 'products', 'journal-entries', 'accounts', 'trial-balance', 'dashboard-stats'].forEach((k) =>
+        queryClient.invalidateQueries({ queryKey: [k, activeBusiness?.id] })
+      );
+      toast('Invoice issued — journal and stock posted', 'success');
+    },
+    onError: (err: any) => toast(err.message || 'Failed to issue invoice', 'error'),
+  });
+
+  const discardDraftMutation = useMutation({
+    mutationFn: async (id: string) => {
+      if (!activeBusiness) throw new Error('No business selected');
+      const { error } = await supabase.rpc('cancel_draft', {
+        p_business_id: activeBusiness.id,
+        p_doc_type: 'sales_invoice',
+        p_doc_id: id,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-invoices', activeBusiness?.id] });
+      toast('Draft discarded', 'success');
+      setDiscardTarget(null);
+    },
+    onError: (err: any) => { setDiscardTarget(null); toast(err.message || 'Failed to discard draft', 'error'); },
+  });
+
+  const shareInvoice = (inv: SalesInvoice & { customer: { name: string; phone: string | null } | null }) => {
+    const opened = openWhatsAppShare({
+      partyName: inv.customer?.name || '',
+      docNumber: inv.invoice_number,
+      dateDDMMYYYY: formatDate(inv.invoice_date),
+      amountInr: formatCurrency(inv.grand_total, activeBusiness?.currency_symbol || '\u20B9'),
+      bank: {
+        name: activeBusiness?.bank_name,
+        ifsc: activeBusiness?.bank_ifsc_code,
+        upi: activeBusiness?.upi_id,
+      },
+      partyPhone: inv.customer?.phone,
+    });
+    if (!opened) toast('Could not open WhatsApp — allow popups and try again', 'error');
+  };
+
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeBusiness || !cancelTarget) throw new Error('No invoice selected');
+      const { data: reversalId, error } = await supabase.rpc('cancel_sales_invoice', {
+        p_invoice_id: cancelTarget.id,
+      });
+      if (error) throw error;
+      return reversalId;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-invoices', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['accounts', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['journal-entries', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['trial-balance', activeBusiness?.id] });
+      toast('Invoice cancelled and accounting reversed', 'success');
+      setCancelTarget(null);
+    },
+    onError: (err: any) => toast(err.message || 'Failed to cancel invoice', 'error'),
+  });
+
+  return (
+    <div>
+      <PageHeader
+        title="Sales Invoices"
+        subtitle={`${filtered.length} invoice${filtered.length !== 1 ? 's' : ''}`}
+        actions={<Button onClick={() => navigate('/app/sales-invoices/new')}><Plus className="h-4 w-4" /> New Invoice</Button>}
+      />
+
+      <div className="card">
+        <ListToolbar
+          search={list.search}
+          onSearchChange={list.setSearch}
+          placeholder="Search invoices..."
+          pageSize={list.pageSize}
+          onPageSizeChange={list.setPageSize}
+          leftAddon={(
+            <div className="max-w-36">
+              <select
+                className="input h-9 py-0 leading-none text-sm cursor-pointer"
+                aria-label="Invoice status filter"
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); list.setPage(1); }}
+              >
+                <option value="all">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="issued">Issued</option>
+                <option value="partially_paid">Partial</option>
+                <option value="paid">Paid</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          )}
+        >
+            <DataTableExportToolbar
+              columns={[
+                { key: 'number', label: 'Invoice No.', getText: (inv) => inv.invoice_number },
+                { key: 'customer', label: 'Customer', getText: (inv) => inv.customer?.name || '—' },
+                { key: 'date', label: 'Date', getText: (inv) => formatDate(inv.invoice_date) },
+                { key: 'total', label: 'Total', getText: (inv) => formatCurrency(inv.grand_total, activeBusiness?.currency_symbol) },
+                { key: 'balance', label: 'Balance', getText: (inv) => formatCurrency(inv.balance_amount, activeBusiness?.currency_symbol) },
+                { key: 'status', label: 'Status', getText: (inv) => inv.status.replace('_', ' ') },
+              ]}
+              rows={filtered}
+              filename="sales-invoices"
+              title="Sales Invoices"
+              storageKey="sales-invoices"
+            />
+        </ListToolbar>
+
+        {isError ? (
+          <ErrorState title="Unable to load sales invoices." onRetry={() => refetch()} />
+        ) : isLoading ? (
+          <div className="p-8 space-y-3">
+            {[1,2,3,4,5].map((i) => <div key={i} className="h-14 rounded-lg bg-secondary-100 dark:bg-secondary-800 animate-pulse" />)}
+          </div>
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            title="No invoices yet"
+            description="Create your first sales invoice to start tracking sales"
+            action={<Button onClick={() => navigate('/app/sales-invoices/new')}><Plus className="h-4 w-4" /> New Invoice</Button>}
+          />
+        ) : (
+          <>
+          <div className="md:hidden space-y-3">
+            {pageRows.map((inv) => (
+              <div key={inv.id} className="card-solid p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-section-title truncate text-primary-600 dark:text-primary-400">{inv.invoice_number}</p>
+                    <p className="text-xs text-secondary-500 dark:text-secondary-400 truncate">{inv.customer?.name || '—'} · {formatDate(inv.invoice_date)}</p>
+                  </div>
+                  <Badge variant={statusVariant(inv.status)}>{inv.status.replace('_', ' ')}</Badge>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="tabular-nums font-medium text-secondary-900 dark:text-secondary-100">
+                    {formatCurrency(inv.grand_total, activeBusiness?.currency_symbol)}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => navigate(`/app/sales-invoices/${inv.id}`)} title="View invoice" aria-label="View invoice" className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"><Eye className="h-4 w-4" /></button>
+                    {inv.status !== 'cancelled' && <button onClick={() => navigate(`/app/sales-invoices/${inv.id}/edit`)} title="Edit invoice" aria-label="Edit invoice" className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"><Pencil className="h-4 w-4" /></button>}
+                    <button onClick={() => handlePrint(inv.id)} disabled={!!actionLoadingId} title="Print invoice" aria-label="Print invoice" className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group">
+                      {actionLoadingId === `${inv.id}-print` ? <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" /> : <Printer className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />}
+                      <span>Print</span>
+                    </button>
+                    <button onClick={() => handleDownload(inv.id)} disabled={!!actionLoadingId} title="Download PDF" aria-label="Download PDF" className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group">
+                      {actionLoadingId === `${inv.id}-download` ? <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" /> : <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />}
+                      <span>PDF</span>
+                    </button>
+                    {inv.status === 'draft' && <button onClick={() => issueDraftMutation.mutate(inv.id)} title="Issue invoice" aria-label="Issue invoice" className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors"><CheckCircle2 className="h-4 w-4" /></button>}
+                    {['issued', 'partially_paid', 'paid'].includes(inv.status) && <button onClick={() => setCancelTarget(inv)} title="Cancel invoice" aria-label="Cancel invoice" className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"><Ban className="h-4 w-4" /></button>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block overflow-x-auto scrollbar-thin">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
+                  <th className="text-left px-4 py-3 font-medium">Invoice No.</th>
+                  <th className="text-left px-4 py-3 font-medium">Customer</th>
+                  <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Date</th>
+                  <th className="text-right px-4 py-3 font-medium">Total</th>
+                  <th className="text-right px-4 py-3 font-medium hidden md:table-cell">Balance</th>
+                  <th className="text-center px-4 py-3 font-medium">Status</th>
+                  <th className="text-right px-4 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((inv) => (
+                  <tr key={inv.id} className="border-b border-secondary-100 dark:border-secondary-800/50 table-row-hover">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-primary-600 dark:text-primary-400">{inv.invoice_number}</p>
+                    </td>
+                    <td className="px-4 py-3 text-secondary-900 dark:text-secondary-100">{inv.customer?.name || '—'}</td>
+                    <td className="px-4 py-3 hidden sm:table-cell text-secondary-500">{formatDate(inv.invoice_date)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums font-medium text-secondary-900 dark:text-secondary-100">
+                      {formatCurrency(inv.grand_total, activeBusiness?.currency_symbol)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums hidden md:table-cell">
+                      <span className={Number(inv.balance_amount) > 0 ? 'text-warning-600 dark:text-warning-400' : 'text-success-600 dark:text-success-400'}>
+                        {formatCurrency(inv.balance_amount, activeBusiness?.currency_symbol)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <Badge variant={statusVariant(inv.status)}>{inv.status.replace('_', ' ')}</Badge>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => navigate(`/app/sales-invoices/${inv.id}`)}
+                          className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                          title="View invoice"
+                          aria-label="View invoice"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        {inv.status !== 'cancelled' && (
+                          <button
+                            onClick={() => navigate(`/app/sales-invoices/${inv.id}/edit`)}
+                            className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                            title="Edit invoice"
+                            aria-label="Edit invoice"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handlePrint(inv.id)}
+                          disabled={!!actionLoadingId}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group"
+                          title="Print invoice"
+                          aria-label="Print invoice"
+                        >
+                          {actionLoadingId === `${inv.id}-print` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                          ) : (
+                            <Printer className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />
+                          )}
+                          <span>Print</span>
+                        </button>
+                        <button
+                          onClick={() => handleDownload(inv.id)}
+                          disabled={!!actionLoadingId}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-secondary-400 dark:hover:text-secondary-100 transition-colors disabled:opacity-50 group"
+                          title="Download PDF"
+                          aria-label="Download PDF"
+                        >
+                          {actionLoadingId === `${inv.id}-download` ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:text-secondary-400 dark:group-hover:text-secondary-200" />
+                          )}
+                          <span>PDF</span>
+                        </button>
+                        <button
+                          onClick={() => handleRowExport(inv)}
+                          disabled={exportingId === inv.id}
+                          className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors disabled:opacity-50"
+                          title="Export to Excel (.csv)"
+                          aria-label="Export to Excel (.csv)"
+                        >
+                          <FileSpreadsheet className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => shareInvoice(inv)}
+                          className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors"
+                          title="Share on WhatsApp"
+                          aria-label="Share on WhatsApp"
+                        >
+                          <Share2 className="h-4 w-4" />
+                        </button>
+                        {Number(inv.grand_total) > 50000 && inv.status !== 'cancelled' && (
+                          <button
+                            onClick={() => setEwayTarget(inv)}
+                            className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
+                            title="Generate e-Way Bill"
+                            aria-label="Generate e-Way Bill"
+                          >
+                            <Truck className="h-4 w-4" />
+                          </button>
+                        )}
+                        {inv.status === 'draft' && (
+                          <>
+                            <button
+                              onClick={() => issueDraftMutation.mutate(inv.id)}
+                              className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-success-600 hover:bg-success-50 dark:hover:bg-success-900/30 transition-colors"
+                              title="Issue invoice"
+                              aria-label="Issue invoice"
+                            >
+                              <CheckCircle2 className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => setDiscardTarget(inv)}
+                              className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                              title="Discard draft"
+                              aria-label="Discard draft"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                        {['issued', 'partially_paid', 'paid'].includes(inv.status) && (
+                          <button
+                            onClick={() => setCancelTarget(inv)}
+                            className="p-1.5 rounded-lg text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"
+                            title="Cancel invoice"
+                            aria-label="Cancel invoice"
+                          >
+                            <Ban className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          </>
+        )}
+        <ListPagination
+          page={list.page}
+          onPageChange={list.setPage}
+          pageSize={list.pageSize}
+          from={list.from}
+          total={filtered.length}
+          isLoading={isLoading}
+        />
+      </div>
+
+      <ConfirmDialog
+        open={!!discardTarget}
+        onClose={() => setDiscardTarget(null)}
+        onConfirm={() => discardTarget && discardDraftMutation.mutate(discardTarget.id)}
+        title="Discard draft?"
+        message="Nothing was ever posted — the draft will be hard-deleted."
+        confirmText="Discard"
+        loading={discardDraftMutation.isPending}
+      />
+
+      <EWayBillModal
+        open={!!ewayTarget}
+        onClose={() => setEwayTarget(null)}
+        business={activeBusiness}
+        invoice={ewayTarget}
+      />
+
+      <ConfirmDialog
+        open={!!cancelTarget}
+        onClose={() => setCancelTarget(null)}
+        onConfirm={() => cancelMutation.mutate()}
+        title="Cancel Invoice?"
+        message={`This will cancel invoice ${cancelTarget?.invoice_number || ''} and post a reversal journal entry. Existing payments and stock movements are preserved.`}
+        confirmText="Cancel Invoice"
+        loading={cancelMutation.isPending}
+      />
+    </div>
+  );
+}

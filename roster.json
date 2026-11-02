@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-10-29T10:35:48.621Z",
+  "savedAt": "2026-11-02T08:46:12.042Z",
   "agents": [
     {
       "id": "god",
@@ -12,7 +12,7 @@
       "tmuxTarget": "",
       "cwd": "/Users/mohdsaad/Documents/Website/AccountX/project-bolt-sb1-AccountXbolt",
       "status": "idle",
-      "action": "awaiting",
+      "action": "idle",
       "progress": 0,
       "currentStation": "desk",
       "ptyId": "pty-god",
@@ -38,7 +38,7 @@
       "provider": "opencode",
       "lastPrompt": "freecontinue",
       "archived": false,
-      "currentStation": "terminal"
+      "currentStation": "desk"
     },
     {
       "id": "stanley-mv5jax01",
@@ -57,7 +57,7 @@
       "provider": "opencode",
       "lastPrompt": "/model",
       "archived": false,
-      "currentStation": "desk"
+      "currentStation": "shelf"
     },
     {
       "id": "meredith-mvhtn7u1",
@@ -71,12 +71,12 @@
       "status": "idle",
       "action": "awaiting",
       "progress": 0,
-      "currentStation": "desk",
       "ptyId": "pty-meredith-mvhtn7u1",
       "command": "agy --dangerously-skip-permissions",
       "provider": "antigravity",
       "archived": false,
-      "lastPrompt": "continue"
+      "lastPrompt": "continue",
+      "currentStation": "desk"
     }
   ],
   "archived": [
@@ -171,5 +171,5 @@
     }
   ],
   "queues": {},
-  "selectedId": "meredith-mvhtn7u1"
+  "selectedId": "stanley-mv5jax01"
 }

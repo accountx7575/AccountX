@@ -1,0 +1,12 @@
+# AccountX — robots.txt
+# All app surfaces live under /app/* behind auth; only the public landing
+# surface is indexable. Nothing requires a paid key here.
+
+User-agent: *
+Disallow: /app/
+Disallow: /auth/
+Allow: /
+
+# No sitemap host known yet — update once the production domain is fixed
+# (TODO shared with canonical/og:url placeholders in index.html).
+# Sitemap: https://REPLACE-WITH-YOUR-DOMAIN/sitemap.xml

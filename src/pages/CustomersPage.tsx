@@ -1,0 +1,397 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
+import { PageHeader } from '@/components/PageHeader';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { usePagedList, likePattern } from '@/hooks/usePagedList';
+import { ListToolbar, ListPagination } from '@/components/ui/ListControls';
+import { DataTableExportToolbar } from '@/components/ui/DataTableExportToolbar';
+import { Users, Plus, Pencil, Trash2, Mail } from 'lucide-react';
+import { formatCurrency, formatDate, getInitials, roundTo2 } from '@/lib/utils';
+import { SendDialog } from '@/components/comms/SendDialog';
+import type { Customer } from '@/types/db';
+
+export function CustomersPage() {
+  const { activeBusiness } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const list = usePagedList();
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [statementFor, setStatementFor] = useState<Customer | null>(null);
+
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['customers', activeBusiness?.id, { q: list.debouncedSearch, page: list.page, pageSize: list.pageSize }],
+    queryFn: async () => {
+      if (!activeBusiness) return { rows: [] as Customer[], total: 0 };
+      let q = supabase
+        .from('customers')
+        .select('*', { count: 'exact' })
+        .eq('business_id', activeBusiness.id);
+      if (list.debouncedSearch) {
+        const p = likePattern(list.debouncedSearch);
+        q = q.or(`name.ilike."${p}",phone.ilike."${p}",email.ilike."${p}",gstin.ilike."${p}",pan.ilike."${p}",aadhaar.ilike."${p}"`);
+      }
+      const { data, error, count } = await q
+        .order('created_at', { ascending: false })
+        .range(list.from, list.to);
+      if (error) throw error;
+
+      const rawRows = (data || []) as Customer[];
+      const customerIds = rawRows.map((c) => c.id);
+
+      if (customerIds.length === 0) {
+        return { rows: [] as Customer[], total: count ?? 0 };
+      }
+
+      // Reconcile outstanding balance and sales from active posted documents (invoices minus payments)
+      const [invRes, payRes] = await Promise.all([
+        supabase
+          .from('sales_invoices')
+          .select('customer_id, grand_total')
+          .eq('business_id', activeBusiness.id)
+          .in('customer_id', customerIds)
+          .in('status', ['issued', 'partially_paid', 'paid']),
+        supabase
+          .from('payments')
+          .select('party_id, amount')
+          .eq('business_id', activeBusiness.id)
+          .eq('party_type', 'customer')
+          .eq('type', 'received')
+          .in('party_id', customerIds),
+      ]);
+
+      const invoicesByCustomer = new Map<string, number>();
+      const paymentsByCustomer = new Map<string, number>();
+
+      for (const inv of invRes.data || []) {
+        if (inv.customer_id) {
+          const prev = invoicesByCustomer.get(inv.customer_id) || 0;
+          invoicesByCustomer.set(inv.customer_id, roundTo2(prev + (Number(inv.grand_total) || 0)));
+        }
+      }
+
+      for (const pay of payRes.data || []) {
+        if (pay.party_id) {
+          const prev = paymentsByCustomer.get(pay.party_id) || 0;
+          paymentsByCustomer.set(pay.party_id, roundTo2(prev + (Number(pay.amount) || 0)));
+        }
+      }
+
+      const reconciledRows: Customer[] = rawRows.map((c) => {
+        const openingBal = Number(c.opening_balance) || 0;
+        const totalSales = invoicesByCustomer.has(c.id)
+          ? invoicesByCustomer.get(c.id)!
+          : (Number(c.total_sales) || 0);
+        const totalPaid = paymentsByCustomer.has(c.id)
+          ? paymentsByCustomer.get(c.id)!
+          : (Number(c.total_paid) || 0);
+        const totalDebit = roundTo2(openingBal + totalSales);
+
+        // Customer outstanding = (Total Posted Invoices - Total Payments Received), or 0.00 if no debit invoices exist.
+        // Ensure advance/unallocated payments do not produce an arbitrary positive debit balance.
+        const outstanding = totalDebit <= 0 ? 0 : Math.max(0, roundTo2(totalDebit - totalPaid));
+
+        return {
+          ...c,
+          current_balance: outstanding,
+          total_sales: totalSales,
+          total_paid: totalPaid,
+        };
+      });
+
+      // Self-heal drifted database rows in the background
+      const drifted = reconciledRows.filter((r, idx) => {
+        const orig = rawRows[idx];
+        return orig && (
+          Number(orig.current_balance) !== r.current_balance ||
+          Number(orig.total_sales) !== r.total_sales ||
+          Number(orig.total_paid) !== r.total_paid
+        );
+      });
+      if (drifted.length > 0) {
+        Promise.all(
+          drifted.map((d) =>
+            supabase
+              .from('customers')
+              .update({
+                current_balance: d.current_balance,
+                total_sales: d.total_sales,
+                total_paid: d.total_paid,
+              })
+              .eq('id', d.id)
+              .eq('business_id', activeBusiness.id)
+          )
+        ).catch((e) => console.warn('Self-heal customer balance warning:', e));
+      }
+
+      return { rows: reconciledRows, total: count ?? 0 };
+    },
+    enabled: !!activeBusiness,
+    placeholderData: (prev) => prev,
+  });
+  const customers = data?.rows ?? [];
+  const totalCustomers = data?.total ?? 0;
+
+  // Two-path delete (audit P3-4): probe linked documents first — they are
+  // revenue records that must NOT be cascaded away. No links => hard delete;
+  // any link (or an FK 23503 race) => deactivate, history preserved.
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      if (!activeBusiness) throw new Error('No active business');
+      const biz = activeBusiness.id;
+      const [invoicesRes, ordersRes, quotationsRes, paymentsRes] = await Promise.all([
+        supabase.from('sales_invoices').select('id').eq('business_id', biz).eq('customer_id', id).limit(1),
+        supabase.from('sales_orders').select('id').eq('business_id', biz).eq('customer_id', id).limit(1),
+        supabase.from('quotations').select('id').eq('business_id', biz).eq('customer_id', id).limit(1),
+        supabase.from('payments').select('id').eq('business_id', biz).eq('party_type', 'customer').eq('party_id', id).limit(1),
+      ]);
+      for (const r of [invoicesRes, ordersRes, quotationsRes, paymentsRes]) if (r.error) throw r.error;
+      const hasLinkedDocs = [invoicesRes, ordersRes, quotationsRes, paymentsRes].some((r) => (r.data ?? []).length > 0);
+
+      const deactivate = async () => {
+        const { error } = await supabase.from('customers').update({ status: 'inactive' }).eq('id', id).eq('business_id', biz);
+        if (error) throw error;
+      };
+
+      if (hasLinkedDocs) {
+        await deactivate();
+        return { deactivated: true };
+      }
+      try {
+        const { error } = await supabase.from('customers').delete().eq('id', id).eq('business_id', biz);
+        if (error) throw error;
+        return { deactivated: false };
+      } catch (err: any) {
+        // FK race fallback: a linked document appeared between probe and delete.
+        if (!/\b23503\b|foreign[_\s-]?key/i.test(err?.message || '')) throw err;
+        await deactivate();
+        return { deactivated: true };
+      }
+    },
+    onSuccess: ({ deactivated }: { deactivated: boolean }) => {
+      queryClient.invalidateQueries({ queryKey: ['customers', activeBusiness?.id] });
+      toast(deactivated ? 'Customer has linked documents — deactivated instead' : 'Customer deleted', 'success');
+      setDeleteId(null);
+    },
+    onError: (err: any) => toast(err.message || 'Failed to delete customer', 'error'),
+  });
+
+  const openEdit = (c: Customer) => {
+    navigate('/app/customers/' + c.id + '/edit');
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="Customers"
+        subtitle={`${totalCustomers} customer${totalCustomers !== 1 ? 's' : ''}`}
+        actions={<Button onClick={() => navigate('/app/customers/new')}><Plus className="h-4 w-4" /> Add Customer</Button>}
+      />
+
+      <div className="card">
+        <ListToolbar
+          search={list.search}
+          onSearchChange={list.setSearch}
+          placeholder="Search by name, phone, GSTIN..."
+          pageSize={list.pageSize}
+          onPageSizeChange={list.setPageSize}
+        >
+          <DataTableExportToolbar
+            columns={[
+              { key: 'name', label: 'Customer', getText: (c) => c.name },
+              { key: 'company', label: 'Company', getText: (c) => c.company_name || '—' },
+              { key: 'phone', label: 'Phone', getText: (c) => c.phone || '—' },
+              { key: 'email', label: 'Email', getText: (c) => c.email || '—' },
+              { key: 'gstin', label: 'GSTIN', getText: (c) => c.gstin || '—' },
+              { key: 'pan', label: 'PAN', getText: (c) => c.pan || '—' },
+              { key: 'aadhaar', label: 'Aadhaar', getText: (c) => c.aadhaar || '—' },
+              { key: 'outstanding', label: 'Outstanding', getText: (c) => formatCurrency(c.current_balance, activeBusiness?.currency_symbol) },
+              { key: 'sales', label: 'Total Sales', getText: (c) => formatCurrency(c.total_sales, activeBusiness?.currency_symbol) },
+              { key: 'status', label: 'Status', getText: (c) => c.status },
+            ]}
+            rows={customers}
+            filename="customers"
+            title="Customers"
+            storageKey="customers"
+          />
+        </ListToolbar>
+        {isError ? (
+          <ErrorState title="Unable to load customers." onRetry={() => refetch()} />
+        ) : isLoading ? (
+          <div className="p-8 space-y-3">
+            {[1,2,3,4,5].map((i) => <div key={i} className="h-14 rounded-lg bg-secondary-100 dark:bg-secondary-800 animate-pulse" />)}
+          </div>
+        ) : customers.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title="No customers yet"
+            description="Add your first customer to start creating invoices"
+            action={<Button onClick={() => navigate('/app/customers/new')}><Plus className="h-4 w-4" /> Add Customer</Button>}
+          />
+        ) : (
+          <>
+          <div className="md:hidden space-y-3">
+            {customers.map((c) => (
+              <div key={c.id} className="card-solid p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-section-title truncate">{c.name}</p>
+                    <p className="text-xs text-secondary-500 dark:text-secondary-400 truncate">{c.company_name || c.phone || c.email || '—'}</p>
+                  </div>
+                  <Badge variant={c.status === 'active' ? 'success' : 'neutral'}>{c.status}</Badge>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className={Number(c.current_balance) > 0 ? 'text-warning-600 dark:text-warning-400 font-medium tabular-nums' : 'text-secondary-500 dark:text-secondary-400 tabular-nums'}>
+                    {formatCurrency(c.current_balance, activeBusiness?.currency_symbol)}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => openEdit(c)} title="Edit customer" aria-label="Edit customer" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => setStatementFor(c)} title="Send account statement" aria-label="Send account statement" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"><Mail className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => setDeleteId(c.id)} title="Delete customer" aria-label="Delete customer" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block overflow-x-auto scrollbar-thin">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
+                  <th className="text-left px-4 py-3 font-medium">Customer</th>
+                  <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Contact</th>
+                  <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">GSTIN</th>
+                  <th className="text-right px-4 py-3 font-medium">Outstanding</th>
+                  <th className="text-right px-4 py-3 font-medium hidden sm:table-cell">Total Sales</th>
+                  <th className="text-center px-4 py-3 font-medium hidden xl:table-cell">Status</th>
+                  <th className="text-right px-4 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customers.map((c) => (
+                  <tr key={c.id} className="border-b border-secondary-100 dark:border-secondary-800/50 table-row-hover">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 flex items-center justify-center text-xs font-semibold shrink-0">
+                          {getInitials(c.name)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-secondary-900 dark:text-secondary-100 truncate">{c.name}</p>
+                          {c.company_name && <p className="text-xs text-secondary-400 truncate">{c.company_name}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      <p className="text-secondary-600 dark:text-secondary-300">{c.phone || '—'}</p>
+                      <p className="text-xs text-secondary-500 dark:text-secondary-400">{c.email || ''}</p>
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell text-secondary-600 dark:text-secondary-300 font-mono text-xs">{c.gstin || '—'}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      <span className={Number(c.current_balance) > 0 ? 'text-warning-600 dark:text-warning-400 font-medium' : 'text-secondary-500'}>
+                        {formatCurrency(c.current_balance, activeBusiness?.currency_symbol)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-secondary-600 dark:text-secondary-300 hidden sm:table-cell">
+                      {formatCurrency(c.total_sales, activeBusiness?.currency_symbol)}
+                    </td>
+                    <td className="px-4 py-3 text-center hidden xl:table-cell">
+                      <Badge variant={c.status === 'active' ? 'success' : 'neutral'}>{c.status}</Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => openEdit(c)} title="Edit customer" aria-label="Edit customer" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => setStatementFor(c)} title="Send account statement" aria-label="Send account statement" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors">
+                          <Mail className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => setDeleteId(c.id)} title="Delete customer" aria-label="Delete customer" className="p-1.5 rounded-md text-secondary-500 dark:text-secondary-400 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-900/30 transition-colors">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          </>
+        )}
+
+        <ListPagination
+          page={list.page}
+          onPageChange={list.setPage}
+          pageSize={list.pageSize}
+          from={list.from}
+          total={totalCustomers}
+          isLoading={isLoading}
+        />
+      </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
+        title="Delete Customer?"
+        message="This will permanently remove the customer if they have no linked documents. If documents exist, the customer is deactivated instead — history is preserved."
+        confirmText="Delete"
+        loading={deleteMutation.isPending}
+      />
+
+      <SendDialog
+        open={!!statementFor}
+        onClose={() => setStatementFor(null)}
+        contextLabel={`Statement — ${statementFor?.name ?? ''}`}
+        docType="statement"
+        docNumber="STATEMENT"
+        templateKey="statement_customer"
+        templateVariables={{
+          customer_name: statementFor?.name || '',
+          business_name: activeBusiness?.name || '',
+          period_start: formatDate(new Date(Date.now() - 90 * 86400000)),
+          period_end: formatDate(new Date()),
+          balance: formatCurrency(Number(statementFor?.current_balance || 0), activeBusiness?.currency_symbol),
+        }}
+        defaultSubject={`Your account statement from ${activeBusiness?.name || 'us'}`}
+        defaultMessage={`Dear ${statementFor?.name || 'customer'}, please find your account statement attached. Closing balance: ${formatCurrency(Number(statementFor?.current_balance || 0), activeBusiness?.currency_symbol)}.`}
+        recipients={[
+          {
+            label: statementFor?.company_name || statementFor?.name || 'Customer on record',
+            email: statementFor?.email,
+            phone: statementFor?.phone,
+          },
+        ]}
+        attachments={[
+          {
+            id: 'statement-csv',
+            label: 'Account statement (CSV)',
+            filename: `statement-${(statementFor?.name || 'customer').replace(/\W+/g, '-').toLowerCase()}.csv`,
+            build: async () => {
+              if (!activeBusiness || !statementFor) throw new Error('Statement is not ready.');
+              const { data, error } = await supabase.rpc('get_customer_statement', {
+                p_business_id: activeBusiness.id,
+                p_customer_id: statementFor.id,
+                p_from_date: null,
+                p_to_date: null,
+              });
+              if (error) throw new Error(error.message);
+              const rows = (data || []) as { entry_date: string; description: string; doc_number: string | null; debit_amount: number; credit_amount: number; running_balance: number }[];
+              const header = ['Date', 'Description', 'Doc No', 'Debit', 'Credit', 'Balance'];
+              const lines = rows.map((r) =>
+                [r.entry_date, `"${r.description.replace(/"/g, '""')}"`, r.doc_number || '', r.debit_amount, r.credit_amount, r.running_balance].join(',')
+              );
+              return new Blob([`\uFEFF${[header.join(','), ...lines].join('\n')}`], { type: 'text/csv;charset=utf-8' });
+            },
+          },
+        ]}
+      />
+    </div>
+  );
+}

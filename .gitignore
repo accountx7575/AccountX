@@ -3,4 +3,7 @@ palace/
 roster-backups/
 hive/
 node_modules/
+.env
+.env.local
+.env.example
 

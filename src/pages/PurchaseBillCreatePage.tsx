@@ -1,0 +1,783 @@
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+import { documentNumberTaken } from '@/lib/numbering';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
+import { PageHeader } from '@/components/PageHeader';
+import { Button } from '@/components/ui/Button';
+import {
+  DocumentNumberField,
+  DUPLICATE_DOCUMENT_NUMBER_MESSAGE,
+} from '@/components/documents/DocumentNumberField';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { DatePicker } from '@/components/common/DatePicker';
+import { TimePicker } from '@/components/common/TimePicker';
+import { Input } from '@/components/ui/Input';
+import { FormSection } from '@/components/ui/FormSection';
+import { Plus, Trash2, Save, ArrowLeft, ScanText, Upload } from 'lucide-react';
+import { formatCurrency, formatRoundOff, roundTo2, todayDateString, getLocalNowTime, combineDateTime } from '@/lib/utils';
+import { computeDocLine } from '@/lib/payloads';
+import { extractBillText } from '@/lib/billTextExtractor';
+import { parseBillText } from '@/lib/billParser';
+import {
+  sanitizeUuid,
+  sanitizePurchaseBillPayload,
+  sanitizePurchaseBillItemPayload,
+  createPurchaseBillService,
+} from '@/services/purchaseBillService';
+import type { Supplier, Product, PurchaseBill, PurchaseBillItem } from '@/types/db';
+
+type LineItem = {
+  product_id: string | null;
+  product_name: string;
+  hsn_sac: string;
+  quantity: number;
+  unit: string;
+  rate: number;
+  discount_amount: number;
+  tax_rate: number;
+  taxable_amount: number;
+  cgst_amount: number;
+  sgst_amount: number;
+  igst_amount: number;
+  total_amount: number;
+};
+
+const emptyItem: LineItem = {
+  product_id: null, product_name: '', hsn_sac: '', quantity: 1, unit: 'PCS',
+  rate: 0, discount_amount: 0, tax_rate: 0, taxable_amount: 0,
+  cgst_amount: 0, sgst_amount: 0, igst_amount: 0, total_amount: 0,
+};
+
+// Same GST slabs as the sales invoice grid — the Tax % select draws from
+// these plus any rate already present on a row.
+const GST_SLABS = [0, 0.25, 3, 5, 12, 18, 28];
+
+export function PurchaseBillCreatePage() {
+  const { activeBusiness } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+
+  const { id: editId } = useParams<{ id: string }>();
+  const isEdit = Boolean(editId);
+
+  const [supplierId, setSupplierId] = useState('');
+  const [billNumber, setBillNumber] = useState('');
+  // PBS-142: duplicate document number guard (per business).
+  const [billNumberError, setBillNumberError] = useState<string | null>(null);
+  const [billDate, setBillDate] = useState(todayDateString());
+  const [billTime, setBillTime] = useState(getLocalNowTime());
+  const [dueDate, setDueDate] = useState('');
+  const [items, setItems] = useState<LineItem[]>([{ ...emptyItem }]);
+  const [notes, setNotes] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const { data: suppliers } = useQuery({
+    queryKey: ['suppliers', activeBusiness?.id],
+    queryFn: async () => {
+      if (!activeBusiness) return [];
+      const { data } = await supabase.from('suppliers').select('*').eq('business_id', activeBusiness.id).eq('status', 'active').order('name');
+      return data as Supplier[];
+    },
+    enabled: !!activeBusiness,
+  });
+
+  const { data: products } = useQuery({
+    queryKey: ['products', activeBusiness?.id, 'active'],
+    queryFn: async () => {
+      if (!activeBusiness) return [];
+      const { data } = await supabase.from('products').select('*').eq('business_id', activeBusiness.id).eq('is_active', true).order('name');
+      return data as Product[];
+    },
+    enabled: !!activeBusiness,
+  });
+
+  // Edit mode: load the existing bill + its items (scoped to the active
+  // business) and pre-fill every field. Reuses the same form layout.
+  const existingQuery = useQuery({
+    queryKey: ['purchase-bill', activeBusiness?.id, editId],
+    queryFn: async () => {
+      const { data: bill, error: billError } = await supabase
+        .from('purchase_bills')
+        .select('*')
+        .eq('business_id', activeBusiness!.id)
+        .eq('id', editId!)
+        .single();
+      if (billError) throw billError;
+      const { data: billItems, error: itemsError } = await supabase
+        .from('purchase_bill_items')
+        .select('*')
+        .eq('bill_id', editId!)
+        .order('created_at');
+      if (itemsError) throw itemsError;
+      return { bill: bill as PurchaseBill, items: (billItems || []) as PurchaseBillItem[] };
+    },
+    enabled: isEdit && !!activeBusiness,
+  });
+
+  useEffect(() => {
+    const loaded = existingQuery.data;
+    if (!loaded) return;
+    const { bill, items: loadedItems } = loaded;
+    setSupplierId(bill.supplier_id);
+    setBillNumber(bill.bill_number);
+    setBillDate(bill.bill_date);
+    if (bill.created_at) {
+      setBillTime(
+        new Date(bill.created_at).toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        })
+      );
+    }
+    setDueDate(bill.due_date || '');
+    setNotes(bill.notes || '');
+    setPaymentMethod(bill.payment_method || '');
+    if (loadedItems.length > 0) {
+      setItems(loadedItems.map((it) => ({
+        product_id: it.product_id,
+        product_name: it.product_name,
+        hsn_sac: it.hsn_sac || '',
+        quantity: Number(it.quantity),
+        unit: it.unit,
+        rate: Number(it.rate),
+        discount_amount: Number(it.discount_amount),
+        tax_rate: Number(it.tax_rate),
+        taxable_amount: Number(it.taxable_amount),
+        cgst_amount: Number(it.cgst_amount),
+        sgst_amount: Number(it.sgst_amount),
+        igst_amount: Number(it.igst_amount),
+        total_amount: Number(it.total_amount),
+      })));
+    }
+  }, [existingQuery.data]);
+
+  // Pre-fetch the next auto bill number on mount so the input shows the
+  // actual upcoming number (not just a placeholder). If the user clears the
+  // field, the RPC generates one server-side; if they type a custom number,
+  // that is used as-is. Skipped in edit mode — the loaded number stays.
+  useEffect(() => {
+    if (!activeBusiness || isEdit) return;
+    supabase.rpc('next_document_number', {
+      p_business_id: activeBusiness.id,
+      p_doc_type: 'purchase_bill',
+      p_date: billDate,
+    }).then(({ data, error }) => {
+      if (!error && data) setBillNumber(String(data));
+    });
+  }, [activeBusiness?.id]);
+
+  const isInterState = useMemo(() => {
+    if (!activeBusiness || !supplierId || !suppliers) return false;
+    const supplier = suppliers.find((s) => s.id === supplierId);
+    return Boolean(supplier && supplier.state && supplier.state !== activeBusiness.state);
+  }, [activeBusiness, supplierId, suppliers]);
+
+  const totals = useMemo(() => {
+    let subtotal = 0, totalDiscount = 0, taxableAmount = 0;
+    let cgst = 0, sgst = 0, igst = 0;
+    items.forEach((item) => {
+      const line = computeDocLine({
+        quantity: item.quantity,
+        rate: item.rate,
+        discount_amount: item.discount_amount,
+        tax_rate: item.tax_rate,
+        isInterState,
+      });
+      subtotal += line.gross_amount;
+      totalDiscount += roundTo2(item.discount_amount);
+      taxableAmount += line.taxable_amount;
+      cgst += line.cgst_amount;
+      sgst += line.sgst_amount;
+      igst += line.igst_amount;
+    });
+    const totalTax = roundTo2(cgst + sgst + igst);
+    const beforeRound = roundTo2(taxableAmount + totalTax);
+    const roundOff = roundTo2(Math.round(beforeRound) - beforeRound);
+    const grandTotal = Math.round(beforeRound + roundOff);
+    return { subtotal, totalDiscount, taxableAmount, cgst: roundTo2(cgst), sgst: roundTo2(sgst), igst: roundTo2(igst), roundOff, grandTotal };
+  }, [items, isInterState]);
+
+  const taxRateOptions = useMemo(() => {
+    const used = new Set<number>(GST_SLABS);
+    items.forEach((it) => used.add(Number(it.tax_rate)));
+    return Array.from(used).sort((a, b) => a - b);
+  }, [items]);
+
+  const updateItem = (idx: number, updates: Partial<LineItem>) => {
+    setItems((prev) => prev.map((it, i) => {
+      if (i !== idx) return it;
+      const u = { ...it, ...updates };
+      const line = computeDocLine({
+        quantity: u.quantity,
+        rate: u.rate,
+        discount_amount: u.discount_amount,
+        tax_rate: u.tax_rate,
+        isInterState,
+      });
+      u.taxable_amount = line.taxable_amount;
+      u.cgst_amount = line.cgst_amount;
+      u.sgst_amount = line.sgst_amount;
+      u.igst_amount = line.igst_amount;
+      u.total_amount = line.total_amount;
+      return u;
+    }));
+  };
+
+  const selectProduct = (idx: number, product: Product) => {
+    updateItem(idx, {
+      product_id: product.id, product_name: product.name, hsn_sac: product.hsn_sac || '',
+      unit: product.unit, rate: product.purchase_price, tax_rate: product.tax_rate,
+    });
+  };
+
+  const addItem = () => setItems((prev) => [...prev, { ...emptyItem }]);
+  const removeItem = (idx: number) => setItems((prev) => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
+
+  // Offline Scan & Auto Fill Handler — text extraction and field mapping run
+  // entirely in the browser (no API key, no external service).
+  const handleScanBill = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setScanning(true);
+    setScanProgress(0);
+    try {
+      const text = await extractBillText(file, (p) => setScanProgress(p.percent));
+      setScanProgress(98);
+      const parsed = parseBillText(text);
+
+      // 1. Match & set Supplier — GSTIN first (exact), then name.
+      if (suppliers?.length) {
+        const gstin = parsed.supplierGstin?.toLowerCase();
+        const name = parsed.supplierName?.toLowerCase().trim();
+        const matched =
+          (gstin ? suppliers.find((s) => (s.gstin || '').toLowerCase() === gstin) : undefined) ||
+          (name
+            ? suppliers.find((s) => {
+                const sn = s.name.toLowerCase().trim();
+                return sn.includes(name) || name.includes(sn);
+              })
+            : undefined);
+        if (matched) setSupplierId(matched.id);
+      }
+
+      // 2. Set Bill Details
+      if (parsed.billNumber) setBillNumber(parsed.billNumber);
+      if (parsed.billDate) setBillDate(parsed.billDate);
+      if (parsed.dueDate) setDueDate(parsed.dueDate);
+      if (parsed.notes) setNotes(parsed.notes);
+
+      // 3. Populate Items with full calculation (totals recalculate from items)
+      if (parsed.items.length > 0) {
+        const parsedItems: LineItem[] = parsed.items.map((it) => {
+          const qty = Number(it.quantity) || 1;
+          const r = Number(it.rate) || 0;
+          const tax = Number(it.taxRate) || 0;
+          const line = computeDocLine({
+            quantity: qty,
+            rate: r,
+            discount_amount: 0,
+            tax_rate: tax,
+            isInterState,
+          });
+          return {
+            product_id: null,
+            product_name: String(it.name || 'Item'),
+            hsn_sac: '',
+            quantity: qty,
+            unit: 'PCS',
+            rate: r,
+            discount_amount: 0,
+            tax_rate: tax,
+            taxable_amount: line.taxable_amount,
+            cgst_amount: line.cgst_amount,
+            sgst_amount: line.sgst_amount,
+            igst_amount: line.igst_amount,
+            total_amount: line.total_amount,
+          };
+        });
+        setItems(parsedItems);
+
+        // 4. Surface a reconciliation difference: if the bill's own total does
+        //    not match what the scanned rows add up to (missing tax, freight,
+        //    round-off), the user has to see it instead of saving a wrong
+        //    payable figure.
+        if (parsed.totalAmount && parsedItems.length) {
+          const itemTotal = parsedItems.reduce((sum, l) => sum + Number(l.total_amount || 0), 0);
+          if (Math.abs(roundTo2(itemTotal) - roundTo2(parsed.totalAmount)) > 1) {
+            toast(
+              `Bill total ${formatCurrency(parsed.totalAmount, sym)} does not match the scanned items ` +
+                `(${formatCurrency(itemTotal, sym)}). Please check tax and charges.`,
+              'warning'
+            );
+          }
+        }
+      }
+
+      const filled = [
+        parsed.billNumber,
+        parsed.billDate,
+        parsed.items.length > 0 ? 'items' : '',
+      ].filter(Boolean).length;
+      if (!filled) {
+        throw new Error('Could not read any bill details from this file — try a clearer photo or a text-based PDF');
+      }
+
+      toast('Bill data scanned and filled successfully!', 'success');
+    } catch (err: any) {
+      toast(err.message || 'Failed to scan bill', 'error');
+    } finally {
+      setScanning(false);
+      setScanProgress(0);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async (status: 'confirmed' | 'draft' = 'confirmed') => {
+      if (!activeBusiness) throw new Error('No active business');
+      const cleanSupplier = sanitizeUuid(supplierId);
+      if (!cleanSupplier) throw new Error('Please select a supplier');
+      if (items.some((it) => !it.product_name || it.quantity <= 0)) throw new Error('Please fill all item details');
+      setSaving(true);
+
+      // Edit mode: UPDATE the header in place and replace the line items
+      // (delete + re-insert). Status, paid/balance and postings are left
+      // untouched — no re-posting happens here.
+      if (isEdit) {
+        const loaded = existingQuery.data;
+        if (!loaded) throw new Error('Bill not loaded yet');
+        const biz = activeBusiness.id;
+        const updatePayload = sanitizePurchaseBillPayload({
+          supplier_id: cleanSupplier,
+          bill_number: billNumber.trim() || loaded.bill.bill_number,
+          bill_date: billDate,
+          created_at: combineDateTime(billDate, billTime),
+          due_date: dueDate?.trim() ? dueDate : null,
+          subtotal: totals.subtotal,
+          discount_amount: totals.totalDiscount,
+          taxable_amount: totals.taxableAmount,
+          cgst_amount: totals.cgst,
+          sgst_amount: totals.sgst,
+          igst_amount: totals.igst,
+          cess_amount: 0,
+          round_off: totals.roundOff,
+          grand_total: totals.grandTotal,
+          payment_method: paymentMethod || null,
+          notes: notes || null,
+        });
+        const { error: headerError } = await supabase
+          .from('purchase_bills')
+          .update(updatePayload)
+          .eq('business_id', biz)
+          .eq('id', editId!);
+        if (headerError) throw headerError;
+        const { error: clearError } = await supabase
+          .from('purchase_bill_items')
+          .delete()
+          .eq('business_id', biz)
+          .eq('bill_id', editId!);
+        if (clearError) throw clearError;
+        const rows = items.map((it) => ({
+          business_id: biz,
+          bill_id: editId!,
+          product_id: sanitizeUuid(it.product_id),
+          product_name: it.product_name,
+          hsn_sac: it.hsn_sac || '',
+          quantity: it.quantity,
+          unit: it.unit,
+          rate: it.rate,
+          discount_amount: it.discount_amount,
+          tax_rate: it.tax_rate,
+          taxable_amount: it.taxable_amount,
+          cgst_amount: it.cgst_amount,
+          sgst_amount: it.sgst_amount,
+          igst_amount: it.igst_amount,
+          cess_amount: 0,
+          total_amount: it.total_amount,
+        }));
+        const { error: itemsError } = await supabase.from('purchase_bill_items').insert(rows);
+        if (itemsError) throw itemsError;
+        return { billId: editId!, status: loaded.bill.status, edited: true };
+      }
+
+      const p_bill: Record<string, unknown> = sanitizePurchaseBillPayload({
+        supplier_id: cleanSupplier,
+        bill_date: billDate,
+        due_date: dueDate?.trim() ? dueDate : null,
+        subtotal: totals.subtotal,
+        discount_amount: totals.totalDiscount,
+        taxable_amount: totals.taxableAmount,
+        cgst_amount: totals.cgst,
+        sgst_amount: totals.sgst,
+        igst_amount: totals.igst,
+        cess_amount: 0,
+        round_off: totals.roundOff,
+        grand_total: totals.grandTotal,
+        payment_method: paymentMethod || null,
+        notes: notes || null,
+      });
+      // Determine the bill number: custom if typed, else fetch fresh from
+      // the atomic counter right before the RPC.
+      let finalBillNumber = billNumber.trim();
+      if (finalBillNumber) {
+        const taken = await documentNumberTaken({
+          table: 'purchase_bills',
+          column: 'bill_number',
+          businessId: activeBusiness.id,
+          value: finalBillNumber,
+          excludeId: sanitizeUuid(editId) ?? undefined,
+        });
+        if (taken) {
+          setBillNumberError(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
+          throw new Error(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
+        }
+        setBillNumberError(null);
+      }
+      if (!finalBillNumber) {
+        const { data: nextNum, error: nextErr } = await supabase.rpc('next_document_number', {
+          p_business_id: activeBusiness.id,
+          p_doc_type: 'purchase_bill',
+          p_date: billDate,
+        });
+        if (nextErr) throw nextErr;
+        finalBillNumber = String(nextNum || '');
+      }
+      if (finalBillNumber) {
+        p_bill.bill_number = finalBillNumber;
+      }
+
+      const p_items = items.map((it) => ({
+        product_id: sanitizeUuid(it.product_id),
+        product_name: it.product_name,
+        hsn_sac: it.hsn_sac || '',
+        quantity: it.quantity,
+        unit: it.unit,
+        rate: it.rate,
+        discount_amount: it.discount_amount,
+        tax_rate: it.tax_rate,
+        taxable_amount: it.taxable_amount,
+        cgst_amount: it.cgst_amount,
+        sgst_amount: it.sgst_amount,
+        igst_amount: it.igst_amount,
+        cess_amount: 0,
+        total_amount: it.total_amount,
+      }));
+
+      // Call createPurchaseBillService with one retry on duplicate key (23505)
+      let rpcResult: { data: any; error: any } | null = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        rpcResult = await createPurchaseBillService({
+          businessId: activeBusiness.id,
+          bill: p_bill,
+          items: p_items,
+          status,
+        });
+        if (!rpcResult.error) break;
+        if (rpcResult.error.code === '23505' && attempt === 0) {
+          const { data: retryNum, error: retryNextErr } = await supabase.rpc('next_document_number', {
+            p_business_id: activeBusiness.id,
+            p_doc_type: 'purchase_bill',
+            p_date: billDate,
+          });
+          if (retryNextErr) throw retryNextErr;
+          p_bill.bill_number = String(retryNum || '');
+          continue;
+        }
+        break;
+      }
+      if (rpcResult?.error) {
+        if (rpcResult.error.code === '23505') {
+          throw new Error('Could not allocate a unique bill number — please try again or enter a custom number');
+        }
+        throw rpcResult.error;
+      }
+      const result = rpcResult!.data as unknown as { bill_id?: string }[] | { bill_id?: string } | null;
+      const billId = Array.isArray(result) ? result[0]?.bill_id : result?.bill_id;
+      if (billId) {
+        await supabase
+          .from('purchase_bills')
+          .update({ created_at: combineDateTime(billDate, billTime) })
+          .eq('business_id', activeBusiness.id)
+          .eq('id', billId);
+      }
+      return { billId: billId || '', status, edited: false };
+    },
+    onSuccess: ({ status, edited }) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-bills', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-bill', activeBusiness?.id, editId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['payables', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['sales-purchases-series', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['products', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['accounts', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['journal-entries', activeBusiness?.id] });
+      queryClient.invalidateQueries({ queryKey: ['trial-balance', activeBusiness?.id] });
+      toast(edited ? 'Purchase bill updated successfully' : status === 'draft' ? 'Draft saved — confirm it from the bills list' : 'Purchase bill confirmed successfully', 'success');
+      navigate('/app/purchase-bills');
+    },
+    onError: (err: any) => toast(err.message || 'Failed to save', 'error'),
+    onSettled: () => setSaving(false),
+  });
+
+  if (isEdit && existingQuery.isError) {
+    return (
+      <div>
+        <PageHeader
+          title="Edit Purchase Bill"
+          actions={
+            <Button variant="secondary" onClick={() => navigate('/app/purchase-bills')}>
+              <ArrowLeft className="h-4 w-4" /> Back
+            </Button>
+          }
+        />
+        <ErrorState title="Unable to load this bill." onRetry={() => existingQuery.refetch()} />
+      </div>
+    );
+  }
+
+  const formLoading = isEdit && existingQuery.isLoading;
+
+  const sym = activeBusiness?.currency_symbol || '₹';
+
+  return (
+    <div>
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={handleScanBill}
+      />
+
+      <PageHeader
+        title={isEdit ? 'Edit Purchase Bill' : 'New Purchase Bill'}
+        actions={
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              loading={scanning}
+              onClick={() => fileInputRef.current?.click()}
+              className="border-primary-300 text-primary-700 dark:text-primary-300 bg-primary-50/70 dark:bg-primary-950/40"
+            >
+              <ScanText className="h-4 w-4 text-primary-600" />
+              {scanning ? 'Scanning Bill...' : 'Scan & Auto-fill Bill'}
+            </Button>
+            {scanning && (
+              <div className="w-44">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary-200 dark:bg-secondary-700">
+                  <div
+                    className="h-full rounded-full bg-primary-500 transition-[width] duration-200"
+                    style={{ width: `${Math.min(100, Math.max(2, scanProgress))}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-secondary-500 dark:text-secondary-400">
+                  Extracting text... {scanProgress}%
+                </p>
+              </div>
+            )}
+            <Button variant="secondary" onClick={() => navigate('/app/purchase-bills')}>
+              <ArrowLeft className="h-4 w-4" /> Back
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="card p-6">
+        <FormSection>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-start">
+            <div>
+              <label className="label">Supplier <span className="text-error-500">*</span></label>
+              <select className="input h-10" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+                <option value="">Select supplier...</option>
+                {suppliers?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <DocumentNumberField
+                value={billNumber}
+                onChange={setBillNumber}
+                error={billNumberError}
+                className="h-10"
+              />
+            </div>
+            <div>
+              <label className="label">Bill Date</label>
+              <DatePicker className="input h-10" value={billDate} onChange={setBillDate} />
+            </div>
+            <div>
+              <label className="label">Time</label>
+              <TimePicker
+                className="h-10"
+                value={billTime}
+                onChange={setBillTime}
+                placeholder="12:00 PM"
+              />
+            </div>
+            <div>
+              <label className="label">Due Date</label>
+              <DatePicker className="input h-10" value={dueDate} onChange={setDueDate} />
+            </div>
+          </div>
+          {isInterState && (
+            <div className="mt-3 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 text-warning-700 dark:text-warning-300 text-sm">
+              Inter-state transaction detected — IGST will be applied instead of CGST + SGST.
+            </div>
+          )}
+        </FormSection>
+
+        <FormSection
+        >
+          <div className="overflow-x-auto md:overflow-visible scrollbar-thin -mx-2">
+            <div className="min-w-[900px] px-2 text-sm">
+              <div className="grid grid-cols-[1fr_100px_70px_100px_80px_90px_100px_40px] items-center gap-2 border-b border-secondary-200 dark:border-secondary-800 text-secondary-500 dark:text-secondary-400">
+                <div className="py-2 font-medium text-left">Product</div>
+                <div className="py-2 font-medium text-center">HSN/SAC</div>
+                <div className="py-2 font-medium text-center">Qty</div>
+                <div className="py-2 font-medium text-center">Rate</div>
+                <div className="py-2 font-medium text-center">Disc</div>
+                <div className="py-2 font-medium text-center">Tax %</div>
+                <div className="py-2 font-medium text-right">Amount</div>
+                <div />
+              </div>
+              {items.map((item, idx) => (
+                <div key={idx} className="grid grid-cols-[1fr_100px_70px_100px_80px_90px_100px_40px] items-center gap-2 border-b border-secondary-100 dark:border-secondary-800/50">
+                  <div className="py-2 min-w-0">
+                    <select
+                      value={item.product_id || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const p = products?.find((pr) => pr.id === val);
+                        if (p) {
+                          selectProduct(idx, p);
+                        } else {
+                          updateItem(idx, { product_id: null, product_name: '', hsn_sac: '', unit: 'PCS', rate: 0, tax_rate: 0 });
+                        }
+                      }}
+                      className="input w-full"
+                    >
+                      <option value="">-- Select Product --</option>
+                      {products?.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} - ₹{formatCurrency(p.purchase_price, sym)} - Stock {p.current_stock}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="py-2">
+                    <Input value={item.hsn_sac} onChange={(e) => updateItem(idx, { hsn_sac: e.target.value })} className="w-full text-center figure font-mono" placeholder="HSN" />
+                  </div>
+                  <div className="py-2">
+                    <Input type="number" value={item.quantity} onChange={(e) => updateItem(idx, { quantity: parseFloat(e.target.value) || 0 })} className="w-full text-center figure" />
+                  </div>
+                  <div className="py-2">
+                    <Input type="number" value={item.rate} onChange={(e) => updateItem(idx, { rate: parseFloat(e.target.value) || 0 })} className="w-full text-center figure" />
+                  </div>
+                  <div className="py-2">
+                    <Input type="number" value={item.discount_amount} onChange={(e) => updateItem(idx, { discount_amount: parseFloat(e.target.value) || 0 })} className="w-full text-center figure" />
+                  </div>
+                  <div className="py-2">
+                    <select
+                      className="input w-full px-1.5 py-1.5 text-xs text-center"
+                      value={String(item.tax_rate)}
+                      onChange={(e) => updateItem(idx, { tax_rate: parseFloat(e.target.value) })}
+                    >
+                      {taxRateOptions.map((r) => <option key={r} value={String(r)}>{r}%</option>)}
+                    </select>
+                  </div>
+                  <div className="py-2 text-right tabular-nums font-medium text-secondary-900 dark:text-secondary-100 figure">
+                    {formatCurrency(item.total_amount, sym)}
+                  </div>
+                  <div className="py-2 flex justify-center">
+                    <button onClick={() => removeItem(idx)} className="p-1 text-secondary-500 dark:text-secondary-400 hover:text-error-600 transition-colors" title="Remove row" aria-label="Remove row">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div className="py-3">
+                <button
+                  type="button"
+                  onClick={addItem}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-dashed border-secondary-300 dark:border-secondary-700 text-sm font-medium text-primary-600 dark:text-primary-400 hover:border-primary-400 hover:bg-primary-50/60 dark:hover:bg-primary-900/20 transition-colors"
+                >
+                  <Plus className="h-4 w-4" /> Add another product
+                </button>
+              </div>
+            </div>
+          </div>
+        </FormSection>
+
+        <FormSection>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            <div className="space-y-4">
+              <div>
+                <label className="label">Payment Method</label>
+                <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                  <option value="">—</option>
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="bank">Bank Transfer</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="credit">Credit / Pending</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Notes</label>
+                <textarea className="input resize-none" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes for this bill..." />
+              </div>
+            </div>
+            <div className="w-full md:w-80 md:ml-auto space-y-2">
+              <div className="flex justify-between text-sm"><span className="text-secondary-500">Subtotal (Taxable Value)</span><span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span></div>
+              {totals.totalDiscount > 0 && <div className="flex justify-between text-sm"><span className="text-secondary-500">Discount</span><span className="figure text-error-600 dark:text-error-400">-{formatCurrency(totals.totalDiscount, sym)}</span></div>}
+              <div className="flex justify-between text-sm"><span className="text-secondary-500">Taxable Amount</span><span className="figure">{formatCurrency(totals.taxableAmount, sym)}</span></div>
+              {isInterState ? (
+                <div className="flex justify-between text-sm"><span className="text-secondary-500">IGST</span><span className="figure">{formatCurrency(totals.igst, sym)}</span></div>
+              ) : (
+                <>
+                  <div className="flex justify-between text-sm"><span className="text-secondary-500">CGST</span><span className="figure">{formatCurrency(totals.cgst, sym)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-secondary-500">SGST</span><span className="figure">{formatCurrency(totals.sgst, sym)}</span></div>
+                </>
+              )}
+              {totals.roundOff !== 0 && <div className="flex justify-between text-sm"><span className="text-secondary-500">Round Off</span><span className="figure">{formatRoundOff(totals.roundOff, sym)}</span></div>}
+              <div className="border-t border-secondary-200 dark:border-secondary-800 pt-2 flex justify-between items-baseline">
+                <span className="text-base font-semibold">Grand Total</span>
+                <span className="figure text-xl font-bold text-primary-600 dark:text-primary-400">{formatCurrency(totals.grandTotal, sym)}</span>
+              </div>
+            </div>
+          </div>
+        </FormSection>
+      </div>
+
+      {/* Sticky action footer */}
+      <div className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 mt-5 border-t border-secondary-200/80 dark:border-zinc-800 bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md">
+        <div className="flex items-center justify-between gap-3">
+          <Button variant="secondary" onClick={() => navigate('/app/purchase-bills')}>Cancel</Button>
+          {isEdit ? (
+            <Button onClick={() => saveMutation.mutate('confirmed')} loading={saving || formLoading}>
+              <Save className="h-4 w-4" /> Update Bill
+            </Button>
+          ) : (
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" onClick={() => saveMutation.mutate('draft')} loading={saving}>Save as draft</Button>
+            <Button onClick={() => saveMutation.mutate('confirmed')} loading={saving}>
+              <Save className="h-4 w-4" /> Confirm Purchase
+            </Button>
+          </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

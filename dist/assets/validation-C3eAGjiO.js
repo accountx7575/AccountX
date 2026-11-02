@@ -1,0 +1,1 @@
+const s=/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/,t=/^[A-Z]{5}[0-9]{4}[A-Z]$/,c=/^[+]?[0-9]{7,15}$/;function $(n,i="-"){if(!n)return"";const e=String(n).replace(/\D/g,"").slice(0,12);return e.length<=4?e:e.length<=8?`${e.slice(0,4)}${i}${e.slice(4)}`:`${e.slice(0,4)}${i}${e.slice(4,8)}${i}${e.slice(8,12)}`}export{s as G,t as P,c as a,$ as f};

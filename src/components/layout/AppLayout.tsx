@@ -1,0 +1,236 @@
+import { useEffect, useRef, useState } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { X } from 'lucide-react';
+import { Sidebar } from './Sidebar';
+import { Header } from './Header';
+import { BroadcastBanner } from './BroadcastBanner';
+import { QuickActions } from '@/components/QuickActions';
+import { useAuth } from '@/context/AuthContext';
+import { useAdminTelemetry } from '@/hooks/useAdminTelemetry';
+import { usePlatformAnnouncement } from '@/hooks/usePlatformAnnouncement';
+import { supabase } from '@/lib/supabase';
+
+// Legacy keys (previous implementation) + Oscar spec keys. Both schemes are
+// honored so either entry point triggers support mode for super-admins only.
+const LEGACY_IMPERSONATING_KEY = 'super_admin_impersonating';
+const OSCAR_IMPERSONATING_KEY = 'accountx_impersonating';
+const ACTIVE_BUSINESS_KEY = 'accountx_active_business_id';
+const OSCAR_TENANT_KEY = 'impersonated_tenant_id';
+const LEGACY_TENANT_KEY = 'accountx_impersonating_business_id';
+
+/**
+ * Drop the impersonation markers.
+ *
+ * `clearActiveBusiness` also drops the pinned active-business id. That key is
+ * how the console pins the session to the impersonated tenant, so it may only
+ * be removed when we deliberately LEAVE impersonation (the exit path). The
+ * scrub path (a non-admin carrying stray flags) must leave it alone, otherwise
+ * we would un-pin a legitimate business of an ordinary user.
+ */
+function clearImpersonationFlags(options?: { clearActiveBusiness?: boolean }) {
+  localStorage.removeItem(LEGACY_IMPERSONATING_KEY);
+  localStorage.removeItem(OSCAR_IMPERSONATING_KEY);
+  localStorage.removeItem(OSCAR_TENANT_KEY);
+  localStorage.removeItem(LEGACY_TENANT_KEY);
+  if (options?.clearActiveBusiness) {
+    localStorage.removeItem(ACTIVE_BUSINESS_KEY);
+  }
+}
+
+const announcementStyles: Record<string, string> = {
+  info: 'bg-blue-50 text-blue-900 border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900',
+  warning: 'bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900',
+  critical: 'bg-red-50 text-red-900 border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900',
+  maintenance: 'bg-red-50 text-red-900 border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900',
+};
+
+export function AppLayout() {
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user, activeBusiness, refreshBusinesses } = useAuth();
+  const { logAdminEvent } = useAdminTelemetry();
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  const [impersonatedName, setImpersonatedName] = useState<string | null>(null);
+  const wasImpersonating = useRef(false);
+  const { announcement, dismiss: dismissAnnouncement } = usePlatformAnnouncement();
+
+  // Server-side public.is_super_admin() trusts app_metadata ONLY: user_metadata
+  // is self-service (auth.updateUser({ data: { is_super_admin: true } })), so
+  // trusting it here would hand any user who sets it the impersonation path.
+  const isSuperAdmin = Boolean(user?.app_metadata?.is_super_admin);
+
+  useEffect(() => {
+    const flag =
+      localStorage.getItem(LEGACY_IMPERSONATING_KEY) === 'true' ||
+      localStorage.getItem(OSCAR_IMPERSONATING_KEY) === 'true';
+    // Regular users must NEVER see or spoof this banner: gate strictly on
+    // super-admin. Scrub the flags if a non-admin somehow has them set.
+    if (!flag || !isSuperAdmin) {
+      if (flag && !isSuperAdmin) {
+        clearImpersonationFlags();
+      }
+      setIsImpersonating(false);
+      setImpersonatedName(null);
+      return;
+    }
+    setIsImpersonating(true);
+
+    const active = activeBusiness as unknown as Record<string, unknown> | null;
+    const activeId = typeof active?.id === 'string' ? (active.id as string) : null;
+    const activeName =
+      (typeof active?.legal_name === 'string' && (active.legal_name as string)) ||
+      (typeof active?.name === 'string' && (active.name as string)) ||
+      null;
+    if (activeId && activeName) {
+      setImpersonatedName(activeName);
+      return;
+    }
+
+    const storedId =
+      localStorage.getItem(OSCAR_TENANT_KEY) ||
+      localStorage.getItem(ACTIVE_BUSINESS_KEY) ||
+      localStorage.getItem(LEGACY_TENANT_KEY);
+    if (!storedId) {
+      setImpersonatedName('Unknown Business');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('businesses')
+        .select('legal_name, name')
+        .eq('id', storedId)
+        .single();
+      if (cancelled) return;
+      const row = data as { legal_name?: string | null; name?: string | null } | null;
+      setImpersonatedName(row?.legal_name || row?.name || 'Unknown Business');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSuperAdmin, activeBusiness]);
+
+  // Audit trail: record entering impersonation mode once per session entry.
+  useEffect(() => {
+    if (isImpersonating && isSuperAdmin && !wasImpersonating.current) {
+      wasImpersonating.current = true;
+      const tenantId =
+        localStorage.getItem(OSCAR_TENANT_KEY) ||
+        localStorage.getItem(ACTIVE_BUSINESS_KEY) ||
+        localStorage.getItem(LEGACY_TENANT_KEY);
+      void logAdminEvent('IMPERSONATION_START', tenantId, {
+        business_name: impersonatedName,
+      });
+    }
+    if (!isImpersonating) {
+      wasImpersonating.current = false;
+    }
+  }, [isImpersonating, isSuperAdmin, impersonatedName, logAdminEvent]);
+
+  const handleExitToControlCenter = async () => {
+    // (1) Capture the impersonated tenant id for the IMPERSONATION_END audit
+    // event BEFORE we tear down the impersonation markers (tenant is the only
+    // stable signal once they are gone).
+    const tenantId =
+      localStorage.getItem(OSCAR_TENANT_KEY) ||
+      localStorage.getItem(ACTIVE_BUSINESS_KEY) ||
+      localStorage.getItem(LEGACY_TENANT_KEY);
+    void logAdminEvent('IMPERSONATION_END', tenantId, {
+      business_name: impersonatedName,
+    });
+    // (2) Drop every impersonation key INCLUDING the console's pinned active
+    // business id (otherwise the admin's session stays pinned to the tenant).
+    clearImpersonationFlags({ clearActiveBusiness: true });
+    // (3) The notice flag goes too.
+    try {
+      sessionStorage.removeItem('accountx_impersonation_notice_seen');
+    } catch {
+      /* ignore */
+    }
+    setIsImpersonating(false);
+    setImpersonatedName(null);
+    wasImpersonating.current = false;
+    // (4) Re-resolve the auth context so activeBusiness falls back to the
+    //     admin's own membership business instead of the impersonated tenant.
+    try {
+      await refreshBusinesses();
+    } catch {
+      // The impersonation keys are already gone; the context re-resolves on the
+      // next load. We must still reach the control centre.
+    }
+    // (5) Navigate to the control centre only after the context is clean.
+    navigate('/super-admin');
+  };
+
+  const showBanner = isImpersonating && isSuperAdmin;
+  const announcementStyle =
+    announcementStyles[announcement?.severity ?? 'info'] ?? announcementStyles.info;
+
+  return (
+    <div className="flex min-h-screen bg-secondary-50 dark:bg-secondary-950">
+      <Sidebar
+        collapsed={collapsed}
+        onToggleCollapse={() => setCollapsed(!collapsed)}
+        mobileOpen={mobileOpen}
+        onMobileClose={() => setMobileOpen(false)}
+      />
+      <div className="flex-1 flex flex-col min-w-0">
+        <BroadcastBanner />
+        {showBanner && (
+          <div className="sticky top-0 z-50 w-full bg-amber-400 text-amber-950 px-4 sm:px-6 py-2 flex items-center justify-center gap-2 text-sm font-medium">
+            <span>
+              ⚠️ SUPER ADMIN SUPPORT MODE: Viewing dashboard of{' '}
+              {impersonatedName ?? 'Unknown Business'}. Actions taken here will
+              affect tenant live data.
+            </span>
+            <span aria-hidden="true">—</span>
+            <button
+              type="button"
+              onClick={() => {
+                void handleExitToControlCenter();
+              }}
+              className="underline underline-offset-2 hover:text-amber-800 font-semibold"
+            >
+              Exit to Admin Control Center
+            </button>
+          </div>
+        )}
+        <Header
+          onMobileMenu={() => setMobileOpen(true)}
+          onQuickAction={() => setQuickOpen(true)}
+        />
+        {announcement && (
+          <div
+            role="status"
+            className={`mx-4 sm:mx-6 lg:mx-8 mt-3 rounded-lg border px-4 py-2.5 flex items-start gap-3 text-sm ${announcementStyle}`}
+          >
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold">{announcement.title}</p>
+              <p className="mt-0.5 break-words">{announcement.message}</p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissAnnouncement}
+              aria-label="Dismiss announcement"
+              className="rounded-md p-1 hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+        <main className="flex-1" id="page-mount">
+          {/* Centered content container (~1440px) with page transition mount point */}
+          <div className="mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-8 py-4 lg:py-6">
+            <div key={location.pathname} className="animate-fade-up motion-reduce:animate-none">
+              <Outlet />
+            </div>
+          </div>
+        </main>
+      </div>
+      <QuickActions open={quickOpen} onClose={() => setQuickOpen(false)} />
+    </div>
+  );
+}
