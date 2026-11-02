@@ -66,6 +66,7 @@ export type Customer = {
   gstin: string | null;
   pan: string | null;
   aadhaar?: string | null;
+  discom_utility?: string | null;
   address: string | null;
   city: string | null;
   state: string | null;
@@ -93,6 +94,7 @@ export type Supplier = {
   gstin: string | null;
   pan: string | null;
   aadhaar?: string | null;
+  discom_utility?: string | null;
   address: string | null;
   city: string | null;
   state: string | null;
@@ -464,6 +466,14 @@ export type DebitNoteItem = {
 
 export type QuotationStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'converted' | 'cancelled';
 
+export type QuotationProjectDetails = {
+  project_name?: string;
+  plant_type?: string;
+  roof_type?: string;
+  subsidy_scheme?: string;
+  [key: string]: any;
+};
+
 export type Quotation = {
   id: string;
   business_id: string;
@@ -471,6 +481,8 @@ export type Quotation = {
   customer_id: string;
   quote_date: string;
   expiry_date: string | null;
+  project_details?: QuotationProjectDetails | null;
+  discom_utility?: string | null;
   subtotal: number;
   discount_amount: number;
   taxable_amount: number;

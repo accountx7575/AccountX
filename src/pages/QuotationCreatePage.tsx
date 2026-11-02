@@ -68,6 +68,12 @@ export function QuotationCreatePage() {
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<LineItem[]>([{ ...emptyLine }]);
 
+  const [projectName, setProjectName] = useState('10 kW On-Grid Solar Plant');
+  const [plantType, setPlantType] = useState('Grid-Tie Rooftop with Net-Metering');
+  const [roofType, setRoofType] = useState('RCC Flat Roof / Metal Shed (Hot-Dip GI)');
+  const [subsidyScheme, setSubsidyScheme] = useState('Central PM Surya Ghar + UPNEDA State DBT');
+  const [discomUtility, setDiscomUtility] = useState('PVVNL');
+
   const { data: customers } = useQuery({
     queryKey: ['customers', activeBusiness?.id],
     queryFn: async () => {
@@ -136,6 +142,16 @@ export function QuotationCreatePage() {
     }
     setExpiryDate(quote.expiry_date || '');
     setNotes(quote.notes || quote.terms || '');
+
+    if (quote.project_details) {
+      setProjectName(quote.project_details.project_name || '10 kW On-Grid Solar Plant');
+      setPlantType(quote.project_details.plant_type || 'Grid-Tie Rooftop with Net-Metering');
+      setRoofType(quote.project_details.roof_type || 'RCC Flat Roof / Metal Shed (Hot-Dip GI)');
+      setSubsidyScheme(quote.project_details.subsidy_scheme || 'Central PM Surya Ghar + UPNEDA State DBT');
+    }
+    if (quote.discom_utility) {
+      setDiscomUtility(quote.discom_utility);
+    }
 
     if (items.length > 0) {
       setLines(
@@ -221,6 +237,14 @@ export function QuotationCreatePage() {
       let targetQuoteId: string | undefined = editId;
       let createdNewQuote = false;
 
+      const project_details = {
+        project_name: projectName.trim() || '10 kW On-Grid Solar Plant',
+        plant_type: plantType.trim() || 'Grid-Tie Rooftop with Net-Metering',
+        roof_type: roofType.trim() || 'RCC Flat Roof / Metal Shed (Hot-Dip GI)',
+        subsidy_scheme: subsidyScheme.trim() || 'Central PM Surya Ghar + UPNEDA State DBT',
+      };
+      const cleanDiscom = discomUtility.trim() || 'PVVNL';
+
       if (isEdit && targetQuoteId) {
         const validatedNumber = await docNumberField.validate();
         if (!validatedNumber) throw new Error(DUPLICATE_DOCUMENT_NUMBER_MESSAGE);
@@ -241,6 +265,8 @@ export function QuotationCreatePage() {
             round_off: totals.roundOff,
             grand_total: totals.grandTotal,
             notes: notes.trim() || null,
+            project_details,
+            discom_utility: cleanDiscom,
           })
           .eq('id', targetQuoteId)
           .eq('business_id', activeBusiness.id);
@@ -305,6 +331,8 @@ export function QuotationCreatePage() {
               status: 'draft',
               notes: notes.trim() || null,
               created_by: userData?.user?.id || null,
+              project_details,
+              discom_utility: cleanDiscom,
             })
             .select('id')
             .single();
@@ -403,7 +431,14 @@ export function QuotationCreatePage() {
               <select
                 className="input h-10"
                 value={customerId}
-                onChange={(e) => setCustomerId(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomerId(val);
+                  const chosen = customers?.find((c) => c.id === val);
+                  if (chosen?.discom_utility && !isEdit) {
+                    setDiscomUtility(chosen.discom_utility);
+                  }
+                }}
               >
                 <option value="">Select customer...</option>
                 {customers?.map((c) => (
@@ -433,6 +468,46 @@ export function QuotationCreatePage() {
               Inter-state transaction detected — IGST will be applied instead of CGST + SGST.
             </div>
           )}
+        </FormSection>
+
+        <FormSection title="Project &amp; Plant Details">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <FormField label="Project / System Title" required>
+              <Input
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="10 kW On-Grid Solar Plant"
+              />
+            </FormField>
+            <FormField label="Plant Type" required>
+              <Input
+                value={plantType}
+                onChange={(e) => setPlantType(e.target.value)}
+                placeholder="Grid-Tie Rooftop with Net-Metering"
+              />
+            </FormField>
+            <FormField label="Roof Type" required>
+              <Input
+                value={roofType}
+                onChange={(e) => setRoofType(e.target.value)}
+                placeholder="RCC Flat Roof / Metal Shed (Hot-Dip GI)"
+              />
+            </FormField>
+            <FormField label="Subsidy Scheme" className="md:col-span-2">
+              <Input
+                value={subsidyScheme}
+                onChange={(e) => setSubsidyScheme(e.target.value)}
+                placeholder="Central PM Surya Ghar + UPNEDA State DBT"
+              />
+            </FormField>
+            <FormField label="Customer DISCOM Utility">
+              <Input
+                value={discomUtility}
+                onChange={(e) => setDiscomUtility(e.target.value)}
+                placeholder="PVVNL"
+              />
+            </FormField>
+          </div>
         </FormSection>
 
         <FormSection>

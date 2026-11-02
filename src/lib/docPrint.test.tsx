@@ -225,7 +225,12 @@ describe('docPrint engine — engine output is the approved GyftKart UDT (direct
     // Header pill + dual party / payment cards
     expect(html).toContain(docTitle === 'TAX INVOICE' ? 'TAX INVOICE / RECEIPT' : docTitle);
     expect(html).toContain('Billed To');
-    expect(html).toContain('Payment &amp; Fulfillment');
+    if (docTitle === 'QUOTATION') {
+      expect(html).toContain('PROJECT &amp; PLANT DETAILS');
+      expect(html).not.toContain('Payment &amp; Fulfillment');
+    } else {
+      expect(html).toContain('Payment &amp; Fulfillment');
+    }
     // 7-column items table
     expect(html).toContain('Item Description / Voucher');
     expect(html).toContain('HSN/SAC');

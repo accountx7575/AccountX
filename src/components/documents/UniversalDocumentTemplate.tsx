@@ -105,6 +105,16 @@ export interface UniversalPartyInfo {
   companyName?: string;
   customerType?: 'B2B' | 'B2C';
   userId?: string;
+  discom_utility?: string;
+  discomUtility?: string;
+  [key: string]: any;
+}
+
+export interface QuotationProjectDetails {
+  project_name?: string;
+  plant_type?: string;
+  roof_type?: string;
+  subsidy_scheme?: string;
   [key: string]: any;
 }
 
@@ -136,6 +146,10 @@ export interface UniversalDocumentData {
   paymentMode?: string;
   paymentStatus?: string;
   paymentRef?: string;
+  project_details?: QuotationProjectDetails | null;
+  projectDetails?: QuotationProjectDetails | null;
+  discom_utility?: string;
+  discomUtility?: string;
   notes?: string | null;
   taxNote?: string | null;
   terms?: string | string[] | null;
@@ -645,6 +659,19 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
   const custPhone = String(customer.phone || customer.mobile || (customer as any).phone_number || (customer as any).phoneNumber || '').trim();
   const custEmail = String(customer.email || (customer as any).email_address || (customer as any).emailAddress || '').trim();
 
+  const discomUtility =
+    data.discom_utility ||
+    (data as any).discomUtility ||
+    customer.discom_utility ||
+    customer.discomUtility ||
+    (customer as any).discom ||
+    (data as any).client?.discom_utility;
+
+  const projectDetails =
+    data.project_details ||
+    (data as any).projectDetails ||
+    {};
+
   const docNumber = data.invoiceNumber || data.documentNumber || data.orderNumber || 'INV-MANUAL-CR-WIPMIW';
   const posLabel = formatPlaceOfSupply(
     data.placeOfSupply || customer.state || (customer as any).billingState || company.state,
@@ -955,6 +982,12 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
               )}
             </p>
           )}
+          {discomUtility && (
+            <p className="text-xs text-slate-600 leading-snug pt-0.5">
+              <strong className="text-slate-700">DISCOM Utility:</strong>{' '}
+              <span className="font-semibold text-slate-800">{discomUtility}</span>
+            </p>
+          )}
           {customer.userId && (
             <p className="text-[10px] font-mono text-slate-400 mt-1">
               Customer UUID: {customer.userId}
@@ -962,40 +995,69 @@ export const UniversalDocumentTemplate: React.FC<UniversalDocumentTemplateProps>
           )}
         </div>
 
-        <div className="sm:border-l sm:border-slate-200 sm:pl-6 space-y-1 text-[11px]">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
-            <ShieldCheck className="h-3 w-3 text-slate-400" /> Payment &amp; Fulfillment
-          </p>
-          <p className="flex justify-between sm:justify-start sm:gap-4">
-            <span className="text-slate-500 w-28">Order Ref:</span>
-            <strong className="font-mono text-slate-900 font-semibold">
-              #{data.orderId || data.orderNumber || docNumber}
-            </strong>
-          </p>
-          <p className="flex justify-between sm:justify-start sm:gap-4">
-            <span className="text-slate-500 w-28">Payment Mode:</span>
-            <span className="text-slate-900 font-semibold">
-              {data.paymentMethod || data.paymentMode || 'Wallet'}
-            </span>
-          </p>
-          <p className="flex justify-between sm:justify-start sm:gap-4">
-            <span className="text-slate-500 w-28">Ref / UTR No:</span>
-            <span className="font-mono text-slate-900 font-semibold">
-              {data.paymentRef || docNumber}
-            </span>
-          </p>
-          <p className="flex justify-between sm:justify-start sm:gap-4 items-center">
-            <span className="text-slate-500 w-28">Payment Status:</span>
-            <span
-              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold ${
-                isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-              }`}
-            >
-              <CheckCircle2 className="h-3 w-3" />
-              {isPaid ? 'PAID & DELIVERED' : statusStr}
-            </span>
-          </p>
-        </div>
+        {isQuotationDoc ? (
+          <div className="sm:border-l sm:border-slate-200 sm:pl-6 space-y-1.5 text-[11px]">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
+              <ShieldCheck className="h-3 w-3 text-emerald-600" /> PROJECT &amp; PLANT DETAILS
+            </p>
+            <p className="text-xs font-bold text-slate-900 leading-snug">
+              {projectDetails.project_name || '10 kW On-Grid Solar Plant'}
+            </p>
+            <p className="flex flex-col sm:flex-row sm:items-baseline text-slate-600">
+              <span className="text-slate-500 font-medium sm:w-24 shrink-0">Plant Type:</span>
+              <span className="text-slate-800 font-medium">
+                {projectDetails.plant_type || 'Grid-Tie Rooftop with Net-Metering'}
+              </span>
+            </p>
+            <p className="flex flex-col sm:flex-row sm:items-baseline text-slate-600">
+              <span className="text-slate-500 font-medium sm:w-24 shrink-0">Roof Type:</span>
+              <span className="text-slate-800 font-medium">
+                {projectDetails.roof_type || 'RCC Flat Roof / Metal Shed (Hot-Dip GI)'}
+              </span>
+            </p>
+            <p className="flex flex-col sm:flex-row sm:items-baseline text-emerald-700 font-medium pt-0.5">
+              <span className="text-emerald-800 font-semibold sm:w-28 shrink-0">Subsidy Scheme:</span>
+              <span>
+                {projectDetails.subsidy_scheme || 'Central PM Surya Ghar + UPNEDA State DBT'}
+              </span>
+            </p>
+          </div>
+        ) : (
+          <div className="sm:border-l sm:border-slate-200 sm:pl-6 space-y-1 text-[11px]">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
+              <ShieldCheck className="h-3 w-3 text-slate-400" /> Payment &amp; Fulfillment
+            </p>
+            <p className="flex justify-between sm:justify-start sm:gap-4">
+              <span className="text-slate-500 w-28">Order Ref:</span>
+              <strong className="font-mono text-slate-900 font-semibold">
+                #{data.orderId || data.orderNumber || docNumber}
+              </strong>
+            </p>
+            <p className="flex justify-between sm:justify-start sm:gap-4">
+              <span className="text-slate-500 w-28">Payment Mode:</span>
+              <span className="text-slate-900 font-semibold">
+                {data.paymentMethod || data.paymentMode || 'Wallet'}
+              </span>
+            </p>
+            <p className="flex justify-between sm:justify-start sm:gap-4">
+              <span className="text-slate-500 w-28">Ref / UTR No:</span>
+              <span className="font-mono text-slate-900 font-semibold">
+                {data.paymentRef || docNumber}
+              </span>
+            </p>
+            <p className="flex justify-between sm:justify-start sm:gap-4 items-center">
+              <span className="text-slate-500 w-28">Payment Status:</span>
+              <span
+                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                  isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                <CheckCircle2 className="h-3 w-3" />
+                {isPaid ? 'PAID & DELIVERED' : statusStr}
+              </span>
+            </p>
+          </div>
+        )}
       </div>
 
       {/* 3. Line Items Table */}

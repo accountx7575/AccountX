@@ -397,5 +397,23 @@ describe('documentMappers', () => {
       expect(mapped.company?.logo_url).toBe('data:image/png;base64,ABC123');
       expect(mapped.company?.logoUrl).toBe('data:image/png;base64,ABC123');
     });
+
+    it('maps project_details and discom_utility in mapQuotationToUniversalData', () => {
+      const quote = {
+        quotation_number: 'QT-2026-99',
+        project_details: {
+          project_name: '10 kW On-Grid Solar Plant',
+          plant_type: 'Grid-Tie Rooftop with Net-Metering',
+          roof_type: 'RCC Flat Roof / Metal Shed (Hot-Dip GI)',
+          subsidy_scheme: 'Central PM Surya Ghar + UPNEDA State DBT',
+        },
+        discom_utility: 'PVVNL',
+      };
+      const mapped = mapQuotationToUniversalData({}, quote);
+      expect(mapped.project_details?.project_name).toBe('10 kW On-Grid Solar Plant');
+      expect(mapped.project_details?.plant_type).toBe('Grid-Tie Rooftop with Net-Metering');
+      expect(mapped.discom_utility).toBe('PVVNL');
+      expect(mapped.customer?.discom_utility).toBe('PVVNL');
+    });
   });
 });

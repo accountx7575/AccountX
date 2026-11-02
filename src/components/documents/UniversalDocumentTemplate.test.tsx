@@ -781,4 +781,56 @@ describe('UniversalDocumentTemplate - approved GyftKart layout (directive-13)', 
     expect(html).toContain('abc.solar7575@gmail.com');
     expect(html).toContain('+91 9450942418');
   });
+
+  it('renders Project & Plant Details on Quotations and suppresses Payment & Fulfillment block', () => {
+    const quoteData = baseData({
+      documentType: 'QUOTATION',
+      documentNumber: 'QT/ABC/SE/26-27/13',
+      project_details: {
+        project_name: '10 kW On-Grid Solar Plant',
+        plant_type: 'Grid-Tie Rooftop with Net-Metering',
+        roof_type: 'RCC Flat Roof / Metal Shed (Hot-Dip GI)',
+        subsidy_scheme: 'Central PM Surya Ghar + UPNEDA State DBT',
+      },
+      discom_utility: 'PVVNL',
+    });
+
+    const html = render(quoteData);
+
+    // Verifies Project & Plant Details is rendered
+    expect(html).toContain('PROJECT &amp; PLANT DETAILS');
+    expect(html).toContain('10 kW On-Grid Solar Plant');
+    expect(html).toContain('Plant Type:');
+    expect(html).toContain('Grid-Tie Rooftop with Net-Metering');
+    expect(html).toContain('Roof Type:');
+    expect(html).toContain('RCC Flat Roof / Metal Shed (Hot-Dip GI)');
+    expect(html).toContain('Subsidy Scheme:');
+    expect(html).toContain('Central PM Surya Ghar + UPNEDA State DBT');
+
+    // Verifies DISCOM Utility is rendered under Billed To
+    expect(html).toContain('DISCOM Utility:');
+    expect(html).toContain('PVVNL');
+
+    // Verifies Payment & Fulfillment block is suppressed on Quotations
+    expect(html).not.toContain('Payment &amp; Fulfillment');
+    expect(html).not.toContain('Payment Status:');
+    expect(html).not.toContain('Ref / UTR No:');
+  });
+
+  it('renders Payment & Fulfillment block on Tax Invoices and not Project & Plant Details', () => {
+    const invoiceData = baseData({
+      documentType: 'TAX_INVOICE',
+      documentNumber: 'INV/2026/001',
+      orderId: 'ORD-999',
+      paymentMethod: 'Bank Transfer',
+      paymentRef: 'UTR123456789',
+    });
+
+    const html = render(invoiceData);
+
+    expect(html).toContain('Payment &amp; Fulfillment');
+    expect(html).toContain('Payment Mode:');
+    expect(html).toContain('Ref / UTR No:');
+    expect(html).not.toContain('PROJECT &amp; PLANT DETAILS');
+  });
 });
