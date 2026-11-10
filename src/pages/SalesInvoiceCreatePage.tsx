@@ -25,7 +25,7 @@ import { mergeBusinessExtras } from '@/lib/businessExtras';
 import { Modal } from '@/components/ui/Modal';
 import { useSubscriptionQuota } from '@/hooks/useSubscriptionQuota';
 import { printInvoice, exportPdfFromElement, exportInvoiceExcel, type InvoiceWithCustomer } from '@/lib/invoiceExport';
-import { updateSalesInvoiceService } from '@/services/salesInvoiceService';
+import { createSalesInvoiceService, updateSalesInvoiceService } from '@/services/salesInvoiceService';
 import type { Customer, Product, SalesInvoice, SalesInvoiceItem } from '@/types/db';
 
 type LineItem = {
@@ -390,16 +390,12 @@ export function SalesInvoiceCreatePage() {
         total_amount: it.total_amount,
       }));
 
-      const { data, error } = await supabase.rpc('create_sales_invoice', {
-        p_business_id: activeBusiness.id,
-        p_invoice,
-        p_items,
-        p_status: status,
+      const { invoiceId } = await createSalesInvoiceService({
+        businessId: activeBusiness.id,
+        invoice: p_invoice,
+        items: p_items,
+        status,
       });
-      if (error) throw error;
-
-      const result = data as unknown as { invoice_id?: string }[] | { invoice_id?: string } | null;
-      const invoiceId = Array.isArray(result) ? result[0]?.invoice_id : result?.invoice_id;
       const combinedCreatedAt = combineDateTime(invoiceDate, invoiceTime);
       if (invoiceId && combinedCreatedAt) {
         await supabase
